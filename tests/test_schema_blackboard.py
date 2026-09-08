@@ -19,10 +19,10 @@ def test_this_path_write_read():
     """`this/param`（无 $）路径读写与 `$this/param` 等价。"""
     sp = _space()
     root = sp.enter_block("主流程")
-    sp.write(root, "this/amount", "98.00", "金额")
-    assert sp.read(root, "this/amount") == "98.00"
+    sp.write(root, "this/amount", 98.0, "float")
+    assert sp.read(root, "this/amount") == 98.0
     # 旧 $this 仍内部兼容
-    assert sp.read(root, "$this/amount") == "98.00"
+    assert sp.read(root, "$this/amount") == 98.0
 
 
 def test_this_child_path_write_read():
@@ -30,7 +30,7 @@ def test_this_child_path_write_read():
     sp = _space()
     root = sp.enter_block("主流程")
     child = sp.enter_block("登录")
-    sp.write(root, "this/登录/username", "admin", "文本")
+    sp.write(root, "this/登录/username", "admin", "str")
     assert sp.read(child, "this/username") == "admin"
     assert sp.read(root, "this/登录/username") == "admin"
     sp.exit_block()
@@ -54,35 +54,35 @@ def test_snapshot_variables_flat():
     """snapshot_variables 导出当前帧变量（含子帧）。"""
     sp = _space()
     root = sp.enter_block("主流程")
-    sp.write(root, "this/amount", "98.00", "金额")
+    sp.write(root, "this/amount", 98.0, "float")
     child = sp.enter_block("登录")
-    sp.write(child, "this/username", "admin", "文本")
+    sp.write(child, "this/username", "admin", "str")
     sp.exit_block()
 
     snap = sp.snapshot_variables(root)
     paths = {item["path"]: item for item in snap}
-    assert paths["this/amount"]["value"] == "98.00"
-    assert paths["this/amount"]["type"] == "金额"
+    assert paths["this/amount"]["value"] == 98.0
+    assert paths["this/amount"]["type"] == "float"
     assert paths["this/登录/username"]["value"] == "admin"
-    assert paths["this/登录/username"]["type"] == "文本"
+    assert paths["this/登录/username"]["type"] == "str"
 
 
 def test_snapshot_variables_contains_page_ref():
     sp = _space()
     root = sp.enter_block("主流程")
-    sp.write(root, "this/登录页", PageRef(page_id="1", url="http://x"), "页面引用")
+    sp.write(root, "this/登录页", PageRef(page_id="1", url="http://x"), "page_ref")
     snap = sp.snapshot_variables(root)
     paths = {item["path"]: item for item in snap}
-    assert paths["this/登录页"]["type"] == "页面引用"
+    assert paths["this/登录页"]["type"] == "page_ref"
     assert paths["this/登录页"]["value"].page_id == "1"
 
 
 def test_snapshot_variables_uses_current_frame():
     sp = _space()
     root = sp.enter_block("主流程")
-    sp.write(root, "this/a", "1", "文本")
+    sp.write(root, "this/a", "1", "str")
     child = sp.enter_block("登录")
-    sp.write(child, "this/b", "2", "文本")
+    sp.write(child, "this/b", "2", "str")
     # 当前激活帧是登录子块
     snap = sp.snapshot_variables()
     paths = {item["path"] for item in snap}

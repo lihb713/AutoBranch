@@ -57,7 +57,7 @@ def test_override_only_affects_block_and_descendants(space):
     t = space.enter_block("T")
     space.enter_block("登录")
     space.exit_block()
-    space.set_config(t, "timeout", 90, "整数")
+    space.set_config(t, "timeout", 90, "int")
     assert space.resolve_config(t, "timeout") == 90
     # 登录是 T 的直接子，T 覆盖后登录应继承 90（向上找最近祖先）
     login = space.enter_block("登录")
@@ -67,7 +67,7 @@ def test_override_only_affects_block_and_descendants(space):
 def test_business_variable_not_looked_up(space):
     """3.3 业务变量不向上查找：读自身未定义返回空值，不取祖先同名值。"""
     t = space.enter_block("T")
-    space.write(t, "$this/username", "alice", "文本")
+    space.write(t, "$this/username", "alice", "str")
     login = space.enter_block("登录")
     assert space.read(login, "$this/username") is None
     # 而 T 自己读得到
@@ -77,7 +77,7 @@ def test_business_variable_not_looked_up(space):
 def test_set_config_type_validated(space):
     """3.x set_config 触发类型校验。"""
     t = space.enter_block("T")
-    space.set_config(t, "retry", 3, "整数")
+    space.set_config(t, "retry", 3, "int")
     assert space.resolve_config(t, "retry") == 3
 
 

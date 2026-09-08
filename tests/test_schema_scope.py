@@ -29,12 +29,12 @@ def test_frame_isolation_same_name():
     space = SchemaSpace()
     space.enter_block("T")
     a1 = space.enter_block("登录")
-    space.write(a1, "$this/username", "alice", "文本")
+    space.write(a1, "$this/username", "alice", "str")
     assert space.read(a1, "$this/username") == "alice"
     space.exit_block(a1)
 
     a2 = space.enter_block("登录")
-    space.write(a2, "$this/username", "bob", "文本")
+    space.write(a2, "$this/username", "bob", "str")
     assert space.read(a2, "$this/username") == "bob"
     assert space.read(a1, "$this/username") == "alice"
 
@@ -53,15 +53,15 @@ def test_nested_frame_paths():
 def test_write_own_and_read_own(space):
     """2.2 写/读自己的 schema 合法。"""
     t, *_ = _build_tree(space)
-    space.write(t, "$this/amount", 100, "金额")
-    assert space.read(t, "$this/amount") == 100
-    assert space.read(t, "T/amount") == 100
+    space.write(t, "$this/amount", 100.0, "float")
+    assert space.read(t, "$this/amount") == 100.0
+    assert space.read(t, "T/amount") == 100.0
 
 
 def test_write_direct_child_and_read(space):
     """2.2 写/读直接子块 schema 合法。"""
     t, login, *_ = _build_tree(space)
-    space.write(t, "$this/登录/username", "alice", "文本")
+    space.write(t, "$this/登录/username", "alice", "str")
     assert space.read(login, "$this/username") == "alice"
     assert space.read(t, "$this/登录/username") == "alice"
 
@@ -82,7 +82,7 @@ def test_write_scope_matrix_rejected(space, actor, path, desc):
     t, login, _, _ = _build_tree(space)
     frame = t if actor == "t" else login
     with pytest.raises(SchemaScopeError, match="越权"):
-        space.write(frame, path, "x", "文本")
+        space.write(frame, path, "x", "str")
 
 
 @pytest.mark.parametrize(
@@ -106,8 +106,8 @@ def test_read_scope_matrix_rejected(space, actor, path, desc):
 def test_param_passing_layer_by_layer(space):
     """2.3 传参逐层传递：T → 登录 → 输入框。"""
     t, login, ib, _ = _build_tree(space)
-    space.write(t, "$this/登录/username", "alice", "文本")
-    space.write(login, "$this/输入框/值", space.read(login, "$this/username"), "文本")
+    space.write(t, "$this/登录/username", "alice", "str")
+    space.write(login, "$this/输入框/值", space.read(login, "$this/username"), "str")
     assert space.read(ib, "$this/值") == "alice"
 
 
@@ -115,7 +115,7 @@ def test_grandchild_invisible_to_top(space):
     """2.3 T 无法直接写/读孙级路径（逐层转发强制）。"""
     t, _, _, _ = _build_tree(space)
     with pytest.raises(SchemaScopeError):
-        space.write(t, "$this/登录/输入框/值", "x", "文本")
+        space.write(t, "$this/登录/输入框/值", "x", "str")
     with pytest.raises(SchemaScopeError):
         space.read(t, "$this/登录/输入框/值")
 
@@ -123,7 +123,7 @@ def test_grandchild_invisible_to_top(space):
 def test_read_direct_child_result(space):
     """2.3 读直接子帧取返回值（导出 result）。"""
     t, _, _, export = _build_tree(space)
-    space.write(export, "$this/result", "done", "文本")
+    space.write(export, "$this/result", "done", "str")
     assert space.read(t, "$this/导出/result") == "done"
 
 

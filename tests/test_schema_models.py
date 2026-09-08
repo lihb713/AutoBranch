@@ -1,11 +1,11 @@
-"""M3 任务 1.x：Value 类型、SchemaFrame 数据结构、路径工具、SUPPORTED_TYPES。"""
+"""M3 任务 1.x：Value 类型、SchemaFrame 数据结构、路径工具、TYPE_REGISTRY。"""
 
 from __future__ import annotations
 
 import pytest
 
 from webops.schema import (
-    SUPPORTED_TYPES,
+    TYPE_REGISTRY,
     BlockDecl,
     PageRef,
     SchemaFrame,
@@ -18,7 +18,6 @@ from webops.schema import (
     validate_type_name,
 )
 from webops.schema.path import resolve_target, split_segments
-from webops.schema.types import _is_bool, _is_date, _is_money, _is_order_no, _is_url
 
 
 def make_frame(block_name: str = "T") -> SchemaFrame:
@@ -94,53 +93,28 @@ def test_split_segments_rejects_var_with_slash():
 
 
 def test_supported_types_enumerable():
-    """1.3 类型登记表可枚举核心类型。"""
-    for name in ["金额", "订单号", "URL", "日期", "文本", "页面引用", "布尔"]:
-        assert name in SUPPORTED_TYPES
-    assert "整数" in SUPPORTED_TYPES
-    assert "数字" in SUPPORTED_TYPES
-
-
-def test_supported_types_checkers():
-    """1.3 各类型校验函数行为。"""
-    assert _is_money(98.00)
-    assert _is_money(98)
-    assert _is_money("98.00")
-    assert not _is_money("abc")
-    assert not _is_money("¥98.00")
-    assert not _is_money(True)
-
-    assert _is_order_no("ORD-001")
-    assert not _is_order_no("有 空格")
-    assert not _is_order_no("")
-
-    assert _is_url("https://example.com/x")
-    assert not _is_url("ftp://example.com")
-    assert not _is_url("example.com")
-
-    assert _is_date("2024-05-01")
-    assert not _is_date("2024-13-45")
-
-    assert _is_bool(True)
-    assert not _is_bool(1)
+    """1.3 类型登记表可枚举核心类型（英文 token）。"""
+    assert set(TYPE_REGISTRY) == {"str", "int", "float", "bool", "page_ref"}
+    for name in ["str", "int", "float", "bool", "page_ref"]:
+        assert name in TYPE_REGISTRY
 
 
 def test_validate_type_name():
     """1.3 未登记类型名 → SchemaTypeError。"""
-    validate_type_name("金额")
+    validate_type_name("str")
     with pytest.raises(SchemaTypeError):
         validate_type_name("未知类型")
 
 
 def test_check_type_ok():
-    check_type("金额", 100)
-    check_type("页面引用", PageRef("p1"))
+    check_type("float", 100.0)
+    check_type("page_ref", PageRef("p1"))
 
 
 def test_infer_type():
-    """1.3 配置参数缺省类型按值推断。"""
-    assert infer_type(True) == "布尔"
-    assert infer_type(5) == "整数"
-    assert infer_type(5.5) == "数字"
-    assert infer_type("x") == "文本"
-    assert infer_type(PageRef("p1")) == "页面引用"
+    """1.3 配置参数缺省类型按值推断（英文 token）。"""
+    assert infer_type(True) == "bool"
+    assert infer_type(5) == "int"
+    assert infer_type(5.5) == "float"
+    assert infer_type("x") == "str"
+    assert infer_type(PageRef("p1")) == "page_ref"

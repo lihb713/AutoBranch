@@ -27,19 +27,19 @@ def test_end_to_end_login_export_flow():
         "登录",
         BlockDecl(
             block_name="登录",
-            inputs={"username": "文本", "password": "文本"},
-            outputs={"login_success": "布尔"},
+            inputs={"username": "str", "password": "str"},
+            outputs={"login_success": "bool"},
         ),
     )
     ib = space.enter_block("输入框", BlockDecl(block_name="输入框"))
     space.exit_block(ib)
 
-    space.write(t, "$this/登录/username", "alice", "文本")
-    space.write(t, "$this/登录/password", "p@ss", "文本")
-    space.write(login, "$this/输入框/值", space.read(login, "$this/username"), "文本")
+    space.write(t, "$this/登录/username", "alice", "str")
+    space.write(t, "$this/登录/password", "p@ss", "str")
+    space.write(login, "$this/输入框/值", space.read(login, "$this/username"), "str")
     assert space.read(ib, "$this/值") == "alice"
 
-    space.write(login, "$this/login_success", True, "布尔")
+    space.write(login, "$this/login_success", True, "bool")
     space.exit_block(login)
 
     assert space.read(t, "$this/登录/login_success") is True
@@ -50,12 +50,12 @@ def test_end_to_end_config_and_page_binding():
     """配置覆盖 + 页面变量绑定 → 操作作用于当前页面变量所指页。"""
     space = SchemaSpace(global_config={"timeout": 30})
     t = space.enter_block("T")
-    space.set_config(t, "timeout", 120, "整数")
+    space.set_config(t, "timeout", 120, "int")
     login = space.enter_block("登录")
     assert space.resolve_config(login, "timeout") == 120
 
     login_page = PageRef("p1", "https://example.com/login")
-    space.write(t, "$this/登录页", login_page, "页面引用")
+    space.write(t, "$this/登录页", login_page, "page_ref")
     bound = space.current_page(t)
     assert bound == login_page
     assert bound.page_id == "p1"
@@ -67,9 +67,9 @@ def test_end_to_end_assertion_failure_propagates():
     t = space.enter_block("T")
     login = space.enter_block("登录")
     with pytest.raises(SchemaTypeError):
-        space.write(login, "$this/amount", "不是数字", "金额")
+        space.write(login, "$this/amount", "不是数字", "float")
     with pytest.raises(SchemaError):
-        space.write(t, "$this/登录/amount", "也不是数字", "金额")
+        space.write(t, "$this/登录/amount", "也不是数字", "float")
 
 
 def test_end_to_end_grandchild_invisible():
