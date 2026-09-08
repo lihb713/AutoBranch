@@ -283,12 +283,11 @@ git commit -m "refactor(schema): type registry with isinstance+coerce, english t
 
 ---
 
-### Task 2: 迁移 schema/space.py 与相关测试到英文 token
+### Task 2: 迁移 schema 层测试到英文 token
 
 **Files:**
-- Modify: `webops/schema/space.py`（类型名参数化调用点——实际签名不变，值变英文）
-- Modify: `tests/test_schema_types.py`（旧文件其余部分）、`tests/test_schema_models.py`、`tests/test_schema_blackboard.py`、`tests/test_schema_integration.py`、`tests/test_schema_*.py`
-- Test: `tests/test_schema_types.py`
+- Modify: `tests/test_schema_models.py`、`tests/test_schema_blackboard.py`、`tests/test_schema_integration.py`、`tests/test_schema_config.py`、`tests/test_schema_scope.py`、`tests/test_schema_page.py`（及运行发现的其余 `tests/test_schema*.py`）
+- Test: `tests/test_schema*.py`（tests-only；`webops/` 源码不改——space.py 仅透传 token 无需迁移，engine/parser/prompts 消费点归 Task 3）
 
 **Interfaces:**
 - Consumes: `SchemaSpace.write/read/set_config`（不变，类型名实参改英文）、`PageRef`
