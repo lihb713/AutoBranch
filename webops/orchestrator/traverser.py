@@ -32,6 +32,7 @@ from webops.parser.models import (
 )
 from webops.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
 from webops.schema.errors import SchemaError
+from webops.schema.path import resolve_target
 from webops.schema.types import coerce, infer_type
 
 logger = logging.getLogger(__name__)
@@ -338,9 +339,14 @@ class Traverser:
     def _eval_arg(self, frame, expr: str):
         """求值实参表达式：裸路径 ``this/<名>`` → 父帧读；否则视为字面量。
 
-        读取失败（未定义）返回 ``_MISSING`` 哨兵，由调用方判失败。
+        未定义（父帧从未写入该变量）返回 ``_MISSING`` 哨兵，由调用方判失败；
+        已定义（即便值为 None）返回存储值原样。``space.read`` 对未定义与
+        已存 None 均返回 None，故先经 ``resolve_target`` 判定存在性。
         """
         if _single_segment(expr) is not None:
+            target, var = resolve_target(frame, expr)
+            if var not in target.storage:
+                return _MISSING
             return self.ctx.space.read(frame, expr)
         return _parse_literal(expr)
 

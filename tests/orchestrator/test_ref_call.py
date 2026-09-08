@@ -240,6 +240,35 @@ class TestRefCall:
         assert isinstance(child.storage["page"], PageRef)
         assert child.storage["page"].page_id == "p1"
 
+    def test_ref_arg_undefined_fails(self, config) -> None:
+        """父帧未定义变量作为裸路径实参 → ref FAILURE，不注入 "None"、不建子帧。"""
+        blocks = {
+            "登录": BlockDecl(
+                name="登录",
+                doc_id="主流程",
+                inputs=(("username", "str"),),
+            )
+        }
+        blocks_tree = {
+            "主流程": seq(
+                RefNode(
+                    ref_target="this/登录",
+                    args=(("username", "this/未定义账号"),),
+                ),
+            ),
+            "登录": seq(action("块内动作")),
+        }
+        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        space = ctx.space
+        ctx.leaf_executor = _space_leaf(space)
+        assert Traverser(ctx).tick(blocks_tree["主流程"]) == FAILURE
+        # 失败原因指明实参求值失败
+        assert "实参" in (ctx.failure_reason or "")
+        # 未建子帧（不进入目标块），无 "None" 注入
+        assert "登录" not in space._current.children
+        # 激活帧恢复父帧
+        assert space._current.block_name == "主流程"
+
     def test_cross_doc_chain_owner_this_at_runtime(self, config) -> None:
         """跨文档链 主流程→导出→(this/登录)：导出块内部 this/ 解析到所属文档。
 
