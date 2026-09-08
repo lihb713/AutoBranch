@@ -16,7 +16,7 @@ from typing import Literal
 
 from webops.parser.models import ActionNode, ConditionNode
 
-PROMPT_VERSION = "1.3"
+PROMPT_VERSION = "1.4"
 
 _ACTION_SYSTEM = """\
 你是一个 Web 自动化执行代理。你的任务是根据「节点描述」，在浏览器中执行对应的网页操作。
@@ -85,8 +85,9 @@ def build_user_message(
     """构建用户消息（节点描述 + 当前语义图正文）。
 
     :param set_targets: 叶子声明的可写变量路径集。
-    :param set_decls: ``(path, type)`` 类型标注；type=page 提示用 open 存页签、
-      type=string 提示用 get_url 存文本、空串用 extract。仅作提示，实际类型由引擎函数保证。
+    :param set_decls: ``(path, type)`` 类型标注（TYPE_REGISTRY token）；type=page_ref
+      提示用 open 存页签、type=str 提示用 get_url/extract 存文本、其余类型提示
+      提取后转换。仅作提示，实际类型由引擎函数保证。
     """
     hint = f"\nCSS 提示: {css_hint}" if css_hint else ""
     set_line = ""
@@ -95,14 +96,17 @@ def build_user_message(
         hints = []
         for target in set_targets:
             type_name = type_map.get(target, "")
-            if type_name == "page":
+            if type_name == "page_ref":
                 hints.append(f"{target}（页签：打开页面后调 open 的 save_to 存入）")
-            elif type_name == "string":
-                hints.append(f"{target}（URL 文本：调 get_url 存入）")
+            elif type_name == "str":
+                hints.append(f"{target}（文本：调 extract 或 get_url 存入）")
             else:
-                hints.append(f"{target}（文本：调 extract 存入）")
+                hints.append(f"{target}（{type_name}：提取并转换后存入）")
         set_line = "\n本动作声明的可写变量: " + "；".join(hints)
-        set_line += "\n（写入目标的变量必须在以上声明集内；若描述是“切回/使用已打开页面”调 activate 而非 open）"
+        set_line += (
+            "\n（写入目标的变量必须在以上声明集内；若描述是“切回/使用已打开页面”"
+            "调 activate 而非 open）"
+        )
     return f"节点描述: {description}{hint}{set_line}\n\n当前页面语义图:\n{graph_text}"
 
 

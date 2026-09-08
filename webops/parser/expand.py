@@ -39,9 +39,9 @@ from webops.parser.yamlio import normalize_document
 
 #: ``{{get:this/path}}`` 读取引用（叶子执行前程序替换为真实值）
 _GET_TMPL = re.compile(r"\{\{\s*get:\s*this/([^{}]+?)\s*\}\}")
-#: ``{{set[:type]:path}}`` 写入声明；type ∈ page/string（可选），path 可带 this/ 或不带
+#: ``{{set[:type]:path}}`` 写入声明；type ∈ TYPE_REGISTRY token（可省略），path 可带 this/ 或不带
 _SET_TMPL = re.compile(
-    r"\{\{\s*set:(?:(page|string):)?\s*((?:this/)?[^{}:]+?)\s*\}\}"
+    r"\{\{\s*set:(?:(str|int|float|bool|page_ref):)?\s*((?:this/)?[^{}:]+?)\s*\}\}"
 )
 #: 裸 ``this/path``（绑定/传参路径等）
 _PLAIN_PATH = re.compile(r"(?<![\w$])this/([^\s{}|>]+)")
@@ -58,7 +58,7 @@ def _normalize_set_path(path: str) -> str:
 
 
 def _iter_set_decls(text: str) -> list[tuple[str, str]]:
-    """提取写入声明 ``(path, type)``（type ∈ page/string/空串）。"""
+    """提取写入声明 ``(path, type)``（type ∈ TYPE_REGISTRY token/空串）。"""
     decls: list[tuple[str, str]] = []
     for m in _SET_TMPL.finditer(text):
         type_name = (m.group(1) or "").strip()

@@ -42,7 +42,7 @@ def test_action_agent_loop_drives_tool_calls_and_succeeds(config, fake, stub_eng
     assert result.trace.terminator is None
     assert result.trace.llm_reasoning
     assert result.trace.llm_input["description"] == "在用户名输入框输入 admin"
-    assert result.trace.llm_input["prompt_version"] == "1.3"
+    assert result.trace.llm_input["prompt_version"] == "1.4"
 
 
 def test_action_function_failure_passed_back_and_corrected(config, fake, stub_engine):

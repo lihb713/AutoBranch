@@ -186,7 +186,7 @@ class TestRealBrowserSmoke:
                     space._current,
                     "$this/page",
                     SchemaPageRef(page_id=ref.id, url=op.detail.get("url", "")),
-                    "页面引用",
+                    "page_ref",
                 )
                 return LeafResult(
                     status="success", trace=LeafTrace(llm_input={"d": node.description})

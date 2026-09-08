@@ -37,7 +37,7 @@ from webops.schema import PageRef as SchemaPageRef
 from webops.schema import SchemaFrame, SchemaSpace
 from webops.schema.errors import SchemaError, SchemaTypeError
 from webops.schema.path import resolve_target
-from webops.schema.types import infer_type
+from webops.schema.types import coerce, infer_type
 from webops.semantic_graph import (
     LlmFiller,
     SemanticGraphBudgetExceeded,
@@ -175,7 +175,7 @@ class EngineFunctions:
         else:
             var_path = f"this/{self._page_var}"
         try:
-            self._space.write(frame, var_path, schema_ref, "页面引用")
+            self._space.write(frame, var_path, schema_ref, "page_ref")
         except SchemaError as exc:
             return OpResult(
                 False,
@@ -226,7 +226,7 @@ class EngineFunctions:
         return OpResult(True, detail={"page_var": page_var, "page_id": page_ref.page_id})
 
     def get_url(self, save_to: str) -> OpResult:
-        """取当前活动页的 URL 字符串并存入变量（类型 string/文本，与页签区分）。"""
+        """取当前活动页的 URL 字符串并存入变量（类型 str，与页签区分）。"""
         page_result = self._current_page_handle()
         if not page_result.ok:
             return page_result
@@ -235,7 +235,7 @@ class EngineFunctions:
         if frame is None:
             return OpResult(False, "当前 schema 帧不可用", {"code": ErrorCode.INVALID_REF})
         try:
-            self._space.write(frame, self._normalize_var_path(save_to), handle.url, "文本")
+            self._space.write(frame, self._normalize_var_path(save_to), handle.url, "str")
         except SchemaError as exc:
             return OpResult(
                 False, f"URL 写入变量失败: {exc}", {"code": ErrorCode.INVALID_ARGUMENT}
@@ -399,7 +399,18 @@ class EngineFunctions:
                 "当前 schema 帧不可用，无法写入变量",
                 {"code": ErrorCode.INVALID_ARGUMENT},
             )
-        type_name = self._declared_type(frame, target) or infer_type(value)
+        type_name = self._declared_type(frame, target)
+        if type_name is None:
+            type_name = infer_type(value)   # 无声明 → 按值推断（网页值即 str）
+        else:
+            try:
+                value = coerce(type_name, value)   # 有声明 → 转成真实存储类型
+            except SchemaTypeError as exc:
+                return OpResult(
+                    False,
+                    f"提取值无法转换为类型 {type_name}: {exc}",
+                    {"code": ErrorCode.INVALID_ARGUMENT, "var": target, "type": type_name},
+                )
         try:
             self._space.write(frame, target, value, type_name)
         except SchemaTypeError as exc:

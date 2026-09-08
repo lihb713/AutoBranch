@@ -77,8 +77,8 @@ class TestPageBinding:
                 make_graph(url="http://same"), make_snapshot(url="http://same")
             ),
         )
-        space.write(frame, "$this/A", SchemaPageRef("1", "http://same"), "页面引用")
-        space.write(frame, "$this/B", SchemaPageRef("2", "http://same"), "页面引用")
+        space.write(frame, "$this/A", SchemaPageRef("1", "http://same"), "page_ref")
+        space.write(frame, "$this/B", SchemaPageRef("2", "http://same"), "page_ref")
         assert engine.call("semantic_graph", {"scope": "full", "lod": 2}).ok
         assert space.current_page(frame).page_id == "2"
 
@@ -86,7 +86,7 @@ class TestPageBinding:
         assert browser.pages["2"].calls[-1] == ("click", "#username")
         assert browser.pages["1"].calls == []
 
-        space.write(frame, "$this/A", SchemaPageRef("1", "http://same"), "页面引用")
+        space.write(frame, "$this/A", SchemaPageRef("1", "http://same"), "page_ref")
         assert space.current_page(frame).page_id == "1"
         assert engine.call("click", {"ref": "[1]"}).ok
         assert browser.pages["1"].calls[-1] == ("click", "#username")
@@ -216,19 +216,33 @@ class TestExtract:
     def test_extract_writes_variable_with_declared_type(self):
         browser = FakeBrowser()
         engine, space, frame = _seeded(browser, value="42")
-        frame.outputs = {"订单号": "订单号"}
+        frame.outputs = {"订单号": "str"}
         result = engine.call("extract", {"ref": "[1]", "target": "$this/订单号"})
         assert result.ok
         assert result.detail["value"] == "42"
         assert space.read(frame, "$this/订单号") == "42"
 
+    def test_extract_coerces_declared_int(self):
+        """声明 int：extract 把网页 str 转成真实存储 int（契约 §5.3.5 收敛）。"""
+        browser = FakeBrowser()
+        engine, space, frame = _seeded(browser, value="42")
+        frame.outputs = {"数量": "int"}
+        result = engine.call("extract", {"ref": "[1]", "target": "$this/数量"})
+        assert result.ok, result.error
+        stored = space.read(frame, "$this/数量")
+        assert stored == 42
+        assert isinstance(stored, int)
+        assert result.detail["value"] == 42
+        assert result.detail["type"] == "int"
+
     def test_extract_type_mismatch_not_written(self):
         browser = FakeBrowser()
         engine, space, frame = _seeded(browser, value="abc")
-        frame.outputs = {"数量": "整数"}
+        frame.outputs = {"数量": "int"}
         result = engine.call("extract", {"ref": "[1]", "target": "$this/数量"})
         assert result.ok is False
-        assert "类型" in result.error
+        assert "提取值无法转换为类型 int" in result.error
+        assert result.detail["code"] == ErrorCode.INVALID_ARGUMENT
         assert space.read(frame, "$this/数量") is None
 
 
@@ -340,4 +354,4 @@ class TestActivatePage:
         value = space.read(frame, "this/url文本")
         assert value == "http://example.com/login"
         # 类型为文本（非页面引用）
-        assert frame.declared.get("url文本") == "文本"
+        assert frame.declared.get("url文本") == "str"

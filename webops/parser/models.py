@@ -83,8 +83,8 @@ class ActionNode(Node):
     LLM 介入（agent 式执行）。可定位性 = 有 CSS 或有可映射的自然语言。
     ``set_targets`` 记录描述中声明的可写变量路径（``{{set:this/param}}``，
     供 M6 注入提示词与 M5 校验写入目标）。``set_decls`` 携带类型标注
-    ``(path, type)``，type ∈ page/string/""（``{{set:page:页面A}}`` 存页签
-    引用、``{{set:string:url}}`` 存文本）。
+    ``(path, type)``，type ∈ TYPE_REGISTRY token/""（``{{set:page_ref:页面A}}``
+    存页签引用、``{{set:str:url}}`` 存文本）。
     """
 
     description: str = ""

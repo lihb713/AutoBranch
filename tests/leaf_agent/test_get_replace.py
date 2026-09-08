@@ -44,7 +44,7 @@ def _ctx(llm_config, space, transport):
 
 def test_get_replaced_with_real_value(llm_config, space):
     """{{get:this/amount}} 被替换为 blackboard 真实值。"""
-    space.write(space._current, "this/amount", "98.00", "金额")
+    space.write(space._current, "this/amount", 98.0, "float")
     transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
     ctx, _ = _ctx(llm_config, space, transport)
     node = ActionNode(description="填金额 {{get:this/amount}}")
@@ -53,7 +53,7 @@ def test_get_replaced_with_real_value(llm_config, space):
     # 验证 LLM 收到替换后的真实值（请求体含 98.00）
     body = transport.last_request.json()
     joined = " ".join(m["content"] for m in body["messages"])
-    assert "98.00" in joined
+    assert "98.0" in joined
     assert "{{get:" not in joined
 
 
@@ -87,7 +87,7 @@ def test_get_out_of_scope_fails_leaf(llm_config, space):
 
 def test_condition_get_replaced(llm_config, space):
     """Condition 描述中的 {{get:this/status}} 也被替换。"""
-    space.write(space._current, "this/status", "已批准", "文本")
+    space.write(space._current, "this/status", "已批准", "str")
     transport = FakeTransport(responses=[chat_response(text="结果: 真")])
     ctx, _ = _ctx(llm_config, space, transport)
     node = ConditionNode(description="状态是 {{get:this/status}}")
@@ -157,7 +157,7 @@ def test_extract_target_declared_allowed(llm_config, space):
     )
     engine = StubEngine()
     engine.results["extract"] = OpResult(
-        True, detail={"var": "this/已声明", "value": "x", "type": "文本"}
+        True, detail={"var": "this/已声明", "value": "x", "type": "str"}
     )
 
     def factory(cfg, system_prompt):
@@ -208,9 +208,9 @@ def test_open_save_to_must_be_declared(llm_config, space):
         tools=[],
     )
     node = ActionNode(
-        description="开页面 {{set:page:this/声明页}}",
+        description="开页面 {{set:page_ref:this/声明页}}",
         set_targets=("this/声明页",),
-        set_decls=(("this/声明页", "page"),),
+        set_decls=(("this/声明页", "page_ref"),),
     )
     result = execute_leaf(node, ctx)
     # 未声明目标 → open 被 M6 拒（工具结果回传），但 LLM 修正后成功
@@ -250,9 +250,9 @@ def test_open_save_to_declared_allowed(llm_config, space):
         tools=[],
     )
     node = ActionNode(
-        description="开 {{set:page:this/页面A}}",
+        description="开 {{set:page_ref:this/页面A}}",
         set_targets=("this/页面A",),
-        set_decls=(("this/页面A", "page"),),
+        set_decls=(("this/页面A", "page_ref"),),
     )
     result = execute_leaf(node, ctx)
     assert result.status == "success"

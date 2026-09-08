@@ -31,9 +31,9 @@ ENGINE_TOOLS: list[ToolSpec] = [
         name="open",
         description=(
             "打开 URL 新建页签，并把该页签引用存入页面变量。"
-            "若动作描述含 {{set:page:xxx}} 声明存页签，把 save_to 填为对应变量名"
+            "若动作描述含 {{set:page_ref:xxx}} 声明存页签，把 save_to 填为对应变量名"
             "（形如 this/页面A）；"
-            "描述含 {{set:string:xxx}} 存 URL 字符串时用 get_url，不用本函数。"
+            "描述含 {{set:str:xxx}} 存 URL 字符串时用 get_url，不用本函数。"
         ),
         parameters=_object_params(
             ("url",),
@@ -58,7 +58,7 @@ ENGINE_TOOLS: list[ToolSpec] = [
         name="get_url",
         description=(
             "取当前活动页的 URL 字符串并存入变量（文本类型）。"
-            "当动作描述含 {{set:string:xxx}} 存 URL 字符串时用本函数。"
+            "当动作描述含 {{set:str:xxx}} 存 URL 字符串时用本函数。"
         ),
         parameters=_object_params(
             ("save_to",),

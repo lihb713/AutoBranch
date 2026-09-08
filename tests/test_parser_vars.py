@@ -80,38 +80,57 @@ def test_old_syntax_no_longer_parsed():
 
 
 def test_set_type_annotation_page():
-    """{{set:page:页面A}} 记录 set_decls=(this/页面A, page)。"""
+    """{{set:page_ref:页面A}} 记录 set_decls=(this/页面A, page_ref)。"""
     result = parse_doc(
         "主",
-        {"操作块 主": {"Action": "打开登录页 {{set:page:页面A}}"}},
+        {"操作块 主": {"Action": "打开登录页 {{set:page_ref:页面A}}"}},
         None,
     )
     assert result.checks.ok, result.checks.issues
     action = result.tree.root
     assert action.set_targets == ("this/页面A",)
-    assert action.set_decls == (("this/页面A", "page"),)
+    assert action.set_decls == (("this/页面A", "page_ref"),)
 
 
 def test_set_type_annotation_string():
-    """{{set:string:url}} 记录 set_decls=(this/url, string)。"""
+    """{{set:str:url}} 记录 set_decls=(this/url, str)。"""
     result = parse_doc(
         "主",
-        {"操作块 主": {"Action": "记下地址 {{set:string:url}}"}},
+        {"操作块 主": {"Action": "记下地址 {{set:str:url}}"}},
         None,
     )
     assert result.checks.ok, result.checks.issues
-    assert result.tree.root.set_decls == (("this/url", "string"),)
+    assert result.tree.root.set_decls == (("this/url", "str"),)
 
 
 def test_set_type_annotation_with_this_prefix():
-    """{{set:page:this/页面B}} 与省略 this 等价。"""
+    """{{set:page_ref:this/页面B}} 与省略 this 等价。"""
     result = parse_doc(
         "主",
-        {"操作块 主": {"Action": "开 {{set:page:this/页面B}}"}},
+        {"操作块 主": {"Action": "开 {{set:page_ref:this/页面B}}"}},
         None,
     )
     assert result.checks.ok, result.checks.issues
-    assert result.tree.root.set_decls == (("this/页面B", "page"),)
+    assert result.tree.root.set_decls == (("this/页面B", "page_ref"),)
+
+
+def test_set_type_annotation_numeric_tokens():
+    """{{set:int/float/bool:...}} 泛化 token 也被接受（TYPE_REGISTRY 全量）。"""
+    doc = {
+        "操作块 主": {
+            "Action": (
+                "取数 {{set:int:this/数量}} 比率 {{set:float:this/比率}}"
+                " 开关 {{set:bool:this/开关}}"
+            )
+        }
+    }
+    result = parse_doc("主", doc, None)
+    assert result.checks.ok, result.checks.issues
+    assert result.tree.root.set_decls == (
+        ("this/数量", "int"),
+        ("this/比率", "float"),
+        ("this/开关", "bool"),
+    )
 
 
 def test_set_no_type_default_empty():

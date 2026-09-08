@@ -70,7 +70,7 @@ class TestFrameLifecycle:
         ctx = make_run_context(config)
 
         def writer(node, timeout):
-            ctx.space.write(ctx.space._current, "$this/username", node.description, "文本")
+            ctx.space.write(ctx.space._current, "$this/username", node.description, "str")
             return leaf_success(node.description)
 
         ctx.leaf_executor = writer
