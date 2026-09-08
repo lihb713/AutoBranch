@@ -14,7 +14,7 @@
 |---|---|---|
 | 帧模型 | 每次块引用创建独立 schema（命名空间） | §5.7.4 |
 | 严格作用域 | 每块只读写自己的 schema + 直接子块的 schema | §5.3.2 |
-| 变量读写 | 路径形式读写（`$this/xxx`、`{{$this/xxx}}`） | §5.3 |
+| 变量读写 | 路径形式读写（`this/xxx`、`[[get:this/xxx]]`/`[[set:类型:this/xxx]]`） | §5.3 |
 | 传参/返回值 | 父块写直接子块 schema；读直接子块 schema 取返回值 | §5.3.2/§5.3.3 |
 | 配置参数继承 | 自己的 schema → 向上找最近祖先 → 全局默认 | §5.3.4/§5.7.5 |
 | 类型契约 | 创建变量时声明类型，提取错误则断言失败 | §5.3.5 |
@@ -24,7 +24,7 @@
 
 ### 3.1 输入
 - **块声明**（来自 M2）：命名块的输入/输出/配置参数声明
-- **变量操作**：写入（`=> $this/path`）、读取（`{{$this/path}}`）、配置参数查询
+- **变量操作**：写入（`[[set:类型:this/path]]`）、读取（`[[get:this/path]]`）、配置参数查询（`$this` 仅内部兼容旧绑定）
 
 ### 3.2 输出
 - **变量值**：读取结果
@@ -75,7 +75,7 @@ class SchemaSpace:
 ### 5.2 路径规则
 
 - 路径为层次结构：`T/登录/username`；按 `/` 分层（`webops/schema/path.py`）
-- 首段标识目标帧：`$this` 或自身块名（自身帧）、直接子块名（直接子帧）；其余 → 越权
+- 首段标识目标帧：`this` 或自身块名（自身帧）、直接子块名（直接子帧）；其余 → 越权（用户层已废除直接子帧读写，传参经 ref `args`/`returns`）
 - 目标帧后必须恰好一个变量段（变量名不含 `/`，含 `/` 或多段均被拒绝）
 - 写权限：自己的帧 + 直接子帧
 - 读权限：自己的帧 + 直接子帧
@@ -149,7 +149,7 @@ TYPE_REGISTRY = {
   - `path.py`：`split_segments`（按 `/` 分层、拒绝空段）/`resolve_target`（提取首段目标帧 + 单段变量名）
   - `types.py`：`TYPE_REGISTRY` 类型登记表 + `TypeSpec`（token→Python 类→cast）+ `check_type`/`coerce`/`validate_type_name`/`infer_type`
   - `space.py`：`SchemaSpace` 门面（帧生命周期/读写/配置继承/页面变量）
-- **严格作用域解析**（`resolve_target`）：首段为 `$this`/自身块名 → 自身帧；首段为直接子块名 → 直接子帧；其余 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `$this/登录/输入框/值`）→ 越权。
+- **严格作用域解析**（`resolve_target`）：首段为 `this`/自身块名 → 自身帧；首段为直接子块名 → 直接子帧；其余 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `this/登录/输入框/值`）→ 越权。用户层已废除直接子帧读写，传参逐层经 ref `args`/`returns` 进行。
 - **配置继承**：`resolve_config` 沿 parent 链查找自身 `config` → 最近祖先 → 根级帧（`__init__` 注入 `global_config`）；业务变量走 `write`/`read` 严格作用域，天然不向上查找。
 - **类型校验双时机**：`write` 声明类型并即时校验；`read` 提取时二次强校验（防存储被上层绕开）。
 - **页面变量**：`PageRef` 为普通类型值；`current_page` 返回帧中最近写入的页面引用；`page_refs` 列出全部页面变量。

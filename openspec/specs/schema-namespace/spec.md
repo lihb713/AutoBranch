@@ -26,12 +26,12 @@
 
 #### Scenario: 写自己的 schema 合法
 
-- **WHEN** 块对其自身路径执行 `=> $this/amount` 写入
+- **WHEN** 块对其自身路径执行 `[[set:this/amount]]` 写入声明
 - **THEN** 写入成功，变量存入该块自己的帧
 
 #### Scenario: 写直接子块的 schema 合法
 
-- **WHEN** 主流程 T 对直接子块执行 `=> $this/登录/username` 写入
+- **WHEN** 主流程 T 经 ref 的 `args` 将输入参数注入直接子块登录的帧
 - **THEN** 写入成功，变量存入登录块的帧
 
 #### Scenario: 越权写祖先帧被拒绝
@@ -56,11 +56,11 @@
 
 ### Requirement: 变量路径读写
 
-变量 SHALL 以带命名空间前缀的路径形式读写：写入使用 `=> $this/path`，读取使用 `{{$this/path}}`；路径按 `/` 分层，首段标识目标帧。
+变量 SHALL 以带命名空间前缀的路径形式读写：写入使用 `[[set:类型:this/xxx]]`，读取使用 `[[get:this/xxx]]`；用户层路径为 `this/xxx` 单段，`this` 标识自身帧，跨块传参/接收输出经 ref 的 `args`/`returns`。
 
 #### Scenario: 路径写入与读取
 
-- **WHEN** 块执行 `=> $this/amount` 写入金额值，随后以 `{{$this/amount}}` 读取
+- **WHEN** 块执行 `[[set:this/amount]]` 写入金额值，随后以 `[[get:this/amount]]` 读取
 - **THEN** 读取结果等于写入的金额值
 
 #### Scenario: 读取未定义变量
@@ -74,13 +74,13 @@
 
 #### Scenario: 父块写直接子块传参
 
-- **WHEN** 主流程 T 将用户名写入 `T/登录/username`
-- **THEN** 登录块以 `{{$this/username}}` 读取到该值
+- **WHEN** 主流程 T 经 ref `args` 将用户名注入直接子块登录的帧
+- **THEN** 登录块以 `[[get:this/username]]` 读取到该值
 
 #### Scenario: 逐层转发到孙块
 
-- **WHEN** 登录块需要向输入框块传值，将值写入 `T/登录/输入框/值`
-- **THEN** 输入框块以 `{{$this/值}}` 读取到该值，且主流程 T 无法直接写入或读取该孙级路径
+- **WHEN** 登录块需要向输入框块传值，经 ref `args` 将值注入输入框块的帧
+- **THEN** 输入框块以 `[[get:this/值]]` 读取到该值，且主流程 T 无法直接写入或读取该孙级路径
 
 ### Requirement: 取子块返回值
 
@@ -88,7 +88,7 @@
 
 #### Scenario: 读直接子帧取返回值
 
-- **WHEN** 导出块完成后将结果写入 `T/导出/result`，主流程 T 随后读取 `{{$this/导出/result}}`
+- **WHEN** 导出块完成后经 ref `returns` 将输出注入主流程 T 的帧
 - **THEN** T 读取到的结果等于导出块写入的输出
 
 ### Requirement: 配置参数继承
@@ -145,18 +145,18 @@
 
 #### Scenario: 打开页面写入页面引用
 
-- **WHEN** 块执行 open(url) 并将返回写入 `$this/登录页`
+- **WHEN** 块执行 `open(url, save_to="this/登录页")` 并将页面引用存入 `this/登录页`
 - **THEN** 变量以页面引用类型存储，可被后续读取
 
 #### Scenario: 一个帧可持有多个页面变量
 
-- **WHEN** 块依次执行 open 两次并分别写入 `$this/登录页` 与 `$this/订单页`
+- **WHEN** 块依次执行 open 两次并分别存入 `this/登录页` 与 `this/订单页`
 - **THEN** 同一帧同时持有两个页面引用变量，互不覆盖
 
 #### Scenario: 页面变量按普通参数传递
 
-- **WHEN** 主流程 T 将 `{{$this/登录页}}` 写入直接子块帧 `T/登录/页面`
-- **THEN** 登录块以 `{{$this/页面}}` 读取到同一页面引用
+- **WHEN** 主流程 T 经 ref `args` 将 `[[get:this/登录页]]` 注入直接子块登录的帧
+- **THEN** 登录块以 `[[get:this/页面]]` 读取到同一页面引用
 
 #### Scenario: 操作绑定当前页面变量指向的页
 

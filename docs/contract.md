@@ -123,10 +123,10 @@ WebOps 分两个阶段运行：
 **文档顶层有两种合法形式**（解析器均支持）：
 
 ```
-形式A（操作块定义）:
+形式A（block 定义）:
 行为树文档
-├── 操作块定义（命名块集合, 可复用/可共享）
-│     ├── 块名: <本块的输入输出声明 + 行为树>
+├── block 定义（命名块集合, 可复用/可共享）
+│     ├── 块名: <本块的 inputs/outputs 声明 + 行为树>
 │     ├── 块名: ...
 │     └── ...
 └── 根流程（主入口, 组织块引用）
@@ -139,13 +139,13 @@ WebOps 分两个阶段运行：
 **一个行为树文档本身就是一个命名块**（块名 = 文档名），因此：
 
 ```
-操作块 登录:                ← 根块 = 文档名, 整个文档就是"登录"这个块
-  输入: ...
-  输出: ...
+block 登录:                ← 根块 = 文档名, 整个文档就是"登录"这个块
+  inputs: ...
+  outputs: ...
   Sequence: ...
 ```
 
-**顶层键语义（形式A）**：顶层 `操作块 <块名>:` 键可多个；名字匹配文档名的块为根流程（根块），其余为命名块（可被 `ref:` 引用）。极简裸树（整个 dict 即根块行为树）也合法。
+**顶层键语义（形式A）**：顶层 `block <块名>:` 键可多个；名字匹配文档名的块为根流程（根块），其余为命名块（可被 `ref:` 引用）。极简裸树（整个 dict 即根块行为树）也合法。
 
 ### 4.2 配置参数（工具提供, 非用户书写）
 
@@ -303,9 +303,9 @@ Retry:
 ```
 ┌── 书写层（用户可见, 结构化行为树文档）──────────────┐
 │  用户直接写行为树文档 (yaml/dict):                  │
-│    操作块 登录:                                   │
-│      输入: ...                                   │
-│      Sequence:                                   │
+│    block 登录:                                    │
+│      inputs: ...                                  │
+│      Sequence:                                    │
 │        - Step(action: 填账号, expect: ...)        │
 │        - Step(action: 填密码, expect: ...)        │
 │    （结构=用户确定, 叶子内容=自然语言, LLM 填充）     │
@@ -364,19 +364,19 @@ Retry:
 
 ```
 变量引用统一为带 schema 的路径形式 (this = 当前块的 schema):
-  读取:  {{get:this/amount}}            （叶子执行前程序确定性替换为真实值）
-  写入声明: {{set:this/amount}}          （声明本动作结果可存入该变量，值由 LLM 决定）
-  传参:   this/登录/username            （写直接子块的 schema，块绑定机制）
-  取返回: this/登录/result              （读直接子块的 schema，块绑定机制）
+  读取:  [[get:this/amount]]            （叶子执行前程序确定性替换为真实值）
+  写入声明: [[set:类型:this/amount]]     （声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref）
+  传参:   ref 处的 args: {...}          （传实参给被引用块）
+  取返回: ref 处的 returns: {...}       （接收被引用块的输出）
 ```
 
 **机制**：
-- **读取（get）确定性**：`{{get:this/xxx}}` 出现在叶子描述中，引擎在叶子执行前从
+- **读取（get）确定性**：`[[get:this/xxx]]` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
   读取失败（变量未定义 / 越出可见作用域）→ 该叶子直接 FAILURE（程序错误）。
-- **写入（set）声明**：`{{set:this/xxx}}` 声明本动作的可写变量集。LLM 决定何时调用
+- **写入（set）声明**：`[[set:类型:this/xxx]]` 声明本动作的可写变量集。LLM 决定何时调用
   extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**（未声明路径拒绝）。
-- `$` 前缀已移除；`this` 为当前 schema 关键字（M3 内部兼容旧 `$this`，新代码用 `this`）。
+- 用户层统一 `this` 单段（`this/变量`）；`$this` 仅为内部兼容（M3 保留，新代码用 `this`）。
 
 #### 5.3.1 schema 的层级结构
 
@@ -417,13 +417,13 @@ T 读取 T/导出/result      ← 获取子块返回值的唯一途径
 每个命名块声明自己的接口，调用方按契约写入：
 
 ```
-操作块 登录:
-  输入: $username, $password        ← 块需要什么 (写在 T/登录/ 下)
-  输出: $login_success              ← 块产出什么 (写在 T/登录/ 下)
+block 登录:
+  inputs: {username: str, password: str}   ← 块需要什么 (调用方经 ref args 注入)
+  outputs: login_success                    ← 块产出什么 (调用方经 ref returns 接收)
   Sequence: ...
 ```
 
-**契约校验**：调用方引用块时，块声明的输入必须在子块 schema 下被写入；块声明的输出由调用方按需读取。不一致 → 清晰度校验报错。
+**契约校验**：调用方引用块时，块声明的输入必须在 ref 处用 `args` 绑定；块声明的输出由调用方用 `returns` 按需接收。不一致 → 清晰度校验报错。
 
 #### 5.3.4 配置参数：向上查找（与业务变量的区别）
 
@@ -459,11 +459,11 @@ TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRe
 ```
 示例:
   Step:
-    action: 提取"订单金额" {{set:float:this/amount}}
-    expect: {{get:this/amount}} 是数字 且 在 0~100000 之间
+    action: 提取"订单金额" [[set:float:this/amount]]
+    expect: [[get:this/amount]] 是数字 且 在 0~100000 之间
 
 页面引用类型 (见 §5.10):
-  $this/登录页 = open("https://.../login")   ← 类型: page_ref
+  open("https://.../login", save_to="this/登录页")   ← 类型: page_ref
   操作函数的页面绑定 = 当前页面变量指向的页
 ```
 
@@ -665,10 +665,10 @@ this/块名        当前文档内的命名块
     - ref: 导出/导出          ← 导出文档的整棵树
 ```
 
-**参数绑定**（沿用 §5.3 schema 机制）：调用块时，在子块的 schema 下写入块声明的输入参数；块输出写到自己的 schema 供调用方读取。**变量名严格对应块接口声明**。
+**参数绑定**（沿用 §5.3 schema 机制）：调用块时，在 ref 处用 `args: {...}` 绑定块声明的输入参数（传实参）；块输出经 `returns: {...}` 接收，写入调用方自己的 schema。**变量名严格对应块接口声明**。
 
 **绑定契约（严格执行）**：
-- 引用带输入声明的块时，**必须在 ref 处用 `写入` 绑定全部声明输入**，否则清晰度校验失败（`ref.input_not_bound`）
+- 引用带输入声明的块时，**必须在 ref 处用 `args` 绑定全部声明输入**，否则清晰度校验失败（`ref.input_not_bound`）
 - 绑定的目标**必须是该块声明的输入名**，绑定未声明项校验失败（`binding_not_input`）
 - `Branch` / `Selector` 分支目标为**裸字符串时 = `ref: this/块名` 的简写**
 
@@ -690,6 +690,8 @@ this/块名        当前文档内的命名块
 同名不冲突:    不同块的 username 在不同 schema, 互不干扰
 ```
 
+> **注（用户 DSL）**：用户层已废除"直接写/读子帧"的语法（`this/子块/变量` 三段路径、`写入:` 绑定）。传参/取返回一律经 ref 的 `args`/`returns` 显式声明；以上帧模型仅作为引擎内部实现保留。
+
 #### 5.7.5 配置参数继承
 
 ```
@@ -704,50 +706,52 @@ this/块名        当前文档内的命名块
 
 ```
 登录.md:
-操作块 登录:
-  输入: $username, $password
-  输出: $login_success
+block 登录:
+  inputs: {username: str, password: str}
+  outputs: login_success
   Sequence:
     - Step:
-        action: 填 {{get:this/username}}
+        action: 填 [[get:this/username]]
         expect: 输入成功
     - Step:
-        action: 填 {{get:this/password}}
+        action: 填 [[get:this/password]]
         expect: 输入成功
     - Step:
         action: 点"登录"
         expect: 出现"工作台"
     - Step:
-        action: 提取登录状态 {{set:this/login_success}}   ← 声明可写变量
+        action: 提取登录状态 [[set:bool:this/login_success]]   ← 声明可写变量
         expect: 非空
 
 导出.md:
-操作块 导出:
-  输入: $username, $password          ← 由调用方注入
+block 导出:
+  inputs: {username: str, password: str}     ← 由调用方注入
+  outputs: 登录结果
   Sequence:
-    - ref: 登录/登录                  ← 引入登录块, schema: 导出/登录/
-    - Condition: {{get:this/登录/login_success}}   ← 读直接子块的输出
+    - ref: 登录/登录                           ← 引入登录块
+      args: {username: [[get:this/username]], password: [[get:this/password]]}
+      returns: {login_success: this/登录结果}   ← 接收登录块输出
+    - Condition: [[get:this/登录结果]]          ← 读 returns 接收到的输出
     - Step:
         action: 点"导出"
         expect: 出现"下载成功"
 
 主流程.md:
-操作块 主流程:
+block 主流程:
   Sequence:
-    - ref: 导出/导出                  ← 引入导出块
-      写入: { $this/导出/username: {{$this/账号}}, $this/导出/password: {{$this/密}} }
+    - ref: 导出/导出                           ← 引入导出块
+      args: {username: [[get:this/账号]], password: [[get:this/密]]}
 ```
-> 注：ref 块引用 `写入:` 绑定键值沿用 `$this/` 语法（块绑定机制，另行设计）；
-> 叶子内变量读写用 `{{get:this/...}}` / `{{set:this/...}}`。
+> 注：ref 块引用用 `args: {...}` 传实参、`returns: {...}` 接收输出；叶子内变量读写用 `[[get:this/...]]` / `[[set:类型:this/...]]`。
 
 **Schema 流转路径追踪（主流程引用导出，导出引用登录）：**
 
 ```
 主流程 schema: T/
-  导出块 schema: T/导出/     ← 主流程写 T/导出/username, T/导出/password
-    登录块 schema: T/导出/登录/   ← 导出块写 T/导出/登录/username (逐层转发)
+  导出块 schema: T/导出/     ← 主流程经 args 传 T/导出/username, T/导出/password
+    登录块 schema: T/导出/登录/   ← 导出块经 args 传 T/导出/登录/username (逐层转发)
     登录输出:     T/导出/登录/login_success
-    导出块读:     {{$this/登录/login_success}}  (this = T/导出/)
+    导出块经 returns 收:  T/导出/登录结果  ← 写入导出块自己的 schema
 ```
 
 #### 5.7.7 行为树遍历器语义（tick）
@@ -872,8 +876,8 @@ EngineFunctions (暴露给 LLM 的 15 个函数, ENGINE_TOOLS 注册表驱动):
   调用入口: call(name, arguments) — M6 按注册表分发
 
 open(url) 变量名约定:
-  签名无路径参数, 实现写入当前帧固定 page_var (默认 $this/page, 构造可配置)
-  → 契约 §5.10 的 "$this/登录页 = open(...)" 由上层用变量机制显式命名或配置 page_var
+  签名无路径参数, 实现写入当前帧固定 page_var (默认 this/page, 构造可配置)
+  → 契约 §5.10 的 "open(url, save_to=...)" 由上层用变量机制显式命名或配置 page_var
 
 ref 映射 (§7.8 策略 B 落地):
   选择器优先级 = #dom_id → tag:has-text("文本") (无id有文本的链接/按钮)
@@ -1032,38 +1036,38 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 
 ```
 主流程 T (schema T/):
-  $this/登录页 = open("https://.../login")
-  $this/订单页 = open("https://.../orders")    ← 一个 schema 多个页面变量
+  open("https://.../login", save_to="this/登录页")
+  open("https://.../orders", save_to="this/订单页")    ← 一个 schema 多个页面变量
 
   ref: 登录块 A:
-    写入 $this/A/页面 = {{$this/登录页}}         ← 传页面变量 (同普通参数)
+    args: {页面: [[get:this/登录页]]}         ← 传页面变量 (同普通参数)
   ref: 导出块 B:
-    写入 $this/B/页面 = {{$this/订单页}}
+    args: {页面: [[get:this/订单页]]}
 ```
 
 **页面变量机制规则：**
 
 ```
 1. 打开并存页签: open(url, save_to) — 打开 url 新建页签，把页面引用写入 save_to
-   （如 {{set:page_ref:this/页面A}} 声明存页签时）；save_to 省略写默认活动页变量
+   （如 [[set:page_ref:this/页面A]] 声明存页签时）；save_to 省略写默认活动页变量
 2. 切回已存页签: activate(page_var) — 把已存页面变量指向的页签设为当前活动页
    （只切焦点，不新建）；描述如"切回/使用已打开的 X 页"时调用
-3. 取 URL 字符串: get_url(save_to) — 存当前活动页 url 为文本（{{set:str:...}}）
-4. 传递: 父块写子块 schema, 和普通参数传递完全一致
-   → 子块要用某页面, 父块写入对应 schema (无 LLM 推断)
+3. 取 URL 字符串: get_url(save_to) — 存当前活动页 url 为文本（[[set:str:...]]）
+4. 传递: 父块经 ref args 传子块 schema, 和普通参数传递完全一致
+   → 子块要用某页面, 调用方在 ref 处用 args 传入对应页面变量 (无 LLM 推断)
 5. 操作绑定: 引擎函数作用于"当前活动页"
    → "当前活动页"实现约定: 最近 activate 的页签变量；无 activate 时最近 open 的页
 6. 生命周期: 页面与变量同生灭, 行为树执行结束才释放
    → 可能被子块引用 / 作为返回值传给父块, 故无法确定何时不再使用
 ```
 
-**类型化 set 语法**：`{{set:page_ref:变量}}` = 存页签引用（blackboard 存 PageRef）；
-`{{set:str:变量}}` = 存 url 文本。**标注即类型契约**——open 产物恒为 PageRef、
+**类型化 set 语法**：`[[set:page_ref:变量]]` = 存页签引用（blackboard 存 PageRef）；
+`[[set:str:变量]]` = 存 url 文本。**标注即类型契约**——open 产物恒为 PageRef、
 get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函数保证。
 
-**帧内变量单段限制**（M3 强约束）：路径在目标帧之后必须恰好一段变量名（如 `$this/amount`）；含 `/` 或多段的路径（如 `$this/a/b`）被拒绝——传参逐层进行（§5.3.2），不存在帧内子路径。
+**帧内变量单段限制**（M3 强约束）：路径在目标帧之后必须恰好一段变量名（如 `this/amount`）；含 `/` 或多段的路径（如 `this/a/b`）被拒绝——传参逐层进行（§5.3.2），不存在帧内子路径。
 
-**LLM 视角**：LLM 每次只面对**当前活动页**的语义图（一页），跨页数据走变量、不跨页记忆。多标签页并存由 `{{set:page_ref:...}}` 命名的页面变量承载；**切换由行为树描述显式表达**（"切回 X 页"→ activate、新开/访问 → open），LLM 按描述选函数，引擎保证活动页切换确定性。
+**LLM 视角**：LLM 每次只面对**当前活动页**的语义图（一页），跨页数据走变量、不跨页记忆。多标签页并存由 `[[set:page_ref:...]]` 命名的页面变量承载；**切换由行为树描述显式表达**（"切回 X 页"→ activate、新开/访问 → open），LLM 按描述选函数，引擎保证活动页切换确定性。
 
 ---
 

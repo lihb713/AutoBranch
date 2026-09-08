@@ -7,7 +7,7 @@
 ## Requirements
 
 ### Requirement: 行为树文档解析
-系统 SHALL 接受一份行为树文档（yaml/dict，含操作块定义与根流程）作为输入，解析为内部行为树对象（`BehaviorTree`），其中节点仅为基础节点类型（Action / Condition / Sequence / Selector / Repeat / Finish）。解析过程 MUST 是纯逻辑的：不依赖 LLM、不依赖浏览器、不产生外部副作用。解析入口 MUST 同时返回块声明表与清晰度校验报告（`ParseResult`）。
+系统 SHALL 接受一份行为树文档（yaml/dict，含 block 定义与根流程）作为输入，解析为内部行为树对象（`BehaviorTree`），其中节点仅为基础节点类型（Action / Condition / Sequence / Selector / Repeat / Finish）。解析过程 MUST 是纯逻辑的：不依赖 LLM、不依赖浏览器、不产生外部副作用。解析入口 MUST 同时返回块声明表与清晰度校验报告（`ParseResult`）。
 
 #### Scenario: 合法文档解析为基础节点行为树
 - **WHEN** 输入一份合法行为树文档（包含命名块定义与根流程）
@@ -60,15 +60,15 @@
 - **THEN** 系统清晰度校验判定引用不存在，校验报告包含指明缺失目标的可读错误
 
 ### Requirement: schema 绑定声明提取
-系统 SHALL 从每个命名块（含根块）的接口声明中提取输入/输出声明，构成块声明表（`blocks`），供下游 schema 命名空间建立使用。声明的输入 MUST 作为调用方需注入的参数、输出 MUST 作为调用方可读取的返回值，变量名 MUST 严格对应块接口声明。解析时 SHALL 在块引用位置记录参数绑定关系（写入被引用块 schema 的输入）。
+系统 SHALL 从每个命名块（含根块）的接口声明中提取输入/输出声明，构成块声明表（`blocks`），供下游 schema 命名空间建立使用。声明的输入 MUST 作为调用方需注入的参数、输出 MUST 作为调用方可读取的返回值，变量名 MUST 严格对应块接口声明。解析时 SHALL 在块引用位置记录 args/returns 绑定关系（`args` 传实参、`returns` 接收输出）。
 
 #### Scenario: 提取命名块输入输出声明
-- **WHEN** 文档中命名块声明了 `输入` 与 `输出`
+- **WHEN** 文档中命名块声明了 `inputs` 与 `outputs`
 - **THEN** 块声明表包含该块的输入参数列表与输出参数列表，供后续 schema 命名空间建立
 
 #### Scenario: 块引用处记录参数绑定
-- **WHEN** 一个块引用另一块并在引用处书写了 `写入` 参数绑定
-- **THEN** 系统将该绑定记录为对被引用块独立 schema 的输入注入，绑定变量名与块输入声明一致
+- **WHEN** 一个块引用另一块并在引用处书写了 `args`/`returns` 参数绑定
+- **THEN** 系统将该绑定记录为对被引用块独立 schema 的输入注入（`args`）与输出接收（`returns`），绑定变量名与块输入/输出声明一致
 
 ### Requirement: 配置参数覆盖声明识别
 系统 SHALL 识别块 schema 下声明的配置参数覆盖（如 timeout / retry 等），工具定义的配置参数名称与语义固定，用户不在文档中书写全局配置；覆盖值只在当前块及其子树内生效，未定义时向上查找祖先，最终回落到全局默认。系统 MUST 将识别出的配置参数覆盖随块声明一并输出，供执行层解析配置生效范围。

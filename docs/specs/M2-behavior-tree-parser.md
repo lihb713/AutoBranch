@@ -24,7 +24,7 @@
 ## 3. 数据依赖
 
 ### 3.1 输入
-- **行为树文档**：yaml/dict 文本（操作块定义 + 根流程，§4.1）
+- **行为树文档**：yaml/dict 文本（block 定义 + 根流程，§4.1）
 - **引用文档**：`ref:` 指向的其他文档（跨文档解析时加载）
 
 ### 3.2 输出
@@ -63,7 +63,7 @@ class ParseResult:
 - `DocumentSource`：`id`（文档名=根块名）、`data`（yaml 文本或 dict）、可选 `path`。
 - `RefResolver`：`resolve(doc_id, block_name=None) -> DocumentSource`，文档缺失抛 `RefNotFoundError`；提供内存实现 `MappingResolver`（测试/简单场景）。
 - `ParseResult` 扩展字段（超出 §5.1 三字段，供命名空间/绑定校验与下游使用）：
-  `bindings: tuple[ParamBinding]`（引用处 `写入` 绑定记录）、`frames: tuple[FrameInfo]`（schema 命名空间帧层级，§5.7.4）。
+  `bindings: tuple[ParamBinding]`（引用处 `args`/`returns` 绑定记录；旧 `写入` 机制已弃用恒空）、`frames: tuple[FrameInfo]`（schema 命名空间帧层级，§5.7.4）。
 - 非法输入（非 yaml/dict、非顶层映射）抛 `InvalidDocumentError`，不产生部分结果；结构/语义违规以 `checks` 错误清单返回。
 
 ### 5.2 基础节点模型
@@ -102,9 +102,9 @@ class FinishNode(Node): ...
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：根块名 + 基础节点根。
 - 文档格式明确化（§4.1 图示的落地写法，见实现）：
-  - 写法 A/B：顶层 `操作块 <块名>:` 键（可多个），根块 = 名字匹配文档名的块，无匹配取第一个；其余为命名块（供 `this/块名` 引用）。
+  - 写法 A/B：顶层 `block <块名>:` 键（可多个），根块 = 名字匹配文档名的块，无匹配取第一个；其余为命名块（供 `this/块名` 引用）。
   - 写法 C（极简）：整个 dict 即根块行为树（根块名 = 文档名）。
-  - 块体 = `输入`/`输出` 声明 + 配置参数覆盖（`timeout`/`retry`/`browser` 标量）+ 恰好一个行为树节点键。
+  - 块体 = `inputs`/`outputs` 声明 + 配置参数覆盖（`timeout`/`retry`/`browser` 标量）+ 恰好一个行为树节点键。
 
 ### 5.3 复合节点展开规则（§4.3）
 
@@ -139,8 +139,8 @@ class FinishNode(Node): ...
 
 - 分支目标支持裸字符串 = `ref: this/块名` 简写（对齐 §4.3.2「分支目标 = 块引用」）。
 - 配置参数覆盖仅在块 schema 级识别（`timeout`/`retry`/`browser` 标量），未声明不要求用户书写（§4.2/§5.7.5）。
-- 变量作用域校验（§5.3.2）：新语法 `{{get:this/变量}}`（读取引用）/`{{set:this/变量}}`（写入声明）——`this/变量`（自身）、`this/直接子块/变量`（直接子块）合法；三 segment 及以上（孙子/更深）或指向非直接子块 → `scope.out_of_scope`。`ActionNode.set_targets` 记录动作的 `{{set:...}}` 可写集；`ActionNode.set_decls` 记录类型标注 `{{set:page_ref:this/页面A}}`（存页签引用 PageRef）与 `{{set:str:this/url}}`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`{{get:...}}` 运行时由引擎替换（M6 职责），M2 仅作用域校验。兼容旧 `$this/` 绑定路径（ref `写入:` 机制）。
-- 引用处绑定契约（§5.7.3）：被引用块声明输入必须在 ref 处用 `写入` 全部绑定，绑定目标须为被引用块声明输入，否则校验失败。
+- 变量作用域校验（§5.3.2）：新语法 `[[get:this/变量]]`（读取引用）/`[[set:类型:this/变量]]`（写入声明）——用户层仅 `this/变量`（自身）单段合法；多段（`this/子块/变量`）或指向非自身 → `scope.out_of_scope`。`ActionNode.set_targets` 记录动作的 `[[set:...]]` 可写集；`ActionNode.set_decls` 记录类型标注 `[[set:page_ref:this/页面A]]`（存页签引用 PageRef）与 `[[set:str:this/url]]`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`[[get:...]]` 运行时由引擎替换（M6 职责），M2 仅作用域校验。
+- 引用处绑定契约（§5.7.3）：被引用块声明输入必须在 ref 处用 `args` 全部绑定，绑定目标须为被引用块声明输入，否则校验失败。
 
 ## 6. 验收标准
 
