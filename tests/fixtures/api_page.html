@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>WebOps API 监听测试页</title>
+</head>
+<body>
+  <h1>WebOps API 监听测试页</h1>
+  <button id="call-api" type="button">调用 /api/echo</button>
+  <pre id="api-result">（未调用）</pre>
+  <script>
+    document.getElementById("call-api").addEventListener("click", function () {
+      fetch("/api/echo?from=page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "logintoken-123", user: "admin" }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          document.getElementById("api-result").textContent = JSON.stringify(data);
+        });
+    });
+  </script>
+</body>
+</html>

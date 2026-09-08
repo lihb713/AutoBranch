@@ -1,0 +1,198 @@
+"""M7 编排器测试共享辅助（mock M6 叶子 / mock M1 浏览器 / 节点工厂 / RunContext 构造）。
+
+与 ``tests/engine_helpers.py`` / ``tests/leaf_agent_helpers.py`` 同模式：位于
+tests 根目录，经 ``pythonpath=["tests"]`` 以顶层模块导入，供 ``tests/orchestrator/``
+用例复用。不启动真实浏览器与 LLM。
+"""
+
+from __future__ import annotations
+
+import time
+
+from webops.leaf_agent.models import LeafResult
+from webops.parser.models import (
+    ActionNode,
+    BranchSpec,
+    ConditionNode,
+    FinishNode,
+    RepeatNode,
+    SelectorNode,
+    SequenceNode,
+)
+from webops.reporting.models import LeafTrace
+
+ROOT_FRAME = "主流程/"
+
+
+# ---------------------------------------------------------------- 节点工厂
+
+def action(desc: str = "动作", frame: str = ROOT_FRAME) -> ActionNode:
+    return ActionNode(description=desc, frame=frame)
+
+
+def cond(desc: str = "条件", frame: str = ROOT_FRAME) -> ConditionNode:
+    return ConditionNode(description=desc, frame=frame)
+
+
+def seq(*children, frame: str = ROOT_FRAME) -> SequenceNode:
+    return SequenceNode(children=tuple(children), frame=frame)
+
+
+def branch(condition: ConditionNode | None, child) -> BranchSpec:
+    return BranchSpec(condition=condition, child=child)
+
+
+def sel(*branches, frame: str = ROOT_FRAME) -> SelectorNode:
+    return SelectorNode(branches=tuple(branches), frame=frame)
+
+
+def repeat(
+    body, mode: str = "retry", until=None, max: int = 3, frame: str = ROOT_FRAME
+) -> RepeatNode:
+    return RepeatNode(body=body, mode=mode, until=until, max=max, frame=frame)
+
+
+def finish(frame: str = ROOT_FRAME) -> FinishNode:
+    return FinishNode(frame=frame)
+
+
+# ---------------------------------------------------------------- 叶子结果
+
+def leaf_success(
+    desc: str = "成功", bool_value: bool | None = None, trace: LeafTrace | None = None
+) -> LeafResult:
+    return LeafResult(
+        status="success",
+        bool_value=bool_value,
+        trace=trace or LeafTrace(llm_input={"desc": desc}),
+    )
+
+
+def leaf_failure(
+    desc: str = "失败", terminator: str = "llm_error", source: str = "llm"
+) -> LeafResult:
+    return LeafResult(
+        status="failure",
+        error_source=source,
+        trace=LeafTrace(llm_input={"desc": desc}, terminator=terminator),
+    )
+
+
+def leaf_condition(bool_value: bool, desc: str = "条件") -> LeafResult:
+    return LeafResult(
+        status="success" if bool_value else "failure",
+        bool_value=bool_value,
+        trace=LeafTrace(llm_input={"desc": desc}),
+    )
+
+
+# ---------------------------------------------------------------- mock 依赖
+
+class StubLeaf:
+    """mock M6 叶子执行器：按节点描述返回固定 ``LeafResult``（可脚本化）。
+
+    - ``results``：描述 -> ``LeafResult`` / ``LeafResult`` 列表（按序弹出）/
+      可调用对象 ``(node, timeout) -> LeafResult``。
+    - 未配置的描述默认返回成功；``calls`` 记录全部调用、``timeouts`` 记录
+      每个叶子收到的生效超时。
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+        self.results: dict[str, object] = {}
+        self.timeouts: dict[str, float | None] = {}
+
+    def __call__(self, node, timeout: float | None) -> LeafResult:
+        self.calls.append((node, timeout))
+        self.timeouts[node.description] = timeout
+        handler = self.results.get(node.description, leaf_success(node.description))
+        if callable(handler):
+            return handler(node, timeout)
+        if isinstance(handler, list):
+            if not handler:
+                return leaf_success(node.description)
+            return handler.pop(0)
+        return handler
+
+
+class BlockingLeaf:
+    """阻塞叶子：先 sleep 指定时长再返回（叶子超时测试用，mock M6 慢执行）。"""
+
+    def __init__(self, delay: float, result: LeafResult | None = None) -> None:
+        self.delay = delay
+        self.result = result or leaf_success()
+        self.calls: list[tuple] = []
+
+    def __call__(self, node, timeout: float | None) -> LeafResult:
+        self.calls.append((node, timeout))
+        time.sleep(self.delay)
+        return self.result
+
+
+class MockBrowser:
+    """mock M1 浏览器驱动：记录 start/stop 调用（不启动真实浏览器）。"""
+
+    def __init__(self) -> None:
+        self.starts: list = []
+        self.stops: list = []
+        self.started: bool = False
+
+    def start(self, config=None) -> None:
+        self.started = True
+        self.starts.append(config)
+
+    def stop(self) -> None:
+        self.started = False
+        self.stops.append(True)
+
+
+# ---------------------------------------------------------------- 上下文构造
+
+def make_run_context(
+    config,
+    leaf_executor=None,
+    browser=None,
+    blocks=None,
+    reporter=None,
+    tree_name: str = ROOT_FRAME.strip("/"),
+):
+    """构造 ``RunContext``：注入 mock 依赖、注入全局配置并进入根级块帧。
+
+    供直接 tick（``Traverser``）测试使用；``Engine.run`` 测试请用
+    ``make_engine``。
+    """
+    from webops.orchestrator import RunContext as RC
+    from webops.reporting import Reporter
+    from webops.schema import SchemaSpace
+
+    space = SchemaSpace()
+    if config.timeout is not None:
+        space.set_config(space.root, "timeout", float(config.timeout))
+    for name, value in (config.global_config or {}).items():
+        space.set_config(space.root, name, value)
+    if reporter is None:
+        reporter = Reporter(run_id="run-test", report_dir=config.report_dir)
+    if leaf_executor is None:
+        leaf_executor = StubLeaf()
+    ctx = RC(
+        config=config,
+        space=space,
+        reporter=reporter,
+        browser=browser or MockBrowser(),
+        blocks=blocks or {},
+        leaf_executor=leaf_executor,
+    )
+    space.enter_block(tree_name, ctx.schema_decl(tree_name))
+    return ctx
+
+
+def make_engine(*, browser=None, leaf_executor=None, space_factory=None, reporter_factory=None):
+    """构造 ``Engine``（默认注入 mock 浏览器与 StubLeaf）。"""
+    from webops.orchestrator import Engine
+
+    return Engine(
+        browser=browser if browser is not None else MockBrowser(),
+        leaf_executor=leaf_executor if leaf_executor is not None else StubLeaf(),
+        space_factory=space_factory,
+        reporter_factory=reporter_factory,
+    )

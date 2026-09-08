@@ -1,0 +1,37 @@
+# 密钥与本地配置
+webops.config.json
+*.local.json
+.env
+
+# opencode 本地依赖
+.opencode/node_modules/
+
+# 杂项日志残留
+0.5
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# 运行时数据 / 报告 / 截图
+data/
+reports/
+*.png
+
+# Node / 前端
+node_modules/
+webops/frontend/dist/
+webops/frontend/coverage/
+webops/frontend/playwright-report/
+webops/frontend/test-results/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

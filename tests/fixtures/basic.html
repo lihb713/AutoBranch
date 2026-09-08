@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>WebOps 基础操作测试页</title>
+  <style>
+    body { font-family: sans-serif; margin: 16px; }
+    #scroll-area { margin-top: 24px; }
+    #late-element { display: none; color: green; }
+  </style>
+</head>
+<body>
+  <h1>WebOps 基础操作测试页</h1>
+
+  <form id="login-form">
+    <label for="username">用户名</label>
+    <input id="username" name="username" type="text" placeholder="请输入用户名">
+    <label for="password">密码</label>
+    <input id="password" name="password" type="password">
+    <label for="role">角色</label>
+    <select id="role">
+      <option value="admin">管理员</option>
+      <option value="user">普通用户</option>
+      <option value="guest">访客</option>
+    </select>
+    <label><input id="remember" name="remember" type="checkbox"> 记住我</label>
+    <label><input id="agree" name="agree" type="radio" value="yes"> 同意</label>
+    <button id="login-btn" type="button">登录</button>
+    <span id="login-result"></span>
+  </form>
+
+  <div id="login-result-text">初始状态</div>
+
+  <div id="late-element"></div>
+
+  <div id="always-hidden" style="display:none;">永久隐藏元素</div>
+  <button id="disabled-btn" type="button" disabled>禁用按钮</button>
+  <div id="covered-wrap" style="position: relative; display: inline-block;">
+    <button id="covered-btn" type="button">被遮挡按钮</button>
+    <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #000; z-index: 10;"></div>
+  </div>
+
+  <table id="order-table">
+    <thead><tr><th>订单号</th><th>金额</th></tr></thead>
+    <tbody>
+      <tr><td>ORD-001</td><td>¥98.00</td></tr>
+      <tr><td>ORD-002</td><td>¥152.00</td></tr>
+    </tbody>
+  </table>
+
+  <p id="greeting">欢迎回来，张三</p>
+
+  <div id="scroll-area">
+    <div style="height: 1200px; background: #eee;">可滚动内容区</div>
+    <span id="end-marker">到底了</span>
+  </div>
+
+  <a id="link-out" href="https://example.com">外部链接</a>
+
+  <script>
+    document.getElementById("login-btn").addEventListener("click", function () {
+      var u = document.getElementById("username").value;
+      document.getElementById("login-result").textContent = "登录成功-" + u;
+      document.getElementById("login-result-text").textContent = "点击已触发";
+    });
+    document.getElementById("late-element").textContent = "";
+    setTimeout(function () {
+      var el = document.getElementById("late-element");
+      el.textContent = "延迟出现的文本";
+      el.style.display = "block";
+    }, 600);
+  </script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+"""agent 式 LLM 会话（契约 §5.7.2）。
+
+会话以 system 提示词初始化，可添加用户消息、声明可调用工具；模型回复
+包含工具调用请求时，调用方执行工具并以工具结果回填后再次请求，如此循环。
+会话持有完整消息序列，每次 ``request`` 全量携带（设计决策 D4）。
+
+错误分类（设计决策 D6 / 契约 §9.4）：
+- 网络/连接异常 → ``LLMConnectionError``（传输层抛出）
+- HTTP 401/403 → ``LLMAuthError``
+- 请求超时 → ``LLMTimeoutError``（传输层抛出）
+- 累计 token 超预算 → ``LLMBudgetExceeded``
+"""
+
+from __future__ import annotations
+
+import json
+
+from webops.llm.config import LLMConfig
+from webops.llm.errors import LLMAuthError, LLMProtocolError
+from webops.llm.models import LLMResponse, Message, ToolResult, ToolSpec
+from webops.llm.protocols import ADAPTERS, ProtocolName, parse_chat_stream
+from webops.llm.token import TokenAccount, TokenBudget, account_from_usage, estimate_tokens
+from webops.llm.transport import Transport, TransportResponse, UrllibTransport, encode_json
+
+DEFAULT_TIMEOUT = 60.0
+
+
+class LLMSession:
+    """多轮工具调用会话。
+
+    :param config: LLM 配置（base_url / api_key / model）。
+    :param system_prompt: system 提示词。
+    :param transport: 传输实现（默认 ``UrllibTransport``，测试注入 fake）。
+    :param protocol: 协议形态（``chat`` / ``responses``）。
+    :param budget_limit: token 预算上限（None 表示不检测）。
+    :param timeout: 单次请求超时秒数。
+    """
+
+    def __init__(
+        self,
+        config: LLMConfig,
+        system_prompt: str,
+        transport: Transport | None = None,
+        protocol: ProtocolName = "chat",
+        budget_limit: int | None = None,
+        timeout: float = DEFAULT_TIMEOUT,
+    ) -> None:
+        self.config = config
+        self.system_prompt = system_prompt
+        self.transport = transport or UrllibTransport()
+        self.protocol = protocol
+        self._adapter = ADAPTERS[protocol]
+        self._timeout = timeout
+        self._budget = TokenBudget(budget_limit)
+        self._messages: list[Message] = []
+        self._url = self._build_url()
+
+    def _build_url(self) -> str:
+        base = self.config.base_url.rstrip("/")
+        return f"{base}{self._adapter.endpoint_suffix}"
+
+    # ---- 会话构建 ----
+
+    def add_user_message(self, content: str) -> None:
+        self._messages.append(Message(role="user", content=content))
+
+    def add_tool_result(self, call_id: str, result: ToolResult | str) -> None:
+        content = result.content if isinstance(result, ToolResult) else result
+        self._messages.append(Message(role="tool", content=content, tool_call_id=call_id))
+
+    def add_assistant_turn(self, response: LLMResponse) -> None:
+        """记录模型回复为会话上下文（内部使用，供协议切换保持一致性）。"""
+        self._messages.append(
+            Message(role="assistant", content=response.text, tool_calls=response.tool_calls or None)
+        )
+
+    # ---- 请求 ----
+
+    def request(self, tools: list[ToolSpec] | None = None, stream: bool = False) -> LLMResponse:
+        """携带会话内全量消息序列发起一次请求。
+
+        :raises LLMConnectionError: 网络连接失败（传输层抛出）。
+        :raises LLMAuthError: 鉴权失败（401/403）。
+        :raises LLMTimeoutError: 请求超时（传输层抛出）。
+        :raises LLMBudgetExceeded: 累计 token 超过预算上限。
+        :raises LLMProtocolError: 响应无法解析。
+        """
+        payload = self._adapter.build_request(
+            model=self.config.model,
+            system_prompt=self.system_prompt,
+            messages=self._messages,
+            tools=tools,
+            stream=stream,
+        )
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": self.config.auth_header_value(),
+        }
+        resp = self.transport.request(self._url, headers, encode_json(payload), self._timeout)
+        self._check_http_status(resp)
+        llm_response, usage = self._adapter.parse_response(resp.body)
+        self._accumulate_tokens(usage, payload, llm_response)
+        # 记录模型回复为上下文：tool 消息必须紧跟对应 assistant tool_calls 消息，
+        # 且多轮循环要求上下文持续累积（契约 §5.7.2）。
+        self.add_assistant_turn(llm_response)
+        self._budget.check_and_raise()
+        return llm_response
+
+    def _check_http_status(self, resp: TransportResponse) -> None:
+        if resp.status in (401, 403):
+            raise LLMAuthError(f"LLM 鉴权失败 (HTTP {resp.status})")
+
+    def stream(self, tools: list[ToolSpec] | None = None) -> list[str]:
+        """流式请求（可选能力）：分段返回内容，最终汇聚。
+
+        当前传输为同步阻塞式，返回完整 body；本方法按 SSE 事件切分内容
+        分段返回，并返回分段列表。汇聚结果 = ``"".join(分段)``。
+        仅支持 Chat Completions 流（``parse_chat_stream``）。
+        """
+        if self.protocol != "chat":
+            raise LLMProtocolError("流式请求当前仅支持 Chat Completions 协议")
+        payload = self._adapter.build_request(
+            model=self.config.model,
+            system_prompt=self.system_prompt,
+            messages=self._messages,
+            tools=tools,
+            stream=True,
+        )
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": self.config.auth_header_value(),
+        }
+        resp = self.transport.request(self._url, headers, encode_json(payload), self._timeout)
+        self._check_http_status(resp)
+        chunks = parse_chat_stream(resp.body)
+        self._budget.add(
+            TokenAccount(tokens=estimate_tokens("".join(chunks)), source="estimated")
+        )
+        self._budget.check_and_raise()
+        return chunks
+
+    def _accumulate_tokens(
+        self, usage: dict | None, payload: dict, llm_response: LLMResponse
+    ) -> None:
+        account = account_from_usage(usage)
+        if account.tokens == 0:
+            text = json.dumps(payload, ensure_ascii=False) + llm_response.text
+            account = TokenAccount(tokens=estimate_tokens(text), source="estimated")
+        self._budget.add(account)
+
+    # ---- token 查询 ----
+
+    def token_used(self) -> int:
+        """会话累计 token（只增不减）。"""
+        return self._budget.total
+
+    def exceeds_budget(self, limit: int) -> bool:
+        """判断累计 token 是否超过给定预算上限。"""
+        return self._budget.exceeds(limit)
+
+    @property
+    def budget_limit(self) -> int | None:
+        return self._budget.limit
+
+    @property
+    def message_count(self) -> int:
+        return len(self._messages)

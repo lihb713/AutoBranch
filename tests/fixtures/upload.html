@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>WebOps 上传测试页</title>
+</head>
+<body>
+  <h1>WebOps 上传测试页</h1>
+  <input id="file" type="file">
+  <span id="file-name">（未选择文件）</span>
+  <script>
+    document.getElementById("file").addEventListener("change", function () {
+      var file = this.files[0];
+      document.getElementById("file-name").textContent = file ? file.name : "（未选择文件）";
+    });
+  </script>
+</body>
+</html>

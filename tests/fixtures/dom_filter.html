@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>WebOps DOM 筛选测试页</title>
+  <style>
+    #zero-size { width: 0; height: 0; }
+  </style>
+</head>
+<body>
+  <h1>WebOps DOM 筛选测试页</h1>
+
+  <div id="visible-box">
+    <span id="keep-me">可见文本</span>
+    <input id="dynamic-value" type="text" value="初始值">
+  </div>
+
+  <div id="hidden-box" style="display: none;">
+    <span id="display-none-child">display:none 内的文本</span>
+  </div>
+
+  <div id="aria-hidden-box" aria-hidden="true">
+    <span>aria-hidden 内的文本</span>
+  </div>
+
+  <div id="zero-size"></div>
+
+  <input id="hidden-input" type="hidden" value="hidden-value">
+
+  <iframe id="frame" src="frame.html"></iframe>
+
+  <script>
+    document.getElementById("hidden-input").value = "程序化值可见";
+  </script>
+</body>
+</html>
