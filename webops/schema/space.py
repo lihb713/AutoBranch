@@ -84,7 +84,11 @@ class SchemaSpace:
     def exit_block(self, frame: SchemaFrame | None = None) -> None:
         """退出当前帧并恢复父帧为当前帧。
 
-        帧数据保留（供父块读取直接子帧的返回值）；「释放」指退出激活栈。
+        帧数据**保留至整个行为树执行结束**（供黑板上报各调用帧变量）；
+        「释放」指退出激活栈，非物理删除。帧对象的物理删除仅随每次运行的
+        全新 ``SchemaSpace`` 发生（``Engine.run`` 每轮新建）。运行期访问
+        由激活帧（``self._current``）控制：已退出的帧虽数据仍在，但不经
+        ``resolve_target`` 寻址（单段，仅当前帧）。
         """
         current = frame if frame is not None else self._current
         if current is None or (frame is not None and current is not frame):
@@ -196,7 +200,9 @@ class SchemaSpace:
         :param frame: 起始帧；None 用当前激活帧（无则根帧）。
         :return: ``[{path, type, value}]``，path 形如 ``this/param`` 或
           ``this/子块/param``（相对起始帧的完整层级），供执行报告与前端
-          变量黑板展示。
+          变量黑板展示。注意：此处递归子帧路径属**展示输出**（黑板上报各
+          调用帧变量），并非 ``resolve_target`` 运行期寻址——运行期寻址
+          已单段化，仅当前帧。
         """
         start = frame if frame is not None else self._current
         if start is None:

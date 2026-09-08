@@ -11,7 +11,6 @@ import pytest
 from webops.schema import (
     BlockDecl,
     PageRef,
-    SchemaError,
     SchemaScopeError,
     SchemaSpace,
     SchemaTypeError,
@@ -19,7 +18,7 @@ from webops.schema import (
 
 
 def test_end_to_end_login_export_flow():
-    """登录块收到 T 传参 → 转发输入框 → 产出 login_success → T 读取。"""
+    """登录块收到 T 传参 → 转发输入框 → 产出 login_success → T 读取（各帧局部单段）。"""
     space = SchemaSpace(global_config={"timeout": 30})
     t = space.enter_block("T")
 
@@ -34,15 +33,18 @@ def test_end_to_end_login_export_flow():
     ib = space.enter_block("输入框", BlockDecl(block_name="输入框"))
     space.exit_block(ib)
 
-    space.write(t, "$this/登录/username", "alice", "str")
-    space.write(t, "$this/登录/password", "p@ss", "str")
-    space.write(login, "$this/输入框/值", space.read(login, "$this/username"), "str")
-    assert space.read(ib, "$this/值") == "alice"
+    space.write(t, "this/username", "alice", "str")
+    space.write(t, "this/password", "p@ss", "str")
+    space.write(login, "this/username", space.read(t, "this/username"), "str")
+    space.write(login, "this/password", space.read(t, "this/password"), "str")
+    space.write(login, "this/值", space.read(login, "this/username"), "str")
+    space.write(ib, "this/值", space.read(login, "this/值"), "str")
+    assert space.read(ib, "this/值") == "alice"
 
-    space.write(login, "$this/login_success", True, "bool")
+    space.write(login, "this/login_success", True, "bool")
     space.exit_block(login)
 
-    assert space.read(t, "$this/登录/login_success") is True
+    assert space.read(login, "this/login_success") is True
     assert space.resolve_config(t, "timeout") == 30
 
 
@@ -68,7 +70,7 @@ def test_end_to_end_assertion_failure_propagates():
     login = space.enter_block("登录")
     with pytest.raises(SchemaTypeError):
         space.write(login, "$this/amount", "不是数字", "float")
-    with pytest.raises(SchemaError):
+    with pytest.raises(SchemaScopeError):
         space.write(t, "$this/登录/amount", "也不是数字", "float")
 
 

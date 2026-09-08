@@ -1,8 +1,9 @@
 """M3 schema 命名空间：路径解析工具（契约 §5.3/§5.2）。
 
-路径按 ``/`` 分层：首段标识目标帧（``$this``、自身块名或直接子块名），
-剩余段为帧内变量名（仅允许单段）。越权访问（祖先/兄弟/孙子）在解析时
-即被拒绝并抛 ``SchemaScopeError``。
+路径按 ``/`` 分层，仅支持单段寻址：首段标识当前帧（``$this`` 或自身
+块名），第二段为帧内变量名。任何跨帧多段路径（祖先/兄弟/子块/孙子）
+在解析时即被拒绝并抛 ``SchemaScopeError``——跨帧传参一律经 ref 的
+args/returns，不通过帧路径读写。
 """
 
 from __future__ import annotations
@@ -36,29 +37,21 @@ def split_segments(path: str) -> tuple[str, ...]:
 def resolve_target(frame: SchemaFrame, path: str) -> tuple[SchemaFrame, str]:
     """解析路径，返回 ``(目标帧, 帧内变量名)``。
 
-    目标帧只允许自身帧或直接子帧（契约 §5.3.2）；其余（祖先/兄弟/孙子）
-    一律视为越权并抛 ``SchemaScopeError``。
+    仅允许单段寻址：目标帧必须为当前帧自身（``this``/``$this``/自身
+    块名），且路径仅含一个变量名段。任何跨帧多段路径（子块/祖先/兄弟/
+    孙子）一律视为越权并抛 ``SchemaScopeError``——跨帧传参经 ref 的
+    args/returns，不在帧路径上读写。
     """
     segments = split_segments(path)
     first = segments[0]
-    cur = frame
-    moved = 0
-    if _is_self(first) or first == frame.block_name:
-        rest = segments[1:]
-    elif first in frame.children:
-        cur = frame.children[first]
-        moved = 1
-        rest = segments[1:]
-    else:
-        raise SchemaScopeError(f"越权访问: 目标帧 {first!r} 不是自身或直接子块")
-    if rest and rest[0] in cur.children:
-        if moved:
-            raise SchemaScopeError(f"越权访问孙子帧: {path}")
-        cur = cur.children[rest[0]]
-        rest = rest[1:]
+    if not (_is_self(first) or first == frame.block_name):
+        raise SchemaScopeError(f"越权访问: 目标帧 {first!r} 不是自身")
+    rest = segments[1:]
     if len(rest) != 1:
-        raise SchemaScopeError(f"越权访问: {path}")
+        raise SchemaScopeError(
+            f"越权访问: {path}（仅支持单段 this/<名>，跨帧传参经 ref args/returns）"
+        )
     var = rest[0]
-    if var in cur.children:
+    if var in frame.children:
         raise SchemaPathError(f"变量名与子块名冲突: {var!r}")
-    return cur, var
+    return frame, var

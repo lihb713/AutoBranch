@@ -26,13 +26,15 @@ def test_this_path_write_read():
 
 
 def test_this_child_path_write_read():
-    """`this/直接子块/param` 传参与取返回值。"""
+    """单段寻址：跨帧传参经各帧局部变量（帧路径不再支持子块段）。"""
     sp = _space()
     root = sp.enter_block("主流程")
     child = sp.enter_block("登录")
-    sp.write(root, "this/登录/username", "admin", "str")
+    sp.write(root, "this/username", "admin", "str")
+    sp.write(child, "this/username", sp.read(root, "this/username"), "str")
     assert sp.read(child, "this/username") == "admin"
-    assert sp.read(root, "this/登录/username") == "admin"
+    # 父块经单段读自己局部变量
+    assert sp.read(root, "this/username") == "admin"
     sp.exit_block()
 
 

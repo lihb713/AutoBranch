@@ -58,12 +58,11 @@ def test_write_own_and_read_own(space):
     assert space.read(t, "T/amount") == 100.0
 
 
-def test_write_direct_child_and_read(space):
-    """2.2 写/读直接子块 schema 合法。"""
+def test_write_direct_child_rejected(space):
+    """2.2 父块写直接子帧已废除（跨帧传参经 ref args，帧路径仅单段）。"""
     t, login, *_ = _build_tree(space)
-    space.write(t, "$this/登录/username", "alice", "str")
-    assert space.read(login, "$this/username") == "alice"
-    assert space.read(t, "$this/登录/username") == "alice"
+    with pytest.raises(SchemaScopeError):
+        space.write(t, "$this/登录/username", "alice", "str")
 
 
 @pytest.mark.parametrize(
@@ -104,11 +103,13 @@ def test_read_scope_matrix_rejected(space, actor, path, desc):
 
 
 def test_param_passing_layer_by_layer(space):
-    """2.3 传参逐层传递：T → 登录 → 输入框。"""
+    """2.3 传参逐层传递：T → 登录 → 输入框（各帧局部单段写入/读取）。"""
     t, login, ib, _ = _build_tree(space)
-    space.write(t, "$this/登录/username", "alice", "str")
-    space.write(login, "$this/输入框/值", space.read(login, "$this/username"), "str")
-    assert space.read(ib, "$this/值") == "alice"
+    space.write(t, "this/username", "alice", "str")
+    space.write(login, "this/username", space.read(t, "this/username"), "str")
+    space.write(login, "this/值", space.read(login, "this/username"), "str")
+    space.write(ib, "this/值", space.read(login, "this/值"), "str")
+    assert space.read(ib, "this/值") == "alice"
 
 
 def test_grandchild_invisible_to_top(space):
@@ -120,11 +121,12 @@ def test_grandchild_invisible_to_top(space):
         space.read(t, "$this/登录/输入框/值")
 
 
-def test_read_direct_child_result(space):
-    """2.3 读直接子帧取返回值（导出 result）。"""
+def test_read_direct_child_result_rejected(space):
+    """2.3 跨帧读直接子帧返回值已废除（经 ref returns 传递，帧路径仅单段）。"""
     t, _, _, export = _build_tree(space)
     space.write(export, "$this/result", "done", "str")
-    assert space.read(t, "$this/导出/result") == "done"
+    with pytest.raises(SchemaScopeError):
+        space.read(t, "$this/导出/result")
 
 
 def test_read_undefined_variable_returns_none(space):

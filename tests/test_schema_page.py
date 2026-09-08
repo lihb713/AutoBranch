@@ -34,13 +34,13 @@ def test_multiple_page_vars_in_one_frame(space):
 
 
 def test_page_ref_passed_as_ordinary_param(space):
-    """5.3 页面变量按普通参数传参（父块写子帧）。"""
+    """5.3 页面变量按普通参数传参（各帧局部单段写入）。"""
     t = space.enter_block("T")
     login = space.enter_block("登录")
     space.exit_block(login)
     login_page = PageRef("p1", "https://example.com/login")
     space.write(t, "$this/登录页", login_page, "page_ref")
-    space.write(t, "$this/登录/页面", login_page, "page_ref")
+    space.write(login, "$this/页面", space.read(t, "$this/登录页"), "page_ref")
     assert space.read(login, "$this/页面") == login_page
 
 
