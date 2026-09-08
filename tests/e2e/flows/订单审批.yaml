@@ -1,4 +1,4 @@
-操作块 订单审批:
+block 订单审批:
   Sequence:
     - Step:
         action: 打开页面 "http://127.0.0.1:8123/index.html"

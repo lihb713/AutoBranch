@@ -113,7 +113,7 @@ def test_end_to_end_execution_failure_flow(tmp_path):
 
     configure_database(settings.db_path)
     db = session_factory()()
-    tree = Tree(name="坏文档", content="操作块 坏文档:\n  Sequence:\n    - ref: this/不存在的块\n")
+    tree = Tree(name="坏文档", content="block 坏文档:\n  Sequence:\n    - ref: this/不存在的块\n")
     db.add(tree)
     db.commit()
     db.refresh(tree)

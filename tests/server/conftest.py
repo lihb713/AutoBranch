@@ -17,7 +17,7 @@ from webops.server.services.engine import MockEngineService
 
 #: 通过 M2 清晰度校验的合法行为树文档。
 VALID_YAML = """
-操作块 冒烟流程:
+block 冒烟流程:
   Sequence:
     - Step:
         action: 点"登录"
@@ -29,14 +29,14 @@ VALID_YAML = """
 
 #: 块引用缺失（契约 §4.4 引用存在）。
 INVALID_REF_YAML = """
-操作块 坏文档:
+block 坏文档:
   Sequence:
     - ref: this/不存在的块
 """.strip()
 
 #: 循环无上界（契约 §4.4 循环有上界）。
 INVALID_LOOP_YAML = """
-操作块 死循环:
+block 死循环:
   Sequence:
     - LoopUntil:
         action: 点"下一页"

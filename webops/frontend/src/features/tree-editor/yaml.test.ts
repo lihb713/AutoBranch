@@ -89,9 +89,9 @@ describe("yaml 生成与解析（复合节点保持书写形态）", () => {
     expect(retry.children[0].type).toBe("Step");
   });
 
-  it("加载「操作块」形式 A 文档自动解包", () => {
+  it("加载「block」形式 A 文档自动解包", () => {
     const text = `
-操作块 冒烟流程:
+block 冒烟流程:
   Sequence:
     - Step:
         action: 点"登录"

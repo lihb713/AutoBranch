@@ -42,15 +42,15 @@ def test_integration_full_multi_doc_pipeline():
     assert result.blocks["主流程"].inputs == ()
     # 被引用文档的声明经 RefResolver 校验（此处验证登录文档自身声明表）
     login = parse_doc("登录", LOGIN_YAML, resolver)
-    assert login.blocks["登录"].inputs == ("username", "password")
+    assert login.blocks["登录"].inputs == (("username", "str"), ("password", "str"))
     assert login.blocks["登录"].outputs == ("login_success",)
 
     # 3) 配置覆盖随块声明输出（登录块 timeout=30）
     overrides = {o.name: o.value for o in login.blocks["登录"].config_overrides}
     assert overrides == {"timeout": 30}
 
-    # 4) 绑定与命名空间帧齐备
-    assert len(result.bindings) == 4
+    # 4) 绑定恒空（args/returns 取代 写入），命名空间帧齐备
+    assert result.bindings == ()
     assert {f.block for f in result.frames} == {"主流程", "导出", "登录"}
 
     # 5) 树结构：主流程 → Sequence [导出整树]
@@ -70,7 +70,7 @@ def test_integration_full_multi_doc_pipeline():
 def test_integration_yaml_input_equivalent():
     """6.1 yaml 文本入口与 dict 入口产生一致的解析结果。"""
     resolver = build_resolver(*make_sources())
-    yaml_text = LOGIN_YAML.replace("操作块 登录", "操作块 主流程")
+    yaml_text = LOGIN_YAML.replace("block 登录", "block 主流程")
     result_yaml = parse_doc("主流程", yaml_text, resolver)
     assert result_yaml.checks.ok, result_yaml.checks.issues
     assert result_yaml.tree.name == "主流程"

@@ -362,11 +362,11 @@ export function parseTree(yamlText: string): EditorNode {
     throw new Error(`yaml 解析失败: ${(err as Error).message}`);
   }
   if (isRecord(data)) {
-    const blockKeys = Object.keys(data).filter((k) => k.startsWith("操作块 "));
+    const blockKeys = Object.keys(data).filter((k) => k.startsWith("block "));
     if (blockKeys.length === 1 && Object.keys(data).length === 1) {
       data = data[blockKeys[0]];
     } else if (blockKeys.length > 0) {
-      throw new Error("该文档含多个操作块定义，暂不支持在编辑器中展示");
+      throw new Error("该文档含多个 block 定义，暂不支持在编辑器中展示");
     }
   }
   return nodeFromYaml(data);

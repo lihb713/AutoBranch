@@ -1,11 +1,11 @@
-"""M2 解析器测试共享 fixtures 与多文档场景（对齐 §5.7.6 完整示例）。
+"""M2 解析器测试共享 fixtures 与多文档场景（对齐函数式传参 DSL）。
 
 多文档场景：
 - 登录.md（doc_id=登录）：声明输入 username/password，输出 login_success；
-  写入自身 schema（``=> $this/login_success``）。
-- 导出.md（doc_id=导出）：引用 登录/登录（整树），绑定其输入；
-  读直接子块输出（``{{$this/登录/login_success}}``）。
-- 主流程.md（doc_id=主流程）：引用 导出/导出（整树），绑定其输入。
+  块内叶子 set 本帧输出（``[[set:...:this/login_success]]``）。
+- 导出.md（doc_id=导出）：引用 登录/登录，args 传实参、returns 接收输出；
+  读本帧 returns 注入的局部变量（``[[get:this/登录成功]]``）。
+- 主流程.md（doc_id=主流程）：引用 导出/导出，args 传实参、returns 接收输出。
 """
 
 from __future__ import annotations
@@ -16,67 +16,84 @@ from webops.parser.refs import MappingResolver
 
 #: 登录文档（yaml 文本形式，含配置覆盖 timeout: 30）
 LOGIN_YAML = """
-操作块 登录:
-  输入: $username, $password
-  输出: $login_success
+block 登录:
+  inputs: {username: str, password: str}
+  outputs: login_success
   timeout: 30
   Sequence:
     - Step:
-        action: 填 {{get:this/username}}
+        action: 填 [[get:this/username]]
         expect: 输入成功
     - Step:
-        action: 填 {{get:this/password}}
+        action: 填 [[get:this/password]]
         expect: 输入成功
     - Step:
         action: 点"登录"
         expect: 出现"工作台"
     - Step:
-        action: 提取登录状态 {{set:this/login_success}}
+        action: 提取登录状态 [[set:this/login_success]]
         expect: 非空
 """
 
 #: 登录文档的等价 dict 形式（用于 yaml/dict 一致性断言）
 LOGIN_DOC: dict = {
-    "操作块 登录": {
-        "输入": "$username, $password",
-        "输出": "$login_success",
+    "block 登录": {
+        "inputs": {"username": "str", "password": "str"},
+        "outputs": "login_success",
         "timeout": 30,
         "Sequence": [
-            {"Step": {"action": "填 {{get:this/username}}", "expect": "输入成功"}},
-            {"Step": {"action": "填 {{get:this/password}}", "expect": "输入成功"}},
+            {"Step": {"action": "填 [[get:this/username]]", "expect": "输入成功"}},
+            {"Step": {"action": "填 [[get:this/password]]", "expect": "输入成功"}},
             {"Step": {"action": '点"登录"', "expect": '出现"工作台"'}},
-            {"Step": {"action": "提取登录状态 {{set:this/login_success}}", "expect": "非空"}},
+            {
+                "Step": {
+                    "action": "提取登录状态 [[set:this/login_success]]",
+                    "expect": "非空",
+                }
+            },
         ],
     }
 }
 
-#: 导出文档（跨文档引用 登录/登录，绑定其输入，读直接子块输出）
+#: 导出文档（跨文档引用 登录/登录，args 传参、returns 回收输出）
 EXPORT_DOC: dict = {
-    "操作块 导出": {
-        "输入": "$username, $password",
+    "block 导出": {
+        "inputs": {"username": "str", "password": "str"},
+        "outputs": "report",
         "Sequence": [
             {
                 "ref": "登录/登录",
-                "写入": {
-                    "$this/登录/username": "{{$this/username}}",
-                    "$this/登录/password": "{{$this/password}}",
+                "args": {
+                    "username": "this/username",
+                    "password": "this/password",
+                },
+                "returns": {
+                    "login_success": "this/登录成功",
                 },
             },
-            {"Condition": "{{get:this/登录/login_success}}"},
-            {"Step": {"action": '点"导出"', "expect": '出现"下载成功"'}},
+            {"Condition": "登录成功 [[get:this/登录成功]]"},
+            {
+                "Step": {
+                    "action": '点"导出" 提取下载状态 [[set:this/report]]',
+                    "expect": '出现"下载成功"',
+                }
+            },
         ],
     }
 }
 
-#: 主流程文档（跨文档引用 导出/导出，流式写入绑定）
+#: 主流程文档（跨文档引用 导出/导出，args 传参、returns 回收输出）
 MAIN_DOC: dict = {
-    "操作块 主流程": {
+    "block 主流程": {
         "Sequence": [
             {
                 "ref": "导出/导出",
-                "写入": {
-                    "$this/导出/username": "{{$this/账号}}",
-                    "$this/导出/password": "{{$this/密}}",
+                "args": {
+                    "username": "this/账号",
+                    "password": "this/密",
+                },
+                "returns": {
+                    "report": "this/导出报告",
                 },
             },
         ],
@@ -85,10 +102,11 @@ MAIN_DOC: dict = {
 
 #: 主流程文档的 yaml 文本形式（覆盖流式映射解析）
 MAIN_YAML = """
-操作块 主流程:
+block 主流程:
   Sequence:
     - ref: 导出/导出
-      写入: { $this/导出/username: {{$this/账号}}, $this/导出/password: {{$this/密}} }
+      args: { username: this/账号, password: this/密 }
+      returns: { report: this/导出报告 }
 """
 
 

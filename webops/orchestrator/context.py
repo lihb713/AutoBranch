@@ -63,7 +63,7 @@ class RunContext:
             return None
         return SchemaBlockDecl(
             block_name=block_name,
-            inputs={name: "" for name in decl.inputs},
+            inputs={name: typ for name, typ in decl.inputs},
             outputs={name: "" for name in decl.outputs},
             config={override.name: override.value for override in decl.config_overrides},
         )

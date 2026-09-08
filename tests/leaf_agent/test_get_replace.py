@@ -1,6 +1,6 @@
 """M6 叶子 get 变量替换测试（§5.3 读取确定性替换）。
 
-叶子执行前，{{get:this/path}} 被程序从 blackboard 读取替换为真实值注入 LLM；
+叶子执行前，[[get:this/path]] 被程序从 blackboard 读取替换为真实值注入 LLM；
 未定义/越权读取 → 叶子直接 FAILURE（程序侧）。
 """
 
@@ -43,25 +43,25 @@ def _ctx(llm_config, space, transport):
 
 
 def test_get_replaced_with_real_value(llm_config, space):
-    """{{get:this/amount}} 被替换为 blackboard 真实值。"""
+    """[[get:this/amount]] 被替换为 blackboard 真实值。"""
     space.write(space._current, "this/amount", 98.0, "float")
     transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
     ctx, _ = _ctx(llm_config, space, transport)
-    node = ActionNode(description="填金额 {{get:this/amount}}")
+    node = ActionNode(description="填金额 [[get:this/amount]]")
     result = execute_leaf(node, ctx)
     assert result.status == "success"
     # 验证 LLM 收到替换后的真实值（请求体含 98.00）
     body = transport.last_request.json()
     joined = " ".join(m["content"] for m in body["messages"])
     assert "98.0" in joined
-    assert "{{get:" not in joined
+    assert "[[get:" not in joined
 
 
 def test_get_undefined_fails_leaf(llm_config, space):
-    """{{get:this/未定义}} 变量未定义 → 叶子直接 FAILURE（程序侧）。"""
+    """[[get:this/未定义]] 变量未定义 → 叶子直接 FAILURE（程序侧）。"""
     transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
     ctx, _ = _ctx(llm_config, space, transport)
-    node = ActionNode(description="读 {{get:this/未定义}}")
+    node = ActionNode(description="读 [[get:this/未定义]]")
     result = execute_leaf(node, ctx)
     assert result.status == "failure"
     assert result.error_source == "program"
@@ -71,7 +71,7 @@ def test_get_undefined_fails_leaf(llm_config, space):
 
 
 def test_get_out_of_scope_fails_leaf(llm_config, space):
-    """{{get:this/兄弟/值}} 越权读取 → 叶子直接 FAILURE（程序侧）。"""
+    """[[get:this/兄弟/值]] 越权读取 → 叶子直接 FAILURE（程序侧）。"""
     sp = space  # fixture 已 enter_block 主流程
     sp.enter_block("子块A")
     sp.exit_block()
@@ -79,18 +79,18 @@ def test_get_out_of_scope_fails_leaf(llm_config, space):
     # 当前帧是"兄弟"，读"子块A/值"（兄弟级）应越权
     transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
     ctx, _ = _ctx(llm_config, sp, transport)
-    node = ActionNode(description="读 {{get:this/子块A/值}}")
+    node = ActionNode(description="读 [[get:this/子块A/值]]")
     result = execute_leaf(node, ctx)
     assert result.status == "failure"
     assert result.error_source == "program"
 
 
 def test_condition_get_replaced(llm_config, space):
-    """Condition 描述中的 {{get:this/status}} 也被替换。"""
+    """Condition 描述中的 [[get:this/status]] 也被替换。"""
     space.write(space._current, "this/status", "已批准", "str")
     transport = FakeTransport(responses=[chat_response(text="结果: 真")])
     ctx, _ = _ctx(llm_config, space, transport)
-    node = ConditionNode(description="状态是 {{get:this/status}}")
+    node = ConditionNode(description="状态是 [[get:this/status]]")
     result = execute_leaf(node, ctx)
     assert result.status == "success"
     assert result.bool_value is True
@@ -100,7 +100,7 @@ def test_condition_get_replaced(llm_config, space):
 
 
 def test_extract_target_must_be_declared(llm_config, space):
-    """extract 目标不在叶子 {{set:}} 声明集内 → 拒绝（不写入）。"""
+    """extract 目标不在叶子 [[set:]] 声明集内 → 拒绝（不写入）。"""
     # mock LLM: 第一轮请求工具 extract 到未声明变量
     from fake_transport import chat_response as _chat
 
@@ -129,7 +129,7 @@ def test_extract_target_must_be_declared(llm_config, space):
         session_factory=factory,
         tools=[__import__("webops.llm", fromlist=["ToolSpec"]).ToolSpec("extract", "e", {})],
     )
-    node = ActionNode(description="提取值 {{set:this/已声明}}", set_targets=("this/已声明",))
+    node = ActionNode(description="提取值 [[set:this/已声明]]", set_targets=("this/已声明",))
     result = execute_leaf(node, ctx)
     # 目标未声明 → extract 被拒（工具结果回传），但 LLM 修正后仍可成功
     assert result.status == "success"
@@ -139,7 +139,7 @@ def test_extract_target_must_be_declared(llm_config, space):
 
 
 def test_extract_target_declared_allowed(llm_config, space):
-    """extract 目标在 {{set:}} 声明集内 → 正常调用引擎 extract。"""
+    """extract 目标在 [[set:]] 声明集内 → 正常调用引擎 extract。"""
     from fake_transport import chat_response as _chat
 
     from webops.browser import OpResult
@@ -170,7 +170,7 @@ def test_extract_target_declared_allowed(llm_config, space):
         session_factory=factory,
         tools=[],
     )
-    node = ActionNode(description="提取 {{set:this/已声明}}", set_targets=("this/已声明",))
+    node = ActionNode(description="提取 [[set:this/已声明]]", set_targets=("this/已声明",))
     result = execute_leaf(node, ctx)
     assert result.status == "success"
     extract_calls = [c for c in engine.calls if c[0] == "extract"]
@@ -178,7 +178,7 @@ def test_extract_target_declared_allowed(llm_config, space):
     assert extract_calls[0][1]["target"] == "this/已声明"
 
 def test_open_save_to_must_be_declared(llm_config, space):
-    """open 的 save_to 目标未在叶子 {{set:}} 声明集内 → 拒绝（不写入）。"""
+    """open 的 save_to 目标未在叶子 [[set:]] 声明集内 → 拒绝（不写入）。"""
     from fake_transport import chat_response as _chat
 
     from webops.browser import OpResult
@@ -208,7 +208,7 @@ def test_open_save_to_must_be_declared(llm_config, space):
         tools=[],
     )
     node = ActionNode(
-        description="开页面 {{set:page_ref:this/声明页}}",
+        description="开页面 [[set:page_ref:this/声明页]]",
         set_targets=("this/声明页",),
         set_decls=(("this/声明页", "page_ref"),),
     )
@@ -250,7 +250,7 @@ def test_open_save_to_declared_allowed(llm_config, space):
         tools=[],
     )
     node = ActionNode(
-        description="开 {{set:page_ref:this/页面A}}",
+        description="开 [[set:page_ref:this/页面A]]",
         set_targets=("this/页面A",),
         set_decls=(("this/页面A", "page_ref"),),
     )

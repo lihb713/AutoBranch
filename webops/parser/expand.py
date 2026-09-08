@@ -37,11 +37,11 @@ from webops.parser.models import (
 from webops.parser.refs import RefResolver
 from webops.parser.yamlio import normalize_document
 
-#: ``{{get:this/path}}`` 读取引用（叶子执行前程序替换为真实值）
-_GET_TMPL = re.compile(r"\{\{\s*get:\s*this/([^{}]+?)\s*\}\}")
-#: ``{{set[:type]:path}}`` 写入声明；type ∈ TYPE_REGISTRY token（可省略），path 可带 this/ 或不带
+#: ``[[get:this/path]]`` 读取引用（叶子执行前程序替换为真实值）
+_GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
+#: ``[[set[:type]:path]]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略），path 可带 this/ 或不带
 _SET_TMPL = re.compile(
-    r"\{\{\s*set:(?:(str|int|float|bool|page_ref):)?\s*((?:this/)?[^{}:]+?)\s*\}\}"
+    r"\[\[\s*set:(?:(str|int|float|bool|page_ref):)?\s*((?:this/)?[^\[\]:]+?)\s*\]\]"
 )
 #: 裸 ``this/path``（绑定/传参路径等）
 _PLAIN_PATH = re.compile(r"(?<![\w$])this/([^\s{}|>]+)")
@@ -69,12 +69,12 @@ def _iter_set_decls(text: str) -> list[tuple[str, str]]:
 
 
 def _iter_get_paths(text: str) -> list[str]:
-    """提取描述中的全部读取路径（``{{get:this/...}}``）。"""
+    """提取描述中的全部读取路径（``[[get:this/...]]``）。"""
     return [m.group(1).strip() for m in _GET_TMPL.finditer(text) if m.group(1).strip()]
 
 
 def _iter_set_paths(text: str) -> list[str]:
-    """提取描述中的全部写入路径（``{{set:...}}``）。"""
+    """提取描述中的全部写入路径（``[[set:...]]``）。"""
     return [path for path, _ in _iter_set_decls(text)]
 
 
@@ -223,6 +223,7 @@ def expand_document(ctx: ExpandContext) -> ExpansionResult:
         tree = _expand_ir(ctx.ir.root, ctx, root_path, children, 0)
     finally:
         ctx.stack.pop()
+    _check_all_block_outputs(ctx)
     return ExpansionResult(
         tree=tree,
         bindings=tuple(ctx.bindings),
@@ -231,10 +232,82 @@ def expand_document(ctx: ExpandContext) -> ExpansionResult:
     )
 
 
+def _all_docs(ctx: ExpandContext) -> list[DocumentIR]:
+    """当前文档 + 展开期跨文档缓存（供声明级 output 校验遍历）。"""
+    docs = [ctx.ir]
+    docs.extend(ctx.doc_cache.values())
+    return docs
+
+
+def _set_decl_names(desc: str) -> set[str]:
+    """叶子描述中单段 ``[[set:...:this/<名>]]`` 的目标名集合。"""
+    names: set[str] = set()
+    for path, _ in _iter_set_decls(desc):
+        segs = _schema_segments(path)
+        if segs is not None and len(segs) == 1:
+            names.add(segs[0])
+    return names
+
+
+def _collect_output_assignment_names(node: IRNode | None) -> set[str]:
+    """块体树内（不含 ref 子块内部）的赋值点：叶子 set 目标或本块 ref 的 returns 目标。
+
+    ref 子块内部如何产出其输出由该子块自己校验（递归性质，因每个块都被检查）。
+    赋值点只认本帧内的 set 或本块 returns 的目标变量（单段）。
+    """
+    if node is None:
+        return set()
+    names: set[str] = set()
+    if node.kind == "ref":
+        for _out_name, target_var in node.returns:
+            segs = _schema_segments(target_var)
+            if segs is not None and len(segs) == 1:
+                names.add(segs[0])
+        return names
+    if node.kind == "Action":
+        return _set_decl_names(node.description or "")
+    for child in node.children:
+        names |= _collect_output_assignment_names(child)
+    for b in node.branches:
+        if b.when is not None:
+            names |= _collect_output_assignment_names(b.when)
+        if b.target is not None:
+            names |= _collect_output_assignment_names(b.target)
+    for sub in (node.action, node.condition, node.until, node.body):
+        if sub is not None:
+            names |= _collect_output_assignment_names(sub)
+    return names
+
+
+def _check_all_block_outputs(ctx: ExpandContext) -> None:
+    """声明级 output 全赋值校验（§4）：每个声明的输出名须在块体内有赋值点。"""
+    for ir in _all_docs(ctx):
+        for block_name, decl in ir.blocks.items():
+            if not decl.outputs:
+                continue
+            node = ir.ir_by_block.get(block_name)
+            assigned = _collect_output_assignment_names(node)
+            for out in decl.outputs:
+                if out in assigned:
+                    continue
+                at = (
+                    f"{ir.doc_id}/{block_name}"
+                    if node is None or node.loc is None
+                    else node.loc.path
+                )
+                ctx.add_issue(
+                    "ref",
+                    "output_not_set",
+                    f"块 '{block_name}' 声明的输出 '{out}' 在块体内未赋值"
+                    f"（需叶子 [[set:...:this/{out}]] 或 ref 的 returns 目标，位于 {at}）",
+                    node.loc if node is not None else None,
+                )
+
+
 def _check_schema_path(
     ctx: ExpandContext, frame: str, children: frozenset[str], path_str: str, loc: Loc | None
 ) -> None:
-    """变量契约校验：路径只指向自己的 schema 或直接子块 schema（§5.3.2）。"""
+    """变量契约校验：仅 ``this/<名>`` 单段合法（§5 函数式传参后无跨帧读写）。"""
     display = _display_path(path_str)
     at = loc.path if loc else "?"
     segs = _schema_segments(path_str)
@@ -242,28 +315,17 @@ def _check_schema_path(
         ctx.add_issue(
             "scope",
             "out_of_scope",
-            f"变量引用 '{display}' 非法（应为 this/变量 或 this/直接子块/变量，位于 {at}）",
+            f"变量引用 '{display}' 非法（应为 this/变量，位于 {at}）",
             loc,
         )
         return
     if len(segs) == 1:
         return
-    if len(segs) == 2:
-        child = segs[0]
-        if child in children:
-            return
-        ctx.add_issue(
-            "scope",
-            "out_of_scope",
-            f"变量 '{display}' 指向非直接子块 '{child}'，越出本块可见作用域"
-            f"（只可读/写自身与直接子块，位于 {at}）",
-            loc,
-        )
-        return
     ctx.add_issue(
         "scope",
         "out_of_scope",
-        f"变量 '{display}' 指向孙子/更深层级 schema，越出本块可见作用域（位于 {at}）",
+        f"变量 '{display}' 指向多段路径（this/子块/变量），越出本块可见作用域"
+        f"（函数式传参后只可读/写本帧 this/变量，位于 {at}）",
         loc,
     )
 
@@ -535,44 +597,43 @@ def _expand_ref(
     t_ir, t_node = result
     t_decl = t_ir.blocks.get(tblock)
     t_inputs = t_decl.inputs if t_decl is not None else ()
+    t_outputs = t_decl.outputs if t_decl is not None else ()
+    input_names = {n for n, _ in t_inputs}
     bound_vars: set[str] = set()
-    for tp, expr in node.bindings:
-        segs = _schema_segments(tp)
-        if segs is None or len(segs) != 2 or segs[0] != tblock:
+    # args：实参表达式（裸路径 this/<名> 或字面量）
+    for arg_name, expr in node.args:
+        if arg_name not in input_names:
             ctx.add_issue(
                 "ref",
-                "binding_target",
-                f"绑定目标 '{tp}' 不属于被引用块 '{target}' 的 schema"
-                f"（应为 $this/{tblock}/输入名，位于 {at}）",
-                loc,
-            )
-        elif t_inputs and segs[1] not in t_inputs:
-            ctx.add_issue(
-                "ref",
-                "binding_not_input",
-                f"绑定目标 '{tp}' 不是块 '{tblock}' 声明的输入"
-                f"（声明: {', '.join(t_inputs) or '无'}，位于 {at}）",
+                "args_not_input",
+                f"实参 '{arg_name}' 不是块 '{tblock}' 声明的输入"
+                f"（声明: {', '.join(sorted(input_names)) or '无'}，位于 {at}）",
                 loc,
             )
         else:
-            bound_vars.add(segs[1])
-        _check_schema_path(ctx, frame, children, tp, loc)
+            bound_vars.add(arg_name)
         _scope_check_texts(ctx, frame, children, loc, expr)
-        ctx.bindings.append(
-            ParamBinding(
-                frame_path=frame, block_name=tblock, target_path=tp, value_expr=expr, loc=loc
-            )
+    # inputs 全必填
+    missing = [n for n, _ in t_inputs if n not in bound_vars]
+    if missing:
+        ctx.add_issue(
+            "ref",
+            "input_not_bound",
+            f"引用 '{target}' 未绑定其声明输入: {', '.join(missing)}"
+            f"（在 ref 处用 args 传实参，位于 {at}）",
+            loc,
         )
-    if t_inputs:
-        missing = [v for v in t_inputs if v not in bound_vars]
-        if missing:
+    # returns：接收输出 → 本帧局部变量
+    for out_name, target_var in node.returns:
+        if out_name not in t_outputs:
             ctx.add_issue(
                 "ref",
-                "input_not_bound",
-                f"引用 '{target}' 未绑定其声明输入: {', '.join(missing)}"
-                f"（在 ref 处用 '写入' 注入，位于 {at}）",
+                "returns_not_output",
+                f"返回值 '{out_name}' 不是块 '{tblock}' 声明的输出"
+                f"（声明: {', '.join(t_outputs) or '无'}，位于 {at}）",
                 loc,
             )
+        _check_schema_path(ctx, frame, children, target_var, loc)
     child_frame = f"{frame}{tblock}/"
     child_children = ctx.direct_children(t_ir, tblock)
     ctx.frames.append(

@@ -3,7 +3,7 @@
 输入规范化后的 dict，输出**保留复合节点与 ``ref:`` 标记**的中间表示
 （``DocumentIR`` / ``IRNode``），同步完成：
 
-- 操作块定义识别（§4.1：根块 = 文档名，附加命名块供 ``this/块名`` 复用）
+- block 定义识别（§4.1：根块 = 文档名，附加命名块供 ``this/块名`` 复用）
 - 块接口声明提取（输入 / 输出，§5.3.3）
 - 配置参数覆盖识别（§5.7.5，``timeout``/``retry``/``browser``）
 - 结构合法性 / 验证条件 / 循环上界 三类校验问题收集
@@ -14,12 +14,12 @@
 
 ::
 
-    # 写法 A/B：顶层为「操作块 <块名>:」定义（可多个）
-    操作块 主流程:            # 根块 = 名字匹配文档名的块，无匹配取第一个
-      输入: ...
-      输出: ...
+    # 写法 A/B：顶层为「block <块名>:」定义（可多个）
+    block 主流程:            # 根块 = 名字匹配文档名的块，无匹配取第一个
+      inputs: ...
+      outputs: ...
       Sequence: ...
-    操作块 登录:              # 附加命名块，供 ref: this/登录 复用
+    block 登录:              # 附加命名块，供 ref: this/登录 复用
       ...
 
     # 写法 C（极简）：整个 dict 即根块行为树（根块名 = 文档名）
@@ -42,11 +42,12 @@ from webops.parser.models import (
     Loc,
     make_issue,
 )
+from webops.schema.types import TYPE_REGISTRY
 
-#: 文档级块定义前缀：``操作块 <块名>:``
-BLOCK_PREFIX = "操作块 "
+#: 文档级块定义前缀：``block <块名>:``
+BLOCK_PREFIX = "block "
 #: 块接口声明键
-DECL_KEYS = frozenset({"输入", "输出"})
+DECL_KEYS = frozenset({"inputs", "outputs"})
 #: 工具定义配置参数名（§4.2/§5.7.5，名称语义固定）
 CONFIG_PARAMS = frozenset({"timeout", "retry", "browser"})
 #: 节点键（基础 + 复合 + ref）
@@ -104,6 +105,8 @@ class IRNode:
     mode: str | None = None
     ref_target: str | None = None
     bindings: tuple[tuple[str, str], ...] = ()
+    args: tuple[tuple[str, str], ...] = ()
+    returns: tuple[tuple[str, str], ...] = ()
     raw: object = None
 
 
@@ -149,7 +152,7 @@ def parse_structure(doc: DocumentSource, raw: dict) -> StructureResult:
             make_issue(
                 "structure",
                 "invalid_flow",
-                f"顶层混用「操作块」定义与其他键: {extra_keys}（位于 {doc.id}/$）",
+                f"顶层混用 block 定义与其他键: {extra_keys}（位于 {doc.id}/$）",
                 _loc(doc.id, "$"),
             )
         )
@@ -191,8 +194,11 @@ def _parse_block_body(
             tree_ir,
             issues,
         )
-    inputs = _parse_decl_list(body.get("输入"), doc_id, name, "输入", issues)
-    outputs = _parse_decl_list(body.get("输出"), doc_id, name, "输出", issues)
+    inputs = _parse_decl_list(body.get("inputs"), doc_id, name, "inputs", issues)
+    outputs = tuple(
+        n
+        for n, _ in _parse_decl_list(body.get("outputs"), doc_id, name, "outputs", issues)
+    )
     overrides: list[ConfigOverride] = []
     for param in sorted(CONFIG_PARAMS):
         if param not in body:
@@ -251,27 +257,60 @@ def _parse_block_body(
 
 def _parse_decl_list(
     value: object, doc_id: str, name: str, decl_name: str, issues: list[CheckIssue]
-) -> tuple[str, ...]:
+) -> tuple[tuple[str, str], ...]:
     if value is None:
         return ()
-    names: list[str] = []
+    if decl_name == "inputs" and isinstance(value, dict):
+        result: list[tuple[str, str]] = []
+        for k, v in value.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                issues.append(
+                    make_issue(
+                        "structure",
+                        "invalid_decl",
+                        f"块 '{name}' 的 inputs 必须是 变量名: 类型 的映射"
+                        f"（位于 {_path(doc_id, name)}）",
+                        _loc(doc_id, name),
+                    )
+                )
+                continue
+            var = k.strip().lstrip("$")
+            typ = v.strip()
+            if not var:
+                continue
+            if typ and typ not in TYPE_REGISTRY:
+                issues.append(
+                    make_issue(
+                        "structure",
+                        "invalid_decl",
+                        f"块 '{name}' 的输入 '{var}' 类型 '{typ}' 未登记"
+                        f"（支持: {sorted(TYPE_REGISTRY)}，位于 {_path(doc_id, name)}）",
+                        _loc(doc_id, name),
+                    )
+                )
+                continue
+            result.append((var, typ))
+        return tuple(result)
+    result: list[tuple[str, str]] = []
     if isinstance(value, str):
-        names = [p for p in (s.strip().lstrip("$") for s in value.split(",")) if p]
+        items = [s.strip().lstrip("$") for s in value.split(",")]
     elif isinstance(value, list):
-        for item in value:
-            s = str(item).strip().lstrip("$")
-            if s:
-                names.append(s)
+        items = [str(i).strip().lstrip("$") for i in value]
     else:
         issues.append(
             make_issue(
                 "structure",
                 "invalid_decl",
-                f"块 '{name}' 的 {decl_name} 声明必须是字符串或列表（位于 {_path(doc_id, name)}）",
+                f"块 '{name}' 的 {decl_name} 声明必须是字符串/列表"
+                f"（或 inputs 用映射，位于 {_path(doc_id, name)}）",
                 _loc(doc_id, name),
             )
         )
-    return tuple(names)
+        return ()
+    for s in items:
+        if s:
+            result.append((s, ""))
+    return tuple(result)
 
 
 def _path(doc_id: str, path: str) -> str:
@@ -314,7 +353,7 @@ def _parse_node(
 def _parse_node_entry(
     doc_id: str, path: str, entry: dict[str, object], issues: list[CheckIssue]
 ) -> IRNode:
-    """解析节点项映射：恰好一个节点键；``ref`` 可附带 ``写入``。"""
+    """解析节点项映射：恰好一个节点键；``ref`` 可附带 ``args``/``returns``。"""
     loc = _loc(doc_id, path)
     node_keys = [k for k in entry if k in NODE_KEYS]
     if len(node_keys) != 1:
@@ -330,7 +369,7 @@ def _parse_node_entry(
     key = node_keys[0]
     extra = [k for k in entry if k not in NODE_KEYS]
     if key == "ref":
-        bad = [k for k in extra if k != "写入"]
+        bad = [k for k in extra if k not in ("args", "returns")]
         if bad:
             issues.append(
                 make_issue(
@@ -340,7 +379,14 @@ def _parse_node_entry(
                     loc,
                 )
             )
-        return _parse_ref(doc_id, path, entry[key], entry.get("写入"), issues)
+        return _parse_ref(
+            doc_id,
+            path,
+            entry[key],
+            args=entry.get("args"),
+            returns=entry.get("returns"),
+            issues=issues,
+        )
     if extra:
         issues.append(
             make_issue(
@@ -357,7 +403,8 @@ def _parse_ref(
     doc_id: str,
     path: str,
     target: object,
-    bindings: object = None,
+    args: object = None,
+    returns: object = None,
     issues: list[CheckIssue] | None = None,
 ) -> IRNode:
     if issues is None:
@@ -386,31 +433,47 @@ def _parse_ref(
             )
         )
         return IRNode(kind="ref", ref_target=target, loc=loc)
+    args_pairs = _parse_kv(args, "args", doc_id, path, issues)
+    returns_pairs = _parse_kv(returns, "returns", doc_id, path, issues)
+    return IRNode(
+        kind="ref",
+        ref_target=target,
+        args=tuple(args_pairs),
+        returns=tuple(returns_pairs),
+        loc=loc,
+    )
+
+
+def _parse_kv(
+    value: object, key_name: str, doc_id: str, path: str, issues: list[CheckIssue]
+) -> list[tuple[str, str]]:
+    """解析 ref 的 ``args``/``returns`` 映射：键值须为标量，返回 ``(k, str(v))``。"""
     pairs: list[tuple[str, str]] = []
-    if bindings is not None:
-        if not isinstance(bindings, dict):
+    if value is None:
+        return pairs
+    if not isinstance(value, dict):
+        issues.append(
+            make_issue(
+                "structure",
+                "invalid_binding",
+                f"ref 的 '{key_name}' 必须是映射（形参/输出: 表达式，位于 {_path(doc_id, path)}）",
+                _loc(doc_id, path),
+            )
+        )
+        return pairs
+    for k, v in value.items():
+        if not isinstance(k, str) or not isinstance(v, (str, int, float, bool)):
             issues.append(
                 make_issue(
                     "structure",
                     "invalid_binding",
-                    f"ref 的 '写入' 必须是映射（目标路径: 值表达式，位于 {_path(doc_id, path)}）",
-                    loc,
+                    f"ref 的 '{key_name}' 项 '{k}' 的键或值不是标量（位于 {_path(doc_id, path)}）",
+                    _loc(doc_id, path),
                 )
             )
-        else:
-            for k, v in bindings.items():
-                if not isinstance(k, str) or not isinstance(v, (str, int, float, bool)):
-                    issues.append(
-                        make_issue(
-                            "structure",
-                            "invalid_binding",
-                            f"绑定项 '{k}' 的目标或值不是标量（位于 {_path(doc_id, path)}）",
-                            loc,
-                        )
-                    )
-                    continue
-                pairs.append((k.strip(), str(v)))
-    return IRNode(kind="ref", ref_target=target, bindings=tuple(pairs), loc=loc)
+            continue
+        pairs.append((k.strip(), str(v)))
+    return pairs
 
 
 def _parse_action(doc_id: str, path: str, value: object, issues: list[CheckIssue]) -> IRNode:

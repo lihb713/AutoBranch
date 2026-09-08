@@ -17,7 +17,7 @@ from webops.server.services.validation import CheckReportBuilder, validate_docum
 from .conftest import INVALID_LOOP_YAML, INVALID_REF_YAML, VALID_YAML
 
 INVALID_DOC_YAML = """
-操作块 缺验证:
+block 缺验证:
   Sequence:
     - Step:
         action: 点"登录"

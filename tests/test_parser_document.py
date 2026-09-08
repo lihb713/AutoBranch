@@ -36,24 +36,24 @@ def test_normalize_invalid_inputs_raise():
 
 
 def test_normalize_yaml_with_flow_bindings():
-    """1.3 流式映射 ``写入: { ... }`` 可解析（主流程 yaml 文本）。"""
+    """1.3 流式映射 ``args: { ... }`` 可解析（主流程 yaml 文本）。"""
     from parser_fixtures import MAIN_YAML
 
     loaded = normalize_document(MAIN_YAML)
-    assert loaded["操作块 主流程"]["Sequence"][0]["ref"] == "导出/导出"
-    bindings = loaded["操作块 主流程"]["Sequence"][0]["写入"]
-    assert bindings["$this/导出/username"] == "{{$this/账号}}"
-    assert bindings["$this/导出/password"] == "{{$this/密}}"
+    assert loaded["block 主流程"]["Sequence"][0]["ref"] == "导出/导出"
+    args = loaded["block 主流程"]["Sequence"][0]["args"]
+    assert args["username"] == "this/账号"
+    assert args["password"] == "this/密"
 
 
 def test_yaml_quoted_string_and_comment():
-    loaded = normalize_document('操作块 登录:\n  Sequence:\n    - Action: 点击"登录"按钮  # 注释\n')
-    body = loaded["操作块 登录"]["Sequence"]
+    loaded = normalize_document('block 登录:\n  Sequence:\n    - Action: 点击"登录"按钮  # 注释\n')
+    body = loaded["block 登录"]["Sequence"]
     assert body[0]["Action"] == '点击"登录"按钮'
 
 
 def test_structure_form_a_root_block():
-    """2.1 写法 A：顶层「操作块 <块名>:」→ 根块 = 文档名匹配者。"""
+    """2.1 写法 A：顶层「block <块名>:」→ 根块 = 文档名匹配者。"""
     result = parse_structure(DocumentSource(id="登录", data=LOGIN_DOC), LOGIN_DOC)
     ir = result.ir
     assert ir.doc_id == "登录"
@@ -67,8 +67,8 @@ def test_structure_form_a_root_block():
 def test_structure_form_b_named_blocks():
     """2.1 写法 B：附加命名块，根块 = 名字匹配文档名的块。"""
     doc = {
-        "操作块 主流程": {"Sequence": [{"ref": "this/登录"}]},
-        "操作块 登录": {"Sequence": [{"Action": "填账号"}]},
+        "block 主流程": {"Sequence": [{"ref": "this/登录"}]},
+        "block 登录": {"Sequence": [{"Action": "填账号"}]},
     }
     result = parse_structure(DocumentSource(id="主流程", data=doc), doc)
     ir = result.ir
@@ -90,7 +90,7 @@ def test_structure_form_c_bare_tree():
 def test_structure_ir_all_node_kinds():
     """2.1 中间表示保留全部节点类型（复合节点与 ref 不提前展开）。"""
     doc = {
-        "操作块 全节点": {
+        "block 全节点": {
             "Sequence": [
                 {"Step": {"action": "点甲", "expect": "出现乙"}},
                 {
@@ -107,7 +107,7 @@ def test_structure_ir_all_node_kinds():
                 {"ref": "this/辅助"},
             ]
         },
-        "操作块 辅助": {"Sequence": [{"Action": "寅"}]},
+        "block 辅助": {"Sequence": [{"Action": "寅"}]},
     }
     result = parse_structure(DocumentSource(id="全节点", data=doc), doc)
     children = result.ir.root.children
@@ -143,25 +143,54 @@ def test_structure_decl_extraction():
     """2.2 块声明提取：输入/输出与文档声明一致（含根块）。"""
     result = parse_structure(DocumentSource(id="登录", data=LOGIN_DOC), LOGIN_DOC)
     decl = result.ir.blocks["登录"]
-    assert decl.inputs == ("username", "password")
+    assert decl.inputs == (("username", "str"), ("password", "str"))
     assert decl.outputs == ("login_success",)
 
 
 def test_structure_decl_list_and_single():
-    """2.2 声明支持字符串（逗号分隔）与列表两种写法。"""
+    """2.2 声明支持 inputs 映射与 outputs 字符串（逗号分隔）/列表两种写法。"""
     doc = {
-        "操作块 甲": {"输入": "$a, $b", "输出": ["$x"], "Sequence": [{"Action": "动作"}]}
+        "block 甲": {
+            "inputs": {"a": "str", "b": "str"},
+            "outputs": ["x"],
+            "Sequence": [{"Action": "动作"}],
+        }
     }
     result = parse_structure(DocumentSource(id="甲", data=doc), doc)
     decl = result.ir.blocks["甲"]
-    assert decl.inputs == ("a", "b")
+    assert decl.inputs == (("a", "str"), ("b", "str"))
     assert decl.outputs == ("x",)
+
+
+def test_structure_decl_inputs_plain_list():
+    """2.2 inputs 非 dict 形态（名字列表）→ 产出 (名, "")。"""
+    doc = {
+        "block 甲": {
+            "inputs": "a, b",
+            "Sequence": [{"Action": "动作"}],
+        }
+    }
+    result = parse_structure(DocumentSource(id="甲", data=doc), doc)
+    decl = result.ir.blocks["甲"]
+    assert decl.inputs == (("a", ""), ("b", ""))
+
+
+def test_structure_decl_inputs_bad_type():
+    """2.2 inputs 映射类型未登记 → structure.invalid_decl。"""
+    doc = {
+        "block 甲": {
+            "inputs": {"a": "金额"},
+            "Sequence": [{"Action": "动作"}],
+        }
+    }
+    result = parse_structure(DocumentSource(id="甲", data=doc), doc)
+    assert any(i.code == "structure.invalid_decl" for i in result.issues)
 
 
 def test_config_override_detection():
     """2.3 识别块内配置参数覆盖（timeout/retry/browser），标注块级生效。"""
     doc = {
-        "操作块 甲": {
+        "block 甲": {
             "timeout": 30,
             "retry": 2,
             "browser": "chromium",
@@ -177,7 +206,7 @@ def test_config_override_detection():
 
 def test_no_config_override_when_undeclared():
     """2.3 未声明配置参数时，输出不含该覆盖。"""
-    doc = {"操作块 甲": {"Sequence": [{"Action": "动作"}]}}
+    doc = {"block 甲": {"Sequence": [{"Action": "动作"}]}}
     result = parse_structure(DocumentSource(id="甲", data=doc), doc)
     decl = result.ir.blocks["甲"]
     assert decl.config_overrides == ()
@@ -186,7 +215,7 @@ def test_no_config_override_when_undeclared():
 
 def test_config_override_invalid_value():
     """2.3 覆盖值非标量 → 结构校验失败。"""
-    doc = {"操作块 甲": {"timeout": {"怪": "值"}, "Sequence": [{"Action": "动作"}]}}
+    doc = {"block 甲": {"timeout": {"怪": "值"}, "Sequence": [{"Action": "动作"}]}}
     result = parse_structure(DocumentSource(id="甲", data=doc), doc)
     codes = {i.code for i in result.issues}
     assert "structure.invalid_config" in codes
@@ -194,13 +223,13 @@ def test_config_override_invalid_value():
 
 def test_structure_invalid_flow_reported():
     """2.1 非法结构：块必须且只能含一个行为树节点键。"""
-    doc = {"操作块 甲": {"Sequence": [{"Action": "a"}], "Step": {"action": "b", "expect": "c"}}}
+    doc = {"block 甲": {"Sequence": [{"Action": "a"}], "Step": {"action": "b", "expect": "c"}}}
     result = parse_structure(DocumentSource(id="甲", data=doc), doc)
     assert any(i.code == "structure.invalid_flow" for i in result.issues)
 
 
 def test_structure_unknown_node_reported():
-    doc = {"操作块 甲": {"Flog": "未知节点"}}
+    doc = {"block 甲": {"Flog": "未知节点"}}
     result = parse_structure(DocumentSource(id="甲", data=doc), doc)
     assert any(i.code == "structure.unknown_node" for i in result.issues)
     assert any("Flog" in i.message for i in result.issues)

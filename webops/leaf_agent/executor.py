@@ -65,8 +65,8 @@ class _LeafOutcome:
     records: list[ToolCallRecord] = field(default_factory=list)
 
 
-#: ``{{get:this/path}}`` 读取引用（叶子执行前程序替换，M2 同款正则）
-_GET_TMPL = re.compile(r"\{\{\s*get:\s*this/([^{}]+?)\s*\}\}")
+#: ``[[get:this/path]]`` 读取引用（叶子执行前程序替换，M2 同款正则）
+_GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
 
 
 def _norm_path(path: str) -> str:
@@ -82,11 +82,11 @@ def _norm_path(path: str) -> str:
 
 
 def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | None]:
-    """叶子执行前把 ``{{get:this/path}}`` 替换为 blackboard 真实值（确定性）。
+    """叶子执行前把 ``[[get:this/path]]`` 替换为 blackboard 真实值（确定性）。
 
     返回 ``(替换后文本, None)``；读取失败（变量未定义或越出作用域）返回
     ``(原文, 错误说明)``——该叶子应直接 FAILURE，不让 LLM 猜测。
-    描述不含 ``{{get:...}}`` 时不做替换（即使未注入 space 也正常执行）。
+    描述不含 ``[[get:...]]`` 时不做替换（即使未注入 space 也正常执行）。
     """
     if not _GET_TMPL.search(description):
         return description, None
@@ -221,7 +221,7 @@ def _execute_tool_calls(
                 op = OpResult(
                     False,
                     f"extract 目标 {write_target!r} 未在叶子可写变量集内"
-                    f"（声明: {', '.join(set_targets) or '无'}；请用 {{set:...}} 声明）",
+                    f"（声明: {', '.join(set_targets) or '无'}；请用 [[set:...]] 声明）",
                     {"code": "INVALID_ARGUMENT", "allowed": list(set_targets)},
                 )
             else:
@@ -240,7 +240,7 @@ def _execute_tool_calls(
                 op = OpResult(
                     False,
                     f"{name} 目标 {write_target!r} 未在叶子可写变量集内"
-                    f"（声明: {', '.join(set_targets) or '无'}；请用 {{set:...}} 声明）",
+                    f"（声明: {', '.join(set_targets) or '无'}；请用 [[set:...]] 声明）",
                     {"code": "INVALID_ARGUMENT", "allowed": list(set_targets)},
                 )
         else:

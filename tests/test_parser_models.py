@@ -74,15 +74,15 @@ def test_behavior_tree_shape():
 
 
 def test_block_decl_fields():
-    """1.1/2.2 BlockDecl：输入/输出/配置参数覆盖。"""
+    """1.1/2.2 BlockDecl：输入（名,类型）/输出/配置参数覆盖。"""
     decl = BlockDecl(
         name="登录",
         doc_id="登录",
-        inputs=("username", "password"),
+        inputs=(("username", "str"), ("password", "str")),
         outputs=("login_success",),
         config_overrides=(ConfigOverride(name="timeout", value=30),),
     )
-    assert decl.inputs == ("username", "password")
+    assert decl.inputs == (("username", "str"), ("password", "str"))
     assert decl.outputs == ("login_success",)
     assert decl.config_overrides[0].name == "timeout"
 

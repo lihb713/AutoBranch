@@ -27,7 +27,7 @@ def _expand_tree(doc_id: str, data: dict):
 
 def test_step_expands_to_sequence():
     """3.1 Step = Sequence(Action + Condition)。"""
-    doc = {"操作块 用例": {"Step": {"action": "点击登录", "expect": "出现工作台"}}}
+    doc = {"block 用例": {"Step": {"action": "点击登录", "expect": "出现工作台"}}}
     exp = _expand_tree("用例", doc)
     assert exp.issues == ()
     tree = exp.tree
@@ -43,7 +43,7 @@ def test_step_expands_to_sequence():
 def test_step_with_css_hint():
     """3.1 Step 的 action 含 CSS 提示。"""
     doc = {
-        "操作块 用例": {
+        "block 用例": {
             "Step": {
                 "action": {"描述": "点击登录", "CSS": "button[type=submit]"},
                 "expect": "出现工作台",
@@ -58,7 +58,7 @@ def test_step_with_css_hint():
 def test_branch_expands_to_action_plus_selector():
     """3.1 Branch = Action + Selector（顺序 when，第一个命中生效，无匹配走 otherwise）。"""
     doc = {
-        "操作块 用例": {
+        "block 用例": {
             "Branch": {
                 "action": "点击登录",
                 "branches": [
@@ -85,7 +85,7 @@ def test_branch_expands_to_action_plus_selector():
 
 def test_loop_until_expands_to_repeat():
     """3.1 LoopUntil = Repeat(mode=loop_until, until=条件, max=上限)，每轮先判 until。"""
-    doc = {"操作块 用例": {"LoopUntil": {"action": "点击批准", "until": "批准按钮消失", "max": 50}}}
+    doc = {"block 用例": {"LoopUntil": {"action": "点击批准", "until": "批准按钮消失", "max": 50}}}
     exp = _expand_tree("用例", doc)
     assert exp.issues == ()
     repeat = exp.tree
@@ -100,7 +100,7 @@ def test_loop_until_expands_to_repeat():
 def test_retry_expands_to_repeat():
     """3.1 Retry = Repeat(mode=retry, max=上限)，每轮后判 body 结果。"""
     doc = {
-        "操作块 用例": {
+        "block 用例": {
             "Retry": {"max": 3, "body": {"Step": {"action": "点击下载", "expect": "出现下载成功"}}}
         }
     }
@@ -120,7 +120,7 @@ def test_retry_expands_to_repeat():
 def test_if_then_else_expands_to_selector():
     """3.1 IfThenElse = Selector(if→then, else→else)，先判 if 条件。"""
     doc = {
-        "操作块 用例": {
+        "block 用例": {
             "IfThenElse": {
                 "if": "存在下载成功提示",
                 "then": {"Finish": "完成流程"},
@@ -177,7 +177,7 @@ def test_expansion_table_driven_all_composites():
         ),
     ]
     for kind, payload, assert_fn in cases:
-        doc = {"操作块 用例": {kind: payload}}
+        doc = {"block 用例": {kind: payload}}
         exp = _expand_tree("用例", doc)
         assert exp.issues == (), f"{kind} 展开不应有校验问题"
         ok, *rest = assert_fn(exp.tree)
@@ -193,7 +193,7 @@ def test_expansion_table_driven_all_composites():
 def test_expanded_tree_only_basic_nodes():
     """3.2 展开后的行为树仅含基础节点（含嵌套复合节点场景）。"""
     doc = {
-        "操作块 用例": {
+        "block 用例": {
             "Retry": {
                 "max": 3,
                 "body": {
@@ -239,7 +239,7 @@ def test_expanded_tree_only_basic_nodes():
 def test_deep_nesting_expands_correctly():
     """3.3 深嵌套（Retry 内嵌 Step、IfThenElse 内嵌 Branch）展开正确。"""
     doc = {
-        "操作块 用例": {
+        "block 用例": {
             "Retry": {
                 "max": 3,
                 "body": {
@@ -277,14 +277,14 @@ def _nested_retry(n: int) -> dict:
 
 def test_expand_recursion_limit_exceeded():
     """3.3 超过展开深度上限 → 校验失败（expand.depth_exceeded）。"""
-    doc = {"操作块 用例": _nested_retry(100)}
+    doc = {"block 用例": _nested_retry(100)}
     exp = _expand_tree("用例", doc)
     assert any(i.code == "expand.depth_exceeded" for i in exp.issues)
 
 
 def test_expand_within_depth_limit_ok():
     """3.3 未超上限的深嵌套展开成功。"""
-    doc = {"操作块 用例": _nested_retry(10)}
+    doc = {"block 用例": _nested_retry(10)}
     exp = _expand_tree("用例", doc)
     assert exp.issues == ()
 
@@ -299,7 +299,7 @@ def test_ref_recursion_limit_exceeded():
             body = {"Sequence": [{"Finish": "末"}]}
         else:
             body = {"Sequence": [{"ref": f"d{i + 1}/d{i + 1}"}]}
-        resolver.add(DocumentSource(id=doc_id, data={"操作块 " + doc_id: body}))
-    result = parse_doc("d0", {"操作块 d0": {"Sequence": [{"ref": "d1/d1"}]}}, resolver)
+        resolver.add(DocumentSource(id=doc_id, data={"block " + doc_id: body}))
+    result = parse_doc("d0", {"block d0": {"Sequence": [{"ref": "d1/d1"}]}}, resolver)
     assert any(i.code == "ref.recursion_depth" for i in result.checks.issues)
     assert result.checks.ok is False

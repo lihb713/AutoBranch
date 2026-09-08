@@ -17,7 +17,7 @@ import { expect, test, request as apiRequest } from "@playwright/test";
 
 const TREE_NAME = `e2e执行${Date.now()}`;
 // 行为树：打开本地测试页并断言页面出现「登录」（确定性执行目标）
-const TREE_YAML = `操作块 ${TREE_NAME}:
+const TREE_YAML = `block ${TREE_NAME}:
   Step:
     action: 打开页面 "http://127.0.0.1:8123/index.html"
     expect: 页面出现"登录"

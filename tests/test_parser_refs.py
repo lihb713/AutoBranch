@@ -27,8 +27,8 @@ def _full_resolver():
 def test_ref_this_named_block():
     """4.1 ``this/块名``：解析当前文档内的命名块。"""
     doc = {
-        "操作块 主流程": {"Sequence": [{"ref": "this/登录"}, {"Finish": "结束"}]},
-        "操作块 登录": {"Sequence": [{"Action": "填账号"}, {"Action": "填密码"}]},
+        "block 主流程": {"Sequence": [{"ref": "this/登录"}, {"Finish": "结束"}]},
+        "block 登录": {"Sequence": [{"Action": "填账号"}, {"Action": "填密码"}]},
     }
     result = parse_doc("主流程", doc, _full_resolver())
     assert result.checks.ok, result.checks.issues
@@ -44,13 +44,13 @@ def test_ref_this_named_block():
 def test_ref_cross_doc_block():
     """4.1 ``文档名/块名``：跨文档引用某块（此处为登录文档根块）。"""
     doc = {
-        "操作块 出口": {
+        "block 出口": {
             "Sequence": [
                 {
                     "ref": "登录/登录",
-                    "写入": {
-                        "$this/登录/username": "{{$this/账号}}",
-                        "$this/登录/password": "{{$this/密}}",
+                    "args": {
+                        "username": "this/账号",
+                        "password": "this/密",
                     },
                 }
             ]
@@ -68,13 +68,16 @@ def test_ref_cross_doc_block():
 def test_ref_cross_doc_whole_tree():
     """4.1 ``文档名/文档名``：跨文档引用整个行为树（根块名 = 文档名）。"""
     doc = {
-        "操作块 用户": {
+        "block 用户": {
             "Sequence": [
                 {
                     "ref": "导出/导出",
-                    "写入": {
-                        "$this/导出/username": "{{$this/账号}}",
-                        "$this/导出/password": "{{$this/密}}",
+                    "args": {
+                        "username": "this/账号",
+                        "password": "this/密",
+                    },
+                    "returns": {
+                        "report": "this/导出报告",
                     },
                 }
             ]
@@ -92,7 +95,7 @@ def test_ref_cross_doc_whole_tree():
 
 def test_ref_missing_doc():
     """4.1 引用不存在的文档 → ref.missing_doc。"""
-    doc = {"操作块 用户": {"Sequence": [{"ref": "不存在的文档/某块"}]}}
+    doc = {"block 用户": {"Sequence": [{"ref": "不存在的文档/某块"}]}}
     result = parse_doc("用户", doc, _full_resolver())
     assert result.checks.ok is False
     assert any(i.code == "ref.missing_doc" for i in result.checks.issues)
@@ -100,7 +103,7 @@ def test_ref_missing_doc():
 
 def test_ref_missing_block():
     """4.1 引用存在文档但不存在的块 → ref.missing_block。"""
-    doc = {"操作块 用户": {"Sequence": [{"ref": "登录/不存在的块"}]}}
+    doc = {"block 用户": {"Sequence": [{"ref": "登录/不存在的块"}]}}
     result = parse_doc("用户", doc, _full_resolver())
     assert result.checks.ok is False
     assert any(i.code == "ref.missing_block" for i in result.checks.issues)
@@ -126,35 +129,36 @@ def test_namespace_frames_hierarchy():
     assert login.children == ()
 
 
-def test_bindings_recorded_for_injection():
-    """4.2 引用处记录参数绑定（``写入`` 注入被引用块输入）。"""
+def test_args_and_returns_recorded_on_ir():
+    """4.2 引用处记录 args（实参）与 returns（回收输出）而非 bindings。"""
+    from webops.parser.document import parse_structure
+
+    st = parse_structure(DocumentSource(id="主流程", data=MAIN_DOC), MAIN_DOC)
+    ref = st.ir.root.children[0]
+    assert ref.kind == "ref"
+    assert ref.ref_target == "导出/导出"
+    assert ref.args == (("username", "this/账号"), ("password", "this/密"))
+    assert ref.returns == (("report", "this/导出报告"),)
+    assert ref.bindings == ()
+
+
+def test_bindings_always_empty_in_result():
+    """4.2 args/returns 取代写入 后 bindings 恒空（Plan ③ 移除）。"""
     result = parse_doc("主流程", MAIN_DOC, _full_resolver())
     assert result.checks.ok, result.checks.issues
-    bindings = {(b.frame_path, b.block_name, b.target_path): b.value_expr for b in result.bindings}
-    assert bindings[("主流程/", "导出", "$this/导出/username")] == "{{$this/账号}}"
-    assert bindings[("主流程/", "导出", "$this/导出/password")] == "{{$this/密}}"
-    assert bindings[("主流程/导出/", "登录", "$this/登录/username")] == "{{$this/username}}"
-    assert bindings[("主流程/导出/", "登录", "$this/登录/password")] == "{{$this/password}}"
+    assert result.bindings == ()
 
 
-def test_bindings_frame_path_matches_frames():
-    """4.2 绑定所在的帧路径与命名空间帧层级一致。"""
-    result = parse_doc("主流程", MAIN_DOC, _full_resolver())
-    frame_paths = {f.path for f in result.frames}
-    for b in result.bindings:
-        assert b.frame_path in frame_paths
-
-
-def test_export_doc_bindings_inputs():
-    """4.2 导出文档引用登录并绑定其全部输入（§5.7.6 逐层转发）。"""
+def test_export_doc_inputs_typed():
+    """4.2 导出文档引用登录并传参其全部输入（§5.7.6 逐层转发）。"""
     result = parse_doc("导出", EXPORT_DOC, _full_resolver())
     assert result.checks.ok, result.checks.issues
     # 块声明表 = 当前文档命名块（被引用块的声明经 RefResolver 在展开期校验）
     assert set(result.blocks) == {"导出"}
-    assert result.blocks["导出"].inputs == ("username", "password")
+    assert result.blocks["导出"].inputs == (("username", "str"), ("password", "str"))
     # 登录块的输入声明在登录文档自身声明表中
     login = parse_doc("登录", LOGIN_DOC, _full_resolver())
-    assert login.blocks["登录"].inputs == ("username", "password")
+    assert login.blocks["登录"].inputs == (("username", "str"), ("password", "str"))
 
 
 def test_cycle_detection_two_docs():
@@ -162,15 +166,15 @@ def test_cycle_detection_two_docs():
     resolver = build_resolver()
     resolver.add(
         DocumentSource(
-            id="a", data={"操作块 a": {"Sequence": [{"ref": "b/b"}]}}
+            id="a", data={"block a": {"Sequence": [{"ref": "b/b"}]}}
         )
     )
     resolver.add(
         DocumentSource(
-            id="b", data={"操作块 b": {"Sequence": [{"ref": "a/a"}]}}
+            id="b", data={"block b": {"Sequence": [{"ref": "a/a"}]}}
         )
     )
-    result = parse_doc("a", {"操作块 a": {"Sequence": [{"ref": "b/b"}]}}, resolver)
+    result = parse_doc("a", {"block a": {"Sequence": [{"ref": "b/b"}]}}, resolver)
     assert result.checks.ok is False
     cycle = [i for i in result.checks.issues if i.code == "ref.cycle"]
     assert cycle
@@ -179,15 +183,15 @@ def test_cycle_detection_two_docs():
 
 def test_cycle_detection_self_ref():
     """4.3 自身循环引用（this/自身）→ ref.cycle。"""
-    doc = {"操作块 s": {"Sequence": [{"ref": "this/s"}]}}
+    doc = {"block s": {"Sequence": [{"ref": "this/s"}]}}
     result = parse_doc("s", doc, _full_resolver())
     assert result.checks.ok is False
     assert any(i.code == "ref.cycle" for i in result.checks.issues)
 
 
 def test_ref_input_not_bound():
-    """4.2 引用带输入声明的块而未绑定输入 → ref.input_not_bound。"""
-    doc = {"操作块 用户": {"Sequence": [{"ref": "登录/登录"}]}}
+    """4.2 引用带输入声明的块而未传实参 → ref.input_not_bound。"""
+    doc = {"block 用户": {"Sequence": [{"ref": "登录/登录"}]}}
     result = parse_doc("用户", doc, _full_resolver())
     assert result.checks.ok is False
     issue = [i for i in result.checks.issues if i.code == "ref.input_not_bound"]
@@ -195,33 +199,50 @@ def test_ref_input_not_bound():
     assert "username" in issue[0].message and "password" in issue[0].message
 
 
-def test_ref_binding_not_declared_input():
-    """4.2 绑定目标不是被引用块声明输入 → ref.binding_not_input。"""
+def test_ref_args_not_input():
+    """4.2 实参名不是被引用块声明输入 → ref.args_not_input。"""
     doc = {
-        "操作块 用户": {
+        "block 用户": {
             "Sequence": [
                 {
                     "ref": "登录/登录",
-                    "写入": {"$this/登录/not_a_declared_input": "{{$this/账号}}"},
+                    "args": {"not_a_declared_input": "this/账号"},
                 }
             ]
         }
     }
     result = parse_doc("用户", doc, _full_resolver())
-    assert any(i.code == "ref.binding_not_input" for i in result.checks.issues)
+    assert any(i.code == "ref.args_not_input" for i in result.checks.issues)
 
 
-def test_ref_binding_wrong_block():
-    """4.2 绑定目标不属于被引用块 → ref.binding_target。"""
+def test_ref_returns_not_output():
+    """4.2 返回值名不是被引用块声明输出 → ref.returns_not_output。"""
     doc = {
-        "操作块 用户": {
+        "block 用户": {
             "Sequence": [
                 {
                     "ref": "登录/登录",
-                    "写入": {"$this/其他块/username": "{{$this/账号}}"},
+                    "args": {"username": "this/账号", "password": "this/密"},
+                    "returns": {"不存在的输出": "this/x"},
                 }
             ]
         }
     }
     result = parse_doc("用户", doc, _full_resolver())
-    assert any(i.code == "ref.binding_target" for i in result.checks.issues)
+    assert any(i.code == "ref.returns_not_output" for i in result.checks.issues)
+
+
+def test_ref_args_multisegment_value_out_of_scope():
+    """4.2 实参值跨帧路径（this/子块/变量）→ scope.out_of_scope。"""
+    doc = {
+        "block 用户": {
+            "Sequence": [
+                {
+                    "ref": "登录/登录",
+                    "args": {"username": "this/其他块/账号", "password": "this/密"},
+                }
+            ]
+        }
+    }
+    result = parse_doc("用户", doc, _full_resolver())
+    assert any(i.code == "scope.out_of_scope" for i in result.checks.issues)

@@ -38,7 +38,7 @@ class Loc:
     """文档位置（路径式定位，yaml/dict 输入均适用）。
 
     :param doc_id: 所属文档标识。
-    :param path: 文档内路径，如 ``操作块 登录/Sequence/0/Step``。
+    :param path: 文档内路径，如 ``block 登录/Sequence/0/Step``。
     :param line: yaml 行号（可选项，当前子集解析器不填充）。
     """
 
@@ -81,10 +81,10 @@ class ActionNode(Node):
     """动作叶子：自然语言描述 + 可选 CSS 提示（§5.2）。
 
     LLM 介入（agent 式执行）。可定位性 = 有 CSS 或有可映射的自然语言。
-    ``set_targets`` 记录描述中声明的可写变量路径（``{{set:this/param}}``，
+    ``set_targets`` 记录描述中声明的可写变量路径（``[[set:this/param]]``，
     供 M6 注入提示词与 M5 校验写入目标）。``set_decls`` 携带类型标注
-    ``(path, type)``，type ∈ TYPE_REGISTRY token/""（``{{set:page_ref:页面A}}``
-    存页签引用、``{{set:str:url}}`` 存文本）。
+    ``(path, type)``，type ∈ TYPE_REGISTRY token/""（``[[set:page_ref:页面A]]``
+    存页签引用、``[[set:str:url]]`` 存文本）。
     """
 
     description: str = ""
@@ -181,14 +181,14 @@ class BlockDecl:
 
     :param name: 块名。
     :param doc_id: 所属文档标识。
-    :param inputs: 输入参数名（调用方需注入）。
+    :param inputs: 输入参数 ``(变量名, 类型 token)``（调用方需注入，全部必填）。
     :param outputs: 输出参数名（调用方可读取）。
     :param config_overrides: 配置参数覆盖（仅当前块及其子树生效）。
     """
 
     name: str
     doc_id: str
-    inputs: tuple[str, ...] = ()
+    inputs: tuple[tuple[str, str], ...] = ()
     outputs: tuple[str, ...] = ()
     config_overrides: tuple[ConfigOverride, ...] = ()
     loc: Loc | None = None

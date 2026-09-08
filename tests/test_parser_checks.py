@@ -31,7 +31,7 @@ def _codes(result) -> set[str]:
 
 def test_invalid_node_type_fails():
     """5.1 未定义的节点类型 → structure.unknown_node，错误可定位。"""
-    result = parse_doc("坏", {"操作块 坏": {"Flog": "x"}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Flog": "x"}}, RESOLVER)
     assert result.checks.ok is False
     issue = [i for i in result.checks.issues if i.code == "structure.unknown_node"][0]
     assert issue.message
@@ -41,14 +41,14 @@ def test_invalid_node_type_fails():
 
 def test_invalid_nesting_fails():
     """5.1 非法嵌套（Sequence 项非节点映射）→ structure.invalid_node。"""
-    result = parse_doc("坏", {"操作块 坏": {"Sequence": ["纯字符串"]}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Sequence": ["纯字符串"]}}, RESOLVER)
     assert any(i.code == "structure.invalid_node" for i in result.checks.issues)
 
 
 def test_two_node_keys_fails():
     """5.1 块内多个行为树节点键 → structure.invalid_flow。"""
     doc = {
-        "操作块 坏": {
+        "block 坏": {
             "Sequence": [{"Action": "a"}],
             "Step": {"action": "b", "expect": "c"},
         }
@@ -73,10 +73,10 @@ def test_post_expansion_clean_passes():
 
 def test_ref_missing_raises():
     """5.2 引用不存在 → ref.missing_doc / ref.missing_block。"""
-    doc = {"操作块 用户": {"Sequence": [{"ref": "不存在/不存在"}]}}
+    doc = {"block 用户": {"Sequence": [{"ref": "不存在/不存在"}]}}
     result = parse_doc("用户", doc, RESOLVER)
     assert any(i.code == "ref.missing_doc" for i in result.checks.issues)
-    doc2 = {"操作块 用户": {"Sequence": [{"ref": "登录/无此块"}]}}
+    doc2 = {"block 用户": {"Sequence": [{"ref": "登录/无此块"}]}}
     result2 = parse_doc("用户", doc2, RESOLVER)
     assert any(i.code == "ref.missing_block" for i in result2.checks.issues)
 
@@ -84,14 +84,14 @@ def test_ref_missing_raises():
 def test_loop_without_max_fails():
     """5.2 循环无上界 → repeat.max_missing。"""
     result = parse_doc(
-        "坏", {"操作块 坏": {"LoopUntil": {"action": "点", "until": "消失"}}}, RESOLVER
+        "坏", {"block 坏": {"LoopUntil": {"action": "点", "until": "消失"}}}, RESOLVER
     )
     assert any(i.code == "repeat.max_missing" for i in result.checks.issues)
 
 
 def test_retry_without_max_fails():
     result = parse_doc(
-        "坏", {"操作块 坏": {"Retry": {"body": {"Action": "点"}}}}, RESOLVER
+        "坏", {"block 坏": {"Retry": {"body": {"Action": "点"}}}}, RESOLVER
     )
     assert any(i.code == "repeat.max_missing" for i in result.checks.issues)
 
@@ -99,7 +99,7 @@ def test_retry_without_max_fails():
 def test_max_not_int_fails():
     result = parse_doc(
         "坏",
-        {"操作块 坏": {"LoopUntil": {"action": "点", "until": "消失", "max": "很多次"}}},
+        {"block 坏": {"LoopUntil": {"action": "点", "until": "消失", "max": "很多次"}}},
         RESOLVER,
     )
     assert any(i.code == "repeat.max_not_int" for i in result.checks.issues)
@@ -110,9 +110,9 @@ def test_max_not_int_fails():
 def test_out_of_scope_sibling_fails():
     """5.3 引用兄弟块 schema → scope.out_of_scope（指明位置）。"""
     doc = {
-        "操作块 主流程": {"Sequence": [{"ref": "this/甲"}, {"ref": "this/乙"}]},
-        "操作块 甲": {"Sequence": [{"Action": "读兄弟 {{get:this/乙/值}}"}]},
-        "操作块 乙": {"Sequence": [{"Action": "动作"}]},
+        "block 主流程": {"Sequence": [{"ref": "this/甲"}, {"ref": "this/乙"}]},
+        "block 甲": {"Sequence": [{"Action": "读兄弟 [[get:this/乙/值]]"}]},
+        "block 乙": {"Sequence": [{"Action": "动作"}]},
     }
     result = parse_doc("主流程", doc, RESOLVER)
     issues = [i for i in result.checks.issues if i.code == "scope.out_of_scope"]
@@ -123,14 +123,14 @@ def test_out_of_scope_sibling_fails():
 def test_out_of_scope_grandchild_fails():
     """5.3 引用孙子 schema（三 segment）→ scope.out_of_scope。"""
     doc = {
-        "操作块 主流程": {"Sequence": [{"ref": "this/甲"}]},
-        "操作块 甲": {
+        "block 主流程": {"Sequence": [{"ref": "this/甲"}]},
+        "block 甲": {
             "Sequence": [
                 {"ref": "this/乙"},
-                {"Action": "读孙子 {{get:this/乙/内/深}}"},
+                {"Action": "读孙子 [[get:this/乙/内/深]]"},
             ]
         },
-        "操作块 乙": {"Sequence": [{"Action": "动作"}]},
+        "block 乙": {"Sequence": [{"Action": "动作"}]},
     }
     result = parse_doc("主流程", doc, RESOLVER)
     issues = [i for i in result.checks.issues if i.code == "scope.out_of_scope"]
@@ -138,8 +138,8 @@ def test_out_of_scope_grandchild_fails():
     assert "this/乙/内/深" in issues[0].message
 
 
-def test_in_scope_direct_child_passes():
-    """5.3 读直接子块输出（两 segment，子块为直接子）→ 通过。"""
+def test_in_scope_functional_ref_passes():
+    """5.3 函数式传参（returns 目标单段 this/变量）→ 通过。"""
     result = parse_doc("导出", _EXPORT_DOC, RESOLVER)
     assert not any(i.code == "scope.out_of_scope" for i in result.checks.issues)
 
@@ -150,11 +150,65 @@ def test_own_schema_passes():
     assert result.checks.ok, result.checks.issues
 
 
+# ---- 5.3b 单段作用域与 output 全赋值（函数式传参） ----
+
+def test_single_segment_rejects_subblock_path():
+    """5.3b 跨帧寻址 this/子块/变量 → scope.out_of_scope（单段作用域）。"""
+    doc = {
+        "block 主流程": {
+            "Sequence": [{"Action": "读子块输出 [[get:this/导出/报告]]"}]
+        }
+    }
+    result = parse_doc("主流程", doc, RESOLVER)
+    issues = [i for i in result.checks.issues if i.code == "scope.out_of_scope"]
+    assert issues
+    assert "this/导出/报告" in issues[0].message
+
+
+def test_output_not_set_when_missing_assignment():
+    """5.3b 块声明输出但块内无赋值点 → ref.output_not_set。"""
+    doc = {
+        "block 甲": {
+            "outputs": "p1, p2",
+            "Sequence": [{"Action": "提取 [[set:this/p1]]"}],
+        }
+    }
+    result = parse_doc("甲", doc, RESOLVER)
+    issues = [i for i in result.checks.issues if i.code == "ref.output_not_set"]
+    assert issues
+    assert any("p2" in i.message for i in issues)
+    assert not any("p1" in i.message for i in issues)
+
+
+def test_output_assigned_by_ref_returns():
+    """5.3b 输出经本块 ref 的 returns 目标赋值 → 通过。"""
+    doc = {
+        "block 导出": {
+            "inputs": {"username": "str"},
+            "outputs": "登录成功",
+            "Sequence": [
+                {
+                    "ref": "登录/登录",
+                    "args": {"username": "this/账号", "password": "this/密"},
+                    "returns": {"login_success": "this/登录成功"},
+                }
+            ],
+        },
+        "block 登录": {
+            "inputs": {"username": "str", "password": "str"},
+            "outputs": "login_success",
+            "Sequence": [{"Action": "提取 [[set:this/login_success]]"}],
+        },
+    }
+    result = parse_doc("导出", doc, RESOLVER)
+    assert not any(i.code == "ref.output_not_set" for i in result.checks.issues)
+
+
 # ---- 5.4 可定位与验证条件 ----
 
 def test_action_not_locatable_fails():
     """5.4 动作既无 CSS 也无自然语言描述 → locatable.not_locatable。"""
-    result = parse_doc("坏", {"操作块 坏": {"Action": ""}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Action": ""}}, RESOLVER)
     issues = [i for i in result.checks.issues if i.code == "locatable.not_locatable"]
     assert issues
     assert "无 CSS 提示" in issues[0].message
@@ -162,30 +216,30 @@ def test_action_not_locatable_fails():
 
 def test_action_with_css_passes():
     result = parse_doc(
-        "好", {"操作块 好": {"Action": {"CSS": "button.ok"}}}, RESOLVER
+        "好", {"block 好": {"Action": {"CSS": "button.ok"}}}, RESOLVER
     )
     assert not any(i.code == "locatable.not_locatable" for i in result.checks.issues)
 
 
 def test_step_missing_expect_fails():
     """5.4 每步有验证条件：Step 缺 expect → verify.missing_condition。"""
-    result = parse_doc("坏", {"操作块 坏": {"Step": {"action": "点"}}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Step": {"action": "点"}}}, RESOLVER)
     assert any(i.code == "verify.missing_condition" for i in result.checks.issues)
 
 
 def test_branch_missing_branches_fails():
-    result = parse_doc("坏", {"操作块 坏": {"Branch": {"action": "点"}}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Branch": {"action": "点"}}}, RESOLVER)
     assert any(i.code == "verify.missing_condition" for i in result.checks.issues)
 
 
 def test_loop_until_missing_until_fails():
-    result = parse_doc("坏", {"操作块 坏": {"LoopUntil": {"action": "点", "max": 5}}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"LoopUntil": {"action": "点", "max": 5}}}, RESOLVER)
     assert any(i.code == "verify.missing_condition" for i in result.checks.issues)
 
 
 def test_step_missing_action_fails():
     """5.4 结构缺失：Step 缺 action → structure.missing_field。"""
-    result = parse_doc("坏", {"操作块 坏": {"Step": {"expect": "出现"}}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Step": {"expect": "出现"}}}, RESOLVER)
     assert any(i.code == "structure.missing_field" for i in result.checks.issues)
 
 
@@ -193,20 +247,20 @@ def test_step_missing_action_fails():
 
 def test_condition_empty_fails():
     """5.5 条件谓词缺描述 → predicate.empty_condition。"""
-    result = parse_doc("坏", {"操作块 坏": {"Condition": ""}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Condition": ""}}, RESOLVER)
     assert any(i.code == "predicate.empty_condition" for i in result.checks.issues)
 
 
 def test_condition_mapping_without_desc_fails():
-    result = parse_doc("坏", {"操作块 坏": {"Condition": {"目标": "工作台"}}}, RESOLVER)
+    result = parse_doc("坏", {"block 坏": {"Condition": {"目标": "工作台"}}}, RESOLVER)
     assert any(i.code == "predicate.empty_condition" for i in result.checks.issues)
 
 
 def test_condition_target_out_of_scope_fails():
     """5.5 谓词目标指向越作用域变量 → scope.out_of_scope。"""
     doc = {
-        "操作块 坏": {
-            "Condition": {"描述": "检查", "目标": "{{get:this/孙/深}}"}
+        "block 坏": {
+            "Condition": {"描述": "检查", "目标": "[[get:this/孙/深]]"}
         }
     }
     result = parse_doc("坏", doc, RESOLVER)
@@ -214,7 +268,7 @@ def test_condition_target_out_of_scope_fails():
 
 
 def test_condition_valid_passes():
-    result = parse_doc("好", {"操作块 好": {"Condition": "出现\"工作台\""}}, RESOLVER)
+    result = parse_doc("好", {"block 好": {"Condition": '出现"工作台"'}}, RESOLVER)
     assert not any(i.code.startswith("predicate") for i in result.checks.issues)
 
 
@@ -223,7 +277,7 @@ def test_condition_valid_passes():
 def test_report_failure_with_readable_issues():
     """5.6 失败文档：结论失败 + 逐条可读错误（code/message/rule/loc）。"""
     doc = {
-        "操作块 坏": {
+        "block 坏": {
             "Sequence": [
                 {"Flog": "x"},
                 {"Step": {"action": "点"}},  # 缺 expect
@@ -243,7 +297,7 @@ def test_report_failure_with_readable_issues():
 
 def test_report_issues_sorted_and_deduped():
     """5.6 错误清单按位置/错误码排序且去重。"""
-    doc = {"操作块 坏": {"Sequence": [{"Flog": "a"}, {"Flog": "b"}]}}
+    doc = {"block 坏": {"Sequence": [{"Flog": "a"}, {"Flog": "b"}]}}
     result = parse_doc("坏", doc, RESOLVER)
     paths = [i.loc.path for i in result.checks.issues]
     assert paths == sorted(paths)
