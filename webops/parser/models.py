@@ -196,12 +196,15 @@ class BlockDecl:
 
 @dataclass(frozen=True)
 class ParamBinding:
-    """块引用处的参数绑定记录（§5.7.3/§5.7.4 的 ``写入`` 注入）。
+    """块引用处的参数绑定记录（**已废弃**：``写入`` 绑定由 ref ``args``/``returns`` 取代）。
+
+    自 DSL 英文化（block/inputs/outputs/args/returns）起，``bindings`` 恒为空；
+    本类型与 ``ParseResult.bindings`` 将在 Plan ③（动态调用执行器）一并移除。
 
     :param frame_path: 引用处所在 schema 帧路径（如 ``主流程/``）。
     :param block_name: 被引用块名。
-    :param target_path: 写入目标（``$this/导出/username``）。
-    :param value_expr: 值表达式（如 ``{{$this/账号}}``）。
+    :param target_path: 写入目标（单段 ``this/页面A``）。
+    :param value_expr: 值表达式（如 ``[[get:this/账号]]``）。
     :param loc: 引用位置。
     """
 

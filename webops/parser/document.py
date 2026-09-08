@@ -456,7 +456,8 @@ def _parse_kv(
             make_issue(
                 "structure",
                 "invalid_binding",
-                f"ref 的 '{key_name}' 必须是映射（形参/输出: 表达式，位于 {_path(doc_id, path)}）",
+                f"ref 的 '{key_name}' 必须是映射（args/returns 键: 表达式，"
+                f"位于 {_path(doc_id, path)}）",
                 _loc(doc_id, path),
             )
         )

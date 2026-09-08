@@ -5,9 +5,10 @@
 - 复合节点展开（§4.3 精确语义，规则集中于 ``EXPANSION_RULES`` 单一映射表）
 - 块引用解析（``this/块名``、``文档名/块名``、``文档名/文档名`` 跨文档整树）
   与循环引用检测、展开深度防护
-- 引用处建立独立 schema 命名空间帧并记录参数绑定（§5.7.3/§5.7.4）
-- 变量契约校验（§5.3.2 作用域：只读写自己的 schema 与直接子块）
-- 绑定输入契约校验（引用处 ``写入`` 注入被引用块声明输入）
+- 引用处建立独立 schema 命名空间帧（§5.7.3/§5.7.4，函数式调用帧）
+- 变量契约校验（§5.3.2 作用域：只读写自己的 schema，单段 ``this/<名>``）
+- 函数式传参契约校验（ref ``args`` 注入声明输入、``returns`` 接收声明输出，
+  ``inputs`` 全必填、``outputs`` 全赋值）
 """
 
 from __future__ import annotations
@@ -93,9 +94,10 @@ def _iter_schema_paths(text: str) -> list[str]:
 
 
 def _schema_segments(path: str) -> tuple[str, ...] | None:
-    """``this/导出/username`` 或 ``$this/导出/username`` → ``('导出', 'username')``。
+    """剥掉 ``this/`` 前缀后的路径段（如 ``this/username`` → ``('username',)``）。
 
-    兼容当前帧标记 ``this`` 与块绑定机制的旧标记 ``$this``；非法返回 None。
+    兼容旧标记 ``$this``（仅内部归一化）；非法返回 None。函数式传参后
+    用户层只用单段 ``this/<名>``。
     """
     p = path.strip()
     for prefix in ("this/", "$this/"):

@@ -185,7 +185,7 @@ ENGINE_TOOLS: list[ToolSpec] = [
         parameters=_object_params(
             ("ref", "target"),
             ref=_prop_string(_REF_DESC),
-            target=_prop_string("目标变量路径，如 $this/订单号"),
+            target=_prop_string("目标变量路径，如 this/订单号"),
         ),
     ),
 ]
