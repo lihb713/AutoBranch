@@ -23,7 +23,7 @@ def test_integration_full_multi_doc_pipeline():
     result = parse_doc("主流程", MAIN_DOC, resolver)
     assert result.checks.ok, result.checks.issues
 
-    # 1) 输出纯基础节点行为树（含内联的 导出/登录 整树）
+    # 1) 输出纯基础节点行为树（ref 保留为 RefNode 调用节点）
     basic = (
         models.ActionNode,
         models.ConditionNode,
@@ -31,6 +31,7 @@ def test_integration_full_multi_doc_pipeline():
         models.SelectorNode,
         models.RepeatNode,
         models.FinishNode,
+        models.RefNode,
     )
     nodes = list(walk_nodes(result.tree.root))
     assert nodes, "行为树不应为空"
@@ -49,18 +50,18 @@ def test_integration_full_multi_doc_pipeline():
     overrides = {o.name: o.value for o in login.blocks["登录"].config_overrides}
     assert overrides == {"timeout": 30}
 
-    # 4) 绑定恒空（args/returns 取代 写入），命名空间帧齐备
-    assert result.bindings == ()
-    assert {f.block for f in result.frames} == {"主流程", "导出", "登录"}
+    # 4) 每块独立预展开：blocks_tree 含根文档与跨文档加载块
+    assert set(result.blocks_tree) == {"主流程", "导出", "登录"}
 
-    # 5) 树结构：主流程 → Sequence [导出整树]
+    # 5) 树结构：主流程 → Sequence [ref 导出/导出]
     root = result.tree.root
     assert isinstance(root, models.SequenceNode)
-    export_tree = root.children[0]
-    assert isinstance(export_tree, models.SequenceNode)
-    login_tree = export_tree.children[0]
+    ref_node = root.children[0]
+    assert isinstance(ref_node, models.RefNode)
+    assert ref_node.ref_target == "导出/导出"
+    # 登录块为独立预展开树：Step 展开为 Sequence(Action+Condition)
+    login_tree = result.blocks_tree["登录"]
     assert isinstance(login_tree, models.SequenceNode)
-    # 登录块内部 Step 展开为 Sequence(Action+Condition)
     step = login_tree.children[0]
     assert isinstance(step, models.SequenceNode)
     assert isinstance(step.children[0], models.ActionNode)
@@ -86,8 +87,7 @@ def test_deterministic_parse_twice_identical():
     assert r1.tree == r2.tree
     assert r1.blocks == r2.blocks
     assert r1.checks == r2.checks
-    assert r1.bindings == r2.bindings
-    assert r1.frames == r2.frames
+    assert r1.blocks_tree == r2.blocks_tree
 
 
 def test_deterministic_yaml_and_dict():

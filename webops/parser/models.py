@@ -2,9 +2,10 @@
 
 - 基础节点模型：``ActionNode`` / ``ConditionNode`` / ``SequenceNode`` /
   ``SelectorNode`` / ``RepeatNode`` / ``FinishNode`` —— 展开后的最终形态，
-  复合节点对引擎不可见（§4.3）。
-- 输出契约：``ParseResult``（tree / blocks / checks，另附 bindings/frames
-  扩展字段）、``BlockDecl``（块声明）、``CheckReport``（校验报告）。
+  复合节点对引擎不可见（§4.3）；``RefNode`` 为块引用调用节点（保留为
+  运行期动态调用，不再内联展开）。
+- 输出契约：``ParseResult``（tree / blocks / blocks_tree / checks）、
+  ``BlockDecl``（块声明）、``CheckReport``（校验报告）。
 - 输入契约：``DocumentSource``。
 
 所有模型均为 ``frozen`` dataclass，保证确定性输出（同输入两次解析结构一致）。
@@ -69,11 +70,23 @@ class Node:
     """基础节点基类。
 
     :param loc: 文档位置（供校验错误定位）。
-    :param frame: 所属 schema 命名空间帧路径（§5.7.4，供 M7 执行定位）。
     """
 
     loc: Loc | None = None
-    frame: str = ""
+
+
+@dataclass(frozen=True)
+class RefNode(Node):
+    """块引用调用节点：运行期动态调用被引用块。
+
+    :param ref_target: 如 ``this/登录`` / ``文档名/登录``。
+    :param args: ``(形参名, 实参表达式)``；实参 = 父帧裸路径 ``this/<名>`` 或字面量。
+    :param returns: ``(输出名, 父帧目标变量)``；子块 SUCCESS 后回收写入父帧。
+    """
+
+    ref_target: str = ""
+    args: tuple[tuple[str, str], ...] = ()
+    returns: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -195,43 +208,6 @@ class BlockDecl:
 
 
 @dataclass(frozen=True)
-class ParamBinding:
-    """块引用处的参数绑定记录（**已废弃**：``写入`` 绑定由 ref ``args``/``returns`` 取代）。
-
-    自 DSL 英文化（block/inputs/outputs/args/returns）起，``bindings`` 恒为空；
-    本类型与 ``ParseResult.bindings`` 将在 Plan ③（动态调用执行器）一并移除。
-
-    :param frame_path: 引用处所在 schema 帧路径（如 ``主流程/``）。
-    :param block_name: 被引用块名。
-    :param target_path: 写入目标（单段 ``this/页面A``）。
-    :param value_expr: 值表达式（如 ``[[get:this/账号]]``）。
-    :param loc: 引用位置。
-    """
-
-    frame_path: str
-    block_name: str
-    target_path: str
-    value_expr: str
-    loc: Loc | None = None
-
-
-@dataclass(frozen=True)
-class FrameInfo:
-    """schema 命名空间帧（类似调用栈帧，§5.7.4）。
-
-    :param path: 帧路径，如 ``主流程/导出/``。
-    :param block: 该帧对应的块名。
-    :param parent: 父帧路径（根帧为 None）。
-    :param children: 直接子帧路径。
-    """
-
-    path: str
-    block: str
-    parent: str | None
-    children: tuple[str, ...]
-
-
-@dataclass(frozen=True)
 class CheckIssue:
     """清晰度校验错误项（可读、可定位、指明违反规则）。
 
@@ -273,15 +249,14 @@ class CheckReport:
 class ParseResult:
     """解析输出契约（M2 spec §5.1）。
 
-    :param tree: 内部行为树（仅基础节点）。
+    :param tree: 内部行为树（根块基础树，ref 保留为 RefNode）。
     :param blocks: 命名块声明表（输入/输出/配置参数覆盖）。
+    :param blocks_tree: 每块预展开的基础树映射（块名 → Node，含根块与全部
+       命名块；跨文档同名块以 ``文档/块`` 键收纳）。
     :param checks: 清晰度校验报告。
-    :param bindings: 块引用处的参数绑定记录（扩展字段，供命名空间/校验）。
-    :param frames: schema 命名空间帧层级（扩展字段，§5.7.4）。
     """
 
     tree: BehaviorTree
     blocks: dict[str, BlockDecl]
     checks: CheckReport
-    bindings: tuple[ParamBinding, ...] = ()
-    frames: tuple[FrameInfo, ...] = ()
+    blocks_tree: dict[str, Node] = field(default_factory=dict)

@@ -62,9 +62,8 @@ class BehaviorTreeParser:
         return ParseResult(
             tree=tree,
             blocks=structure.ir.blocks,
+            blocks_tree=expansion.blocks_tree,
             checks=report,
-            bindings=expansion.bindings,
-            frames=expansion.frames,
         )
 
 

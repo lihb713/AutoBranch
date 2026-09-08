@@ -12,10 +12,10 @@ from parser_fixtures import (
 )
 
 from webops.parser import (
-    ActionNode,
     ConditionNode,
     DocumentSource,
     FinishNode,
+    RefNode,
     SequenceNode,
 )
 
@@ -24,8 +24,41 @@ def _full_resolver():
     return build_resolver(*make_sources())
 
 
+def test_ref_becomes_refnode_not_inlined():
+    """4.2 ref 保留为 RefNode：携带 ref_target/args/returns，不内联子块树。"""
+    doc = {
+        "block 主": {
+            "Sequence": [
+                {"ref": "this/登录", "args": {"u": "this/a"}, "returns": {"r": "this/b"}}
+            ]
+        },
+        "block 登录": {
+            "inputs": {"u": "str"},
+            "outputs": "r",
+            "Sequence": [{"Step": {"action": "x"}}],
+        },
+    }
+    result = parse_doc("主", doc, _full_resolver())
+    ref_node = result.tree.root.children[0]
+    assert isinstance(ref_node, RefNode)
+    assert ref_node.ref_target == "this/登录"
+    assert ref_node.args == (("u", "this/a"),)
+    assert ref_node.returns == (("r", "this/b"),)
+
+
+def test_blocks_tree_contains_each_block():
+    """4.2 blocks_tree 含每个命名块的基础树；根块树与 tree.root 同一。"""
+    doc = {
+        "block 主": {"Sequence": [{"ref": "this/登录"}]},
+        "block 登录": {"Sequence": [{"Step": {"action": "x"}}]},
+    }
+    result = parse_doc("主", doc, _full_resolver())
+    assert set(result.blocks_tree) == {"主", "登录"}
+    assert result.blocks_tree["主"] is result.tree.root
+
+
 def test_ref_this_named_block():
-    """4.1 ``this/块名``：解析当前文档内的命名块。"""
+    """4.1 ``this/块名``：解析当前文档内的命名块（保留为 RefNode，不内联）。"""
     doc = {
         "block 主流程": {"Sequence": [{"ref": "this/登录"}, {"Finish": "结束"}]},
         "block 登录": {"Sequence": [{"Action": "填账号"}, {"Action": "填密码"}]},
@@ -34,15 +67,18 @@ def test_ref_this_named_block():
     assert result.checks.ok, result.checks.issues
     root = result.tree.root
     assert isinstance(root, SequenceNode)
-    inline, finish = root.children
-    assert isinstance(inline, SequenceNode)  # 命名块子树内联
-    assert [type(c).__name__ for c in inline.children] == ["ActionNode", "ActionNode"]
-    assert inline.children[0].description == "填账号"
+    ref_node, finish = root.children
+    assert isinstance(ref_node, RefNode)
+    assert ref_node.ref_target == "this/登录"
     assert isinstance(finish, FinishNode)
+    # 登录块以独立预展开树存于 blocks_tree（不在主树内内联）
+    login_tree = result.blocks_tree["登录"]
+    assert [type(c).__name__ for c in login_tree.children] == ["ActionNode", "ActionNode"]
+    assert login_tree.children[0].description == "填账号"
 
 
 def test_ref_cross_doc_block():
-    """4.1 ``文档名/块名``：跨文档引用某块（此处为登录文档根块）。"""
+    """4.1 ``文档名/块名``：跨文档引用某块（此处为登录文档根块，保留为 RefNode）。"""
     doc = {
         "block 出口": {
             "Sequence": [
@@ -58,15 +94,15 @@ def test_ref_cross_doc_block():
     }
     result = parse_doc("出口", doc, _full_resolver())
     assert result.checks.ok, result.checks.issues
-    inline = result.tree.root.children[0]
-    assert isinstance(inline, SequenceNode)
-    step = inline.children[0]
-    assert isinstance(step, SequenceNode)
-    assert isinstance(step.children[0], ActionNode)
+    ref_node = result.tree.root.children[0]
+    assert isinstance(ref_node, RefNode)
+    assert ref_node.ref_target == "登录/登录"
+    assert ref_node.args == (("username", "this/账号"), ("password", "this/密"))
+    assert set(result.blocks_tree) == {"出口", "登录"}
 
 
 def test_ref_cross_doc_whole_tree():
-    """4.1 ``文档名/文档名``：跨文档引用整个行为树（根块名 = 文档名）。"""
+    """4.1 ``文档名/文档名``：跨文档引用整个行为树（RefNode + 独立预展开树）。"""
     doc = {
         "block 用户": {
             "Sequence": [
@@ -85,12 +121,18 @@ def test_ref_cross_doc_whole_tree():
     }
     result = parse_doc("用户", doc, _full_resolver())
     assert result.checks.ok, result.checks.issues
-    inline = result.tree.root.children[0]
-    # 导出块内：登录整树（Sequence）+ Condition + Step
-    assert isinstance(inline, SequenceNode)
-    inner = inline.children[0]
-    assert isinstance(inner, SequenceNode)  # 登录整树内联
-    assert isinstance(inline.children[1], ConditionNode)
+    ref_node = result.tree.root.children[0]
+    assert isinstance(ref_node, RefNode)
+    assert ref_node.ref_target == "导出/导出"
+    assert ref_node.args == (("username", "this/账号"), ("password", "this/密"))
+    assert ref_node.returns == (("report", "this/导出报告"),)
+    # 导出块树独立预展开于 blocks_tree；其内部引用 登录/登录 亦为 RefNode
+    export_tree = result.blocks_tree["导出"]
+    assert isinstance(export_tree, SequenceNode)
+    inner = export_tree.children[0]
+    assert isinstance(inner, RefNode)
+    assert inner.ref_target == "登录/登录"
+    assert isinstance(export_tree.children[1], ConditionNode)
 
 
 def test_ref_missing_doc():
@@ -109,24 +151,17 @@ def test_ref_missing_block():
     assert any(i.code == "ref.missing_block" for i in result.checks.issues)
 
 
-def test_namespace_frames_hierarchy():
-    """4.2 引用处建立独立 schema 命名空间帧（对齐 §5.7.6 流转路径）。"""
+def test_blocks_tree_contains_all_docs_blocks():
+    """4.2 每块独立预展开：blocks_tree 含根文档与全部跨文档加载块的基础树。"""
     result = parse_doc("主流程", MAIN_DOC, _full_resolver())
     assert result.checks.ok, result.checks.issues
-    frames = {f.path: f for f in result.frames}
-    assert set(frames) == {"主流程/", "主流程/导出/", "主流程/导出/登录/"}
-    root = frames["主流程/"]
-    assert root.block == "主流程"
-    assert root.parent is None
-    assert root.children == ("导出",)
-    export = frames["主流程/导出/"]
-    assert export.block == "导出"
-    assert export.parent == "主流程/"
-    assert export.children == ("登录",)
-    login = frames["主流程/导出/登录/"]
-    assert login.block == "登录"
-    assert login.parent == "主流程/导出/"
-    assert login.children == ()
+    assert set(result.blocks_tree) == {"主流程", "导出", "登录"}
+    assert isinstance(result.blocks_tree["主流程"], SequenceNode)
+    export = result.blocks_tree["导出"]
+    assert isinstance(export, SequenceNode)
+    assert isinstance(export.children[0], RefNode)  # 导出内引用 登录/登录
+    login = result.blocks_tree["登录"]
+    assert isinstance(login, SequenceNode)
 
 
 def test_args_and_returns_recorded_on_ir():
@@ -140,13 +175,6 @@ def test_args_and_returns_recorded_on_ir():
     assert ref.args == (("username", "this/账号"), ("password", "this/密"))
     assert ref.returns == (("report", "this/导出报告"),)
     assert ref.bindings == ()
-
-
-def test_bindings_always_empty_in_result():
-    """4.2 args/returns 取代写入 后 bindings 恒空（Plan ③ 移除）。"""
-    result = parse_doc("主流程", MAIN_DOC, _full_resolver())
-    assert result.checks.ok, result.checks.issues
-    assert result.bindings == ()
 
 
 def test_export_doc_inputs_typed():

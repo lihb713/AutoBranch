@@ -15,13 +15,22 @@ from webops.parser.models import (
     ConditionNode,
     FinishNode,
     Node,
+    RefNode,
     RepeatNode,
     SelectorNode,
     SequenceNode,
     make_issue,
 )
 
-_BASIC_TYPES = (ActionNode, ConditionNode, SequenceNode, SelectorNode, RepeatNode, FinishNode)
+_BASIC_TYPES = (
+    ActionNode,
+    ConditionNode,
+    SequenceNode,
+    SelectorNode,
+    RepeatNode,
+    FinishNode,
+    RefNode,
+)
 
 
 def post_expansion_checks(tree: Node) -> tuple[CheckIssue, ...]:

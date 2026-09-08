@@ -18,16 +18,16 @@ from webops.parser import (
     InvalidDocumentError,
     Loc,
     MappingResolver,
-    ParamBinding,
+    Node,
     ParserError,
     ParseResult,
+    RefNode,
     RefNotFoundError,
     RepeatNode,
     SelectorNode,
     SequenceNode,
     make_issue,
 )
-from webops.parser.models import FrameInfo
 
 
 def test_action_node_fields():
@@ -87,22 +87,32 @@ def test_block_decl_fields():
     assert decl.config_overrides[0].name == "timeout"
 
 
+def test_ref_node_fields():
+    """1.1/1.2 RefNode：调用节点携带 ref_target / args / returns。"""
+    node = RefNode(
+        ref_target="this/登录",
+        args=(("u", "this/a"),),
+        returns=(("r", "this/b"),),
+    )
+    assert node.ref_target == "this/登录"
+    assert node.args == (("u", "this/a"),)
+    assert node.returns == (("r", "this/b"),)
+    assert isinstance(node, Node)
+
+
 def test_parse_result_fields():
-    """1.2 ParseResult：tree / blocks / checks（+ bindings/frames 扩展）。"""
+    """1.2 ParseResult：tree / blocks / blocks_tree / checks。"""
     result = ParseResult(
         tree=BehaviorTree(name="x", root=FinishNode()),
         blocks={},
         checks=CheckReport(ok=True),
-        bindings=(
-            ParamBinding(frame_path="x/", block_name="b", target_path="$this/b/i", value_expr="v"),
-        ),
-        frames=(FrameInfo(path="x/", block="x", parent=None, children=()),),
+        blocks_tree={"x": FinishNode()},
     )
     assert result.tree.name == "x"
     assert result.blocks == {}
     assert result.checks.ok is True
-    assert result.bindings[0].block_name == "b"
-    assert result.frames[0].path == "x/"
+    assert set(result.blocks_tree) == {"x"}
+    assert isinstance(result.blocks_tree["x"], FinishNode)
 
 
 def test_check_report_and_issue():

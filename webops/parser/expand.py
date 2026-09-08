@@ -3,9 +3,10 @@
 在中间表示之上执行：
 
 - 复合节点展开（§4.3 精确语义，规则集中于 ``EXPANSION_RULES`` 单一映射表）
-- 块引用解析（``this/块名``、``文档名/块名``、``文档名/文档名`` 跨文档整树）
-  与循环引用检测、展开深度防护
-- 引用处建立独立 schema 命名空间帧（§5.7.3/§5.7.4，函数式调用帧）
+- 块引用解析（``this/块名``、``文档名/块名`` 跨文档整树）与循环引用检测、
+  展开深度防护（静态，跨 ``blocks_tree`` 的 ref 图走查）
+- 每块独立预展开为基础树：``blocks_tree[块名]``（ref 保留为 ``RefNode``，
+  运行期动态调用，不再内联展开）
 - 变量契约校验（§5.3.2 作用域：只读写自己的 schema，单段 ``this/<名>``）
 - 函数式传参契约校验（ref ``args`` 注入声明输入、``returns`` 接收声明输出，
   ``inputs`` 全必填、``outputs`` 全赋值）
@@ -26,10 +27,9 @@ from webops.parser.models import (
     CheckIssue,
     ConditionNode,
     FinishNode,
-    FrameInfo,
     Loc,
     Node,
-    ParamBinding,
+    RefNode,
     RepeatNode,
     SelectorNode,
     SequenceNode,
@@ -120,33 +120,18 @@ def _display_path(path: str) -> str:
 
 @dataclass
 class ExpandContext:
-    """展开期共享上下文：文档缓存、帧栈、绑定/帧记录、校验问题。"""
+    """展开期共享上下文：文档缓存、校验问题。"""
 
     ir: DocumentIR
     resolver: RefResolver
     max_depth: int
-    stack: list[tuple[str, str]] = field(default_factory=list)
-    bindings: list[ParamBinding] = field(default_factory=list)
-    frames: list[FrameInfo] = field(default_factory=list)
     issues: list[CheckIssue] = field(default_factory=list)
     doc_cache: dict[str, DocumentIR] = field(default_factory=dict)
-    children_cache: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
     absent_docs: set[str] = field(default_factory=set)
     _doc_issues: dict[tuple[str, str, str], CheckIssue] = field(default_factory=dict)
 
     def add_issue(self, prefix: str, code: str, message: str, loc: Loc | None = None) -> None:
         self.issues.append(make_issue(prefix, code, message, loc))
-
-    def direct_children(self, ir: DocumentIR, block_name: str) -> frozenset[str]:
-        """块直接引用的块名集合（作为直接子帧的可见对象，§5.3.2）。"""
-        key = (ir.doc_id, block_name)
-        cached = self.children_cache.get(key)
-        if cached is not None:
-            return cached
-        node = ir.ir_by_block.get(block_name)
-        names = _collect_ref_blocks(node) if node is not None else frozenset()
-        self.children_cache[key] = names
-        return names
 
     def load_block(self, tdoc: str, tblock: str) -> tuple[DocumentIR, IRNode] | None:
         """加载目标块（本文档直接取；跨文档经 RefResolver 解析并缓存）。"""
@@ -179,63 +164,55 @@ class ExpandContext:
 
 @dataclass(frozen=True)
 class ExpansionResult:
-    """展开结果：基础节点树 + 绑定记录 + 命名空间帧 + 展开期校验问题。"""
+    """展开结果：根块基础树 + 每块预展开树 + 展开期校验问题。"""
 
     tree: Node
-    bindings: tuple[ParamBinding, ...]
-    frames: tuple[FrameInfo, ...]
+    blocks_tree: dict[str, Node]
     issues: tuple[CheckIssue, ...]
 
 
-def _collect_ref_blocks(node: IRNode | None) -> frozenset[str]:
-    """块自身 IR 中引用的块名集合（§5.3.2 直接子块可见范围）。"""
-    if node is None:
-        return frozenset()
-    names: set[str] = set()
-    if node.kind == "ref":
-        target = node.ref_target or ""
-        parts = [p for p in target.split("/") if p]
-        if len(parts) == 2:
-            names.add(parts[1])
-        return frozenset(names)
-    for child in node.children:
-        names |= _collect_ref_blocks(child)
-    for b in node.branches:
-        if b.when is not None:
-            names |= _collect_ref_blocks(b.when)
-        if b.target is not None:
-            names |= _collect_ref_blocks(b.target)
-    for sub in (node.action, node.condition, node.until, node.body):
-        if sub is not None:
-            names |= _collect_ref_blocks(sub)
-    return frozenset(names)
-
-
 def expand_document(ctx: ExpandContext) -> ExpansionResult:
-    """展开根块：基础节点树 + 绑定/帧记录 + 展开期校验问题。"""
-    root = ctx.ir.root_block
-    key = (ctx.ir.doc_id, root)
-    children = ctx.direct_children(ctx.ir, root)
-    root_path = f"{ctx.ir.doc_id}/"
-    ctx.frames.append(
-        FrameInfo(path=root_path, block=root, parent=None, children=tuple(sorted(children)))
-    )
-    ctx.stack.append(key)
-    try:
-        tree = _expand_ir(ctx.ir.root, ctx, root_path, children, 0)
-    finally:
-        ctx.stack.pop()
+    """对每块独立预展开为基础树；根块树 = ``tree``，全部块树存入 ``blocks_tree``。
+
+    遍历顺序：先根文档全部命名块，再跨文档缓存（``doc_cache``）中陆续加载的
+    文档全部命名块，直至无新文档。随后做跨块 ref 图的静态环/深度检测与声明级
+    output 全赋值校验。
+    """
+    blocks_tree: dict[str, Node] = {}
+    root_block = ctx.ir.root_block
+    seen_docs: set[str] = set()
+    while True:
+        pending = [ir for ir in _all_docs(ctx) if ir.doc_id not in seen_docs]
+        if not pending:
+            break
+        for ir in pending:
+            seen_docs.add(ir.doc_id)
+            for block_name in ir.ir_by_block:
+                tree = _expand_block_ir(ir, block_name, ctx)
+                if block_name not in blocks_tree:
+                    blocks_tree[block_name] = tree
+                else:
+                    blocks_tree[f"{ir.doc_id}/{block_name}"] = tree
+    root_tree = blocks_tree[root_block]
+    _check_ref_graph(ctx, blocks_tree)
     _check_all_block_outputs(ctx)
     return ExpansionResult(
-        tree=tree,
-        bindings=tuple(ctx.bindings),
-        frames=tuple(ctx.frames),
+        tree=root_tree,
+        blocks_tree=blocks_tree,
         issues=tuple(ctx.issues),
     )
 
 
+def _expand_block_ir(ir: DocumentIR, block_name: str, ctx: ExpandContext) -> Node:
+    """对单块 IR 展开为基础树（不含 ref 内联；遇 ref 生成 ``RefNode``）。"""
+    node = ir.ir_by_block.get(block_name)
+    if node is None:
+        return SequenceNode(loc=None)
+    return _expand_ir(node, ctx, 0)
+
+
 def _all_docs(ctx: ExpandContext) -> list[DocumentIR]:
-    """当前文档 + 展开期跨文档缓存（供声明级 output 校验遍历）。"""
+    """当前文档 + 展开期跨文档缓存（供逐块预展开与声明级 output 校验遍历）。"""
     docs = [ctx.ir]
     docs.extend(ctx.doc_cache.values())
     return docs
@@ -306,9 +283,7 @@ def _check_all_block_outputs(ctx: ExpandContext) -> None:
                 )
 
 
-def _check_schema_path(
-    ctx: ExpandContext, frame: str, children: frozenset[str], path_str: str, loc: Loc | None
-) -> None:
+def _check_schema_path(ctx: ExpandContext, path_str: str, loc: Loc | None) -> None:
     """变量契约校验：仅 ``this/<名>`` 单段合法（§5 函数式传参后无跨帧读写）。"""
     display = _display_path(path_str)
     at = loc.path if loc else "?"
@@ -332,27 +307,15 @@ def _check_schema_path(
     )
 
 
-def _scope_check_texts(
-    ctx: ExpandContext,
-    frame: str,
-    children: frozenset[str],
-    loc: Loc | None,
-    *texts: str | None,
-) -> None:
+def _scope_check_texts(ctx: ExpandContext, loc: Loc | None, *texts: str | None) -> None:
     for text in texts:
         if not text:
             continue
         for p in _iter_schema_paths(text):
-            _check_schema_path(ctx, frame, children, p, loc)
+            _check_schema_path(ctx, p, loc)
 
 
-def _expand_ir(
-    node: IRNode,
-    ctx: ExpandContext,
-    frame: str,
-    children: frozenset[str],
-    depth: int,
-) -> Node:
+def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
     if depth > ctx.max_depth:
         at = node.loc.path if node.loc else "?"
         ctx.add_issue(
@@ -361,13 +324,13 @@ def _expand_ir(
             f"展开嵌套过深（超过 {ctx.max_depth} 层上限，位于 {at}）",
             node.loc,
         )
-        return SequenceNode(loc=node.loc, frame=frame)
+        return SequenceNode(loc=node.loc)
     kind = node.kind
     rule = EXPANSION_RULES.get(kind)
     if rule is not None:
-        return rule(node, ctx, frame, children, depth)
+        return rule(node, ctx, depth)
     if kind == "Action":
-        _scope_check_texts(ctx, frame, children, node.loc, node.description)
+        _scope_check_texts(ctx, node.loc, node.description)
         decls = _iter_set_decls(node.description or "")
         set_targets = tuple(_display_path(p) for p, _ in decls)
         set_decls = tuple((_display_path(p), t) for p, t in decls)
@@ -377,46 +340,39 @@ def _expand_ir(
             set_targets=set_targets,
             set_decls=set_decls,
             loc=node.loc,
-            frame=frame,
         )
     if kind == "Condition":
-        _scope_check_texts(
-            ctx, frame, children, node.loc, node.description, node.target, node.predicate
-        )
+        _scope_check_texts(ctx, node.loc, node.description, node.target, node.predicate)
         return ConditionNode(
             description=node.description or "",
             target=node.target,
             predicate=node.predicate,
             loc=node.loc,
-            frame=frame,
         )
     if kind == "Sequence":
         return SequenceNode(
-            children=tuple(
-                _expand_ir(c, ctx, frame, children, depth + 1) for c in node.children
-            ),
+            children=tuple(_expand_ir(c, ctx, depth + 1) for c in node.children),
             loc=node.loc,
-            frame=frame,
         )
     if kind == "Selector":
         branches = tuple(
             BranchSpec(
                 condition=(
-                    _as_condition(_expand_ir(b.when, ctx, frame, children, depth + 1))
+                    _as_condition(_expand_ir(b.when, ctx, depth + 1))
                     if b.when is not None
                     else None
                 ),
-                child=_expand_ir(b.target, ctx, frame, children, depth + 1),
+                child=_expand_ir(b.target, ctx, depth + 1),
             )
             for b in node.branches
         )
-        return SelectorNode(branches=branches, loc=node.loc, frame=frame)
+        return SelectorNode(branches=branches, loc=node.loc)
     if kind == "Repeat":
         body = _expand_ir(
-            node.body or _empty_ir("Sequence", node.loc), ctx, frame, children, depth + 1
+            node.body or _empty_ir("Sequence", node.loc), ctx, depth + 1
         )
         until = (
-            _as_condition(_expand_ir(node.until, ctx, frame, children, depth + 1))
+            _as_condition(_expand_ir(node.until, ctx, depth + 1))
             if node.until is not None
             else None
         )
@@ -426,13 +382,12 @@ def _expand_ir(
             until=until,
             max=node.max or 0,
             loc=node.loc,
-            frame=frame,
         )
     if kind == "Finish":
-        return FinishNode(loc=node.loc, frame=frame)
+        return FinishNode(loc=node.loc)
     if kind == "ref":
-        return _expand_ref(node, ctx, frame, children, depth)
-    return SequenceNode(loc=node.loc, frame=frame)
+        return _expand_ref(node, ctx)
+    return SequenceNode(loc=node.loc)
 
 
 def _as_condition(node: Node) -> ConditionNode:
@@ -440,8 +395,8 @@ def _as_condition(node: Node) -> ConditionNode:
     if isinstance(node, ConditionNode):
         return node
     if isinstance(node, ActionNode):
-        return ConditionNode(description=node.description, loc=node.loc, frame=node.frame)
-    return ConditionNode(loc=node.loc, frame=node.frame)
+        return ConditionNode(description=node.description, loc=node.loc)
+    return ConditionNode(loc=node.loc)
 
 
 def _empty_ir(kind: str, loc: Loc | None = None) -> IRNode:
@@ -449,85 +404,85 @@ def _empty_ir(kind: str, loc: Loc | None = None) -> IRNode:
 
 
 def _rule_step(
-    node: IRNode, ctx: ExpandContext, frame: str, children: frozenset[str], depth: int
+    node: IRNode, ctx: ExpandContext, depth: int
 ) -> Node:
     """Step = Sequence(Action + Condition)。"""
     action = _expand_ir(
-        node.action or _empty_ir("Action", node.loc), ctx, frame, children, depth + 1
+        node.action or _empty_ir("Action", node.loc), ctx, depth + 1
     )
     cond = _expand_ir(
-        node.condition or _empty_ir("Condition", node.loc), ctx, frame, children, depth + 1
+        node.condition or _empty_ir("Condition", node.loc), ctx, depth + 1
     )
-    return SequenceNode(children=(action, _as_condition(cond)), loc=node.loc, frame=frame)
+    return SequenceNode(children=(action, _as_condition(cond)), loc=node.loc)
 
 
 def _rule_branch(
-    node: IRNode, ctx: ExpandContext, frame: str, children: frozenset[str], depth: int
+    node: IRNode, ctx: ExpandContext, depth: int
 ) -> Node:
     """Branch = Action + Selector（顺序检查 when，第一个命中生效，无匹配走 otherwise）。"""
     action = _expand_ir(
-        node.action or _empty_ir("Action", node.loc), ctx, frame, children, depth + 1
+        node.action or _empty_ir("Action", node.loc), ctx, depth + 1
     )
     branches = tuple(
         BranchSpec(
             condition=(
-                _as_condition(_expand_ir(b.when, ctx, frame, children, depth + 1))
+                _as_condition(_expand_ir(b.when, ctx, depth + 1))
                 if b.when is not None
                 else None
             ),
-            child=_expand_ir(b.target, ctx, frame, children, depth + 1),
+            child=_expand_ir(b.target, ctx, depth + 1),
         )
         for b in node.branches
     )
-    selector = SelectorNode(branches=branches, loc=node.loc, frame=frame)
-    return SequenceNode(children=(action, selector), loc=node.loc, frame=frame)
+    selector = SelectorNode(branches=branches, loc=node.loc)
+    return SequenceNode(children=(action, selector), loc=node.loc)
 
 
 def _rule_loop_until(
-    node: IRNode, ctx: ExpandContext, frame: str, children: frozenset[str], depth: int
+    node: IRNode, ctx: ExpandContext, depth: int
 ) -> Node:
     """LoopUntil = Repeat(mode=loop_until, until=条件, max=上限)：每轮先判 until。"""
     action = _expand_ir(
-        node.action or _empty_ir("Action", node.loc), ctx, frame, children, depth + 1
+        node.action or _empty_ir("Action", node.loc), ctx, depth + 1
     )
     until = _as_condition(
         _expand_ir(
-            node.until or _empty_ir("Condition", node.loc), ctx, frame, children, depth + 1
+            node.until or _empty_ir("Condition", node.loc), ctx, depth + 1
         )
     )
     return RepeatNode(
-        body=action, mode="loop_until", until=until, max=node.max or 0, loc=node.loc, frame=frame
+        body=action, mode="loop_until", until=until, max=node.max or 0, loc=node.loc
     )
 
 
 def _rule_retry(
-    node: IRNode, ctx: ExpandContext, frame: str, children: frozenset[str], depth: int
+    node: IRNode, ctx: ExpandContext, depth: int
 ) -> Node:
     """Retry = Repeat(mode=retry, max=上限)：每轮后判 body 执行结果。"""
     body = _expand_ir(
-        node.body or _empty_ir("Sequence", node.loc), ctx, frame, children, depth + 1
+        node.body or _empty_ir("Sequence", node.loc), ctx, depth + 1
     )
     return RepeatNode(
-        body=body, mode="retry", until=None, max=node.max or 0, loc=node.loc, frame=frame
+        body=body, mode="retry", until=None, max=node.max or 0, loc=node.loc
     )
 
 
 def _rule_if_then_else(
-    node: IRNode, ctx: ExpandContext, frame: str, children: frozenset[str], depth: int
+    node: IRNode, ctx: ExpandContext, depth: int
 ) -> Node:
     """IfThenElse = Selector(if→then, else→else)：先判 if 条件。"""
     cond = _as_condition(
         _expand_ir(
-            node.condition or _empty_ir("Condition", node.loc), ctx, frame, children, depth + 1
+            node.condition or _empty_ir("Condition", node.loc), ctx, depth + 1
         )
     )
     then_node = node.children[0] if node.children else None
     else_node = node.children[1] if len(node.children) > 1 else None
     then = _expand_ir(
-        then_node or _empty_ir("Sequence", node.loc), ctx, frame, children, depth + 1
+        then_node or _empty_ir("Sequence", node.loc), ctx, depth + 1
     )
     els = _expand_ir(
-        else_node or _empty_ir("Sequence", node.loc), ctx, frame, children, depth + 1
+        else_node or _empty_ir("Sequence", node.loc), ctx, depth + 1
     )
     return SelectorNode(
         branches=(
@@ -535,12 +490,11 @@ def _rule_if_then_else(
             BranchSpec(condition=None, child=els),
         ),
         loc=node.loc,
-        frame=frame,
     )
 
 
 #: 复合节点展开规则映射（§4.3 精确语义，单一映射表，供表驱动测试直接覆盖）
-EXPANSION_RULES: dict[str, Callable[[IRNode, ExpandContext, str, frozenset[str], int], Node]] = {
+EXPANSION_RULES: dict[str, Callable[[IRNode, ExpandContext, int], Node]] = {
     "Step": _rule_step,
     "Branch": _rule_branch,
     "LoopUntil": _rule_loop_until,
@@ -549,9 +503,13 @@ EXPANSION_RULES: dict[str, Callable[[IRNode, ExpandContext, str, frozenset[str],
 }
 
 
-def _expand_ref(
-    node: IRNode, ctx: ExpandContext, frame: str, children: frozenset[str], depth: int
-) -> Node:
+def _expand_ref(node: IRNode, ctx: ExpandContext) -> Node:
+    """ref 保留为 ``RefNode``（不再内联）：静态校验 + 返回调用节点。
+
+    静态校验：目标语法/存在性、args⊆inputs、inputs 全必填、returns⊆outputs、
+    实参与 returns 目标作用域单段。环/深度检测在 ``_check_ref_graph`` 中
+    跨 ``blocks_tree`` 的 ref 图统一走查（本函数不再递归展开目标块）。
+    """
     loc = node.loc
     at = loc.path if loc else "?"
     target = (node.ref_target or "").strip()
@@ -563,22 +521,9 @@ def _expand_ref(
             f"ref 目标 '{target}' 语法错误（应为 'this/块名' 或 '文档名/块名'，位于 {at}）",
             loc,
         )
-        return SequenceNode(loc=loc, frame=frame)
+        return SequenceNode(loc=loc)
     tdoc = ctx.ir.doc_id if parts[0] == "this" else parts[0]
     tblock = parts[1]
-    key = (tdoc, tblock)
-    if key in ctx.stack:
-        chain = " -> ".join(f"{d}/{b}" for d, b in [*ctx.stack, key])
-        ctx.add_issue("ref", "cycle", f"检测到循环块引用: {chain}（位于 {at}）", loc)
-        return SequenceNode(loc=loc, frame=frame)
-    if len(ctx.stack) >= ctx.max_depth:
-        ctx.add_issue(
-            "ref",
-            "recursion_depth",
-            f"引用展开嵌套超过上限 {ctx.max_depth} 层（位于 {at}）",
-            loc,
-        )
-        return SequenceNode(loc=loc, frame=frame)
     result = ctx.load_block(tdoc, tblock)
     if result is None:
         if tdoc in ctx.absent_docs:
@@ -595,9 +540,9 @@ def _expand_ref(
                 f"引用目标块 '{tdoc}/{tblock}' 不存在（ref: {target}，位于 {at}）",
                 loc,
             )
-        return SequenceNode(loc=loc, frame=frame)
-    t_ir, t_node = result
-    t_decl = t_ir.blocks.get(tblock)
+        return SequenceNode(loc=loc)
+    _t_ir, _t_node = result
+    t_decl = _t_ir.blocks.get(tblock)
     t_inputs = t_decl.inputs if t_decl is not None else ()
     t_outputs = t_decl.outputs if t_decl is not None else ()
     input_names = {n for n, _ in t_inputs}
@@ -614,7 +559,7 @@ def _expand_ref(
             )
         else:
             bound_vars.add(arg_name)
-        _scope_check_texts(ctx, frame, children, loc, expr)
+        _scope_check_texts(ctx, loc, expr)
     # inputs 全必填
     missing = [n for n, _ in t_inputs if n not in bound_vars]
     if missing:
@@ -635,18 +580,73 @@ def _expand_ref(
                 f"（声明: {', '.join(t_outputs) or '无'}，位于 {at}）",
                 loc,
             )
-        _check_schema_path(ctx, frame, children, target_var, loc)
-    child_frame = f"{frame}{tblock}/"
-    child_children = ctx.direct_children(t_ir, tblock)
-    ctx.frames.append(
-        FrameInfo(
-            path=child_frame, block=tblock, parent=frame, children=tuple(sorted(child_children))
-        )
-    )
-    ctx.stack.append(key)
-    try:
-        # ref 嵌套深度由 ctx.stack（调用栈帧语义）单独守护，不叠加到
-        # 复合节点嵌套深度计数器（depth）上
-        return _expand_ir(t_node, ctx, child_frame, child_children, depth)
-    finally:
-        ctx.stack.pop()
+        _check_schema_path(ctx, target_var, loc)
+    return RefNode(ref_target=target, args=node.args, returns=node.returns, loc=loc)
+
+
+def _find_block_tree(
+    blocks_tree: dict[str, Node], tdoc: str, tblock: str
+) -> Node | None:
+    """按 ``blocks_tree`` 定位块树：优先 ``文档/块`` 键（跨文档同名块），
+    否则按纯块名（``this/`` 同文档引用与单文档场景）。"""
+    qualified = blocks_tree.get(f"{tdoc}/{tblock}")
+    if qualified is not None:
+        return qualified
+    return blocks_tree.get(tblock)
+
+
+def _check_ref_graph(ctx: ExpandContext, blocks_tree: dict[str, Node]) -> None:
+    """静态环/深度检测：沿根块可达的 ref 图走查（跨 ``blocks_tree``）。
+
+    与旧内联展开语义一致：只检查从根块可达的引用链；``path`` 即调用链
+    （栈语义，进入/退出各自拷贝），遇已在链上的目标块 → ``ref.cycle``；
+    链长达到上限 → ``ref.recursion_depth``。
+    """
+    root_tree = blocks_tree.get(ctx.ir.root_block)
+    if root_tree is None:
+        return
+    path = [(ctx.ir.doc_id, ctx.ir.root_block)]
+    _walk_ref_edges(ctx, blocks_tree, root_tree, path)
+
+
+def _walk_ref_edges(
+    ctx: ExpandContext, blocks_tree: dict[str, Node], node: Node, path: list[tuple[str, str]]
+) -> None:
+    """DFS 走查块树内全部 ref 边；遇 RefNode 校验环/深度后进入目标块树。"""
+    if isinstance(node, RefNode):
+        target = (node.ref_target or "").strip()
+        parts = [p for p in target.split("/") if p]
+        if len(parts) != 2:
+            return
+        tdoc = ctx.ir.doc_id if parts[0] == "this" else parts[0]
+        tblock = parts[1]
+        key = (tdoc, tblock)
+        at = node.loc.path if node.loc else "?"
+        if key in path:
+            chain = " -> ".join(f"{d}/{b}" for d, b in [*path, key])
+            ctx.add_issue("ref", "cycle", f"检测到循环块引用: {chain}（位于 {at}）", node.loc)
+            return
+        if len(path) >= ctx.max_depth:
+            ctx.add_issue(
+                "ref",
+                "recursion_depth",
+                f"引用展开嵌套超过上限 {ctx.max_depth} 层（位于 {at}）",
+                node.loc,
+            )
+            return
+        child = _find_block_tree(blocks_tree, tdoc, tblock)
+        if child is not None:
+            _walk_ref_edges(ctx, blocks_tree, child, [*path, key])
+        return
+    if isinstance(node, SequenceNode):
+        for c in node.children:
+            _walk_ref_edges(ctx, blocks_tree, c, path)
+    elif isinstance(node, SelectorNode):
+        for b in node.branches:
+            if b.condition is not None:
+                _walk_ref_edges(ctx, blocks_tree, b.condition, path)
+            _walk_ref_edges(ctx, blocks_tree, b.child, path)
+    elif isinstance(node, RepeatNode):
+        if node.until is not None:
+            _walk_ref_edges(ctx, blocks_tree, node.until, path)
+        _walk_ref_edges(ctx, blocks_tree, node.body, path)
