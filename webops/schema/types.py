@@ -1,117 +1,121 @@
-"""M3 schema 命名空间：类型契约（契约 §5.3.5）。
+"""M3 schema 命名空间：类型契约（契约 §5.3.5，收敛版）。
 
-``SUPPORTED_TYPES`` 集中登记支持的类型与对应的校验函数。写入时声明
-类型并即时校验，读取/提取时二次强校验；校验失败触发
-``SchemaTypeError``（断言失败语义），由上层（M7）捕获并终止流程。
+``TYPE_REGISTRY`` 把 DSL token 映射到**真实 Python 类型**，校验统一
+``isinstance``；``coerce`` 把网页提取的 str 转成目标真实类型。类型即
+存储类型——声明 ``int`` 的变量存的就是 Python ``int``。
+
+自定义类型扩展 = 注册表加一行（token + Python 类 + 可选 cast）。当前
+唯一自定义类型是 ``page_ref``（页签引用，无 cast，只能由引擎 open()
+产生）。校验失败触发 ``SchemaTypeError``（断言失败语义），由 M7 捕获。
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, datetime
+from dataclasses import dataclass
 
 from webops.schema.errors import SchemaTypeError
 from webops.schema.models import PageRef, Value
 
 
-def _is_money(value: Value) -> bool:
+@dataclass(frozen=True)
+class TypeSpec:
+    """类型注册项：DSL token → 真实 Python 类型 + 可选 cast。
+
+    :param token: DSL 引用名（str/int/float/bool/page_ref）。
+    :param py_type: 真实 Python 类型（isinstance 校验目标）。
+    :param cast: 网页 str → 该类型的转换；None = 不可由文本产生
+      （如 page_ref，只能由引擎函数生成）。
+    """
+
+    token: str
+    py_type: type
+    cast: Callable[[Value], Value] | None = None
+
+
+def _to_int(value: Value) -> int:
     if isinstance(value, bool):
+        raise SchemaTypeError(f"不能把布尔转成整数: {value!r}")
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise SchemaTypeError(f"无法转成 int: {value!r}") from exc
+
+
+def _to_float(value: Value) -> float:
+    if isinstance(value, bool):
+        raise SchemaTypeError(f"不能把布尔转成浮点: {value!r}")
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise SchemaTypeError(f"无法转成 float: {value!r}") from exc
+
+
+def _to_bool(value: Value) -> bool:
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("true", "1", "yes", "on"):
+        return True
+    if s in ("false", "0", "no", "off", ""):
         return False
-    if isinstance(value, (int, float)):
-        return True
-    if isinstance(value, str):
-        try:
-            float(value.strip())
-            return True
-        except ValueError:
-            return False
-    return False
+    raise SchemaTypeError(f"无法转成 bool: {value!r}")
 
 
-def _is_order_no(value: Value) -> bool:
-    return (
-        isinstance(value, str)
-        and bool(value.strip())
-        and not any(ch.isspace() for ch in value)
-    )
-
-
-def _is_url(value: Value) -> bool:
-    return (
-        isinstance(value, str)
-        and (value.startswith("http://") or value.startswith("https://"))
-        and len(value) > 7
-    )
-
-
-def _is_date(value: Value) -> bool:
-    if isinstance(value, (date, datetime)):
-        return True
-    if isinstance(value, str):
-        try:
-            datetime.strptime(value, "%Y-%m-%d")
-            return True
-        except ValueError:
-            return False
-    return False
-
-
-def _is_text(value: Value) -> bool:
-    return isinstance(value, str)
-
-
-def _is_page_ref(value: Value) -> bool:
-    return isinstance(value, PageRef)
-
-
-def _is_bool(value: Value) -> bool:
-    return isinstance(value, bool)
-
-
-def _is_int(value: Value) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def _is_number(value: Value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-SUPPORTED_TYPES: dict[str, Callable[[Value], bool]] = {
-    "金额": _is_money,
-    "订单号": _is_order_no,
-    "URL": _is_url,
-    "日期": _is_date,
-    "文本": _is_text,
-    "页面引用": _is_page_ref,
-    "布尔": _is_bool,
-    "整数": _is_int,
-    "数字": _is_number,
+TYPE_REGISTRY: dict[str, TypeSpec] = {
+    "str": TypeSpec("str", str, lambda v: str(v)),
+    "int": TypeSpec("int", int, _to_int),
+    "float": TypeSpec("float", float, _to_float),
+    "bool": TypeSpec("bool", bool, _to_bool),
+    "page_ref": TypeSpec("page_ref", PageRef, None),
 }
 
 
-def validate_type_name(type_name: str) -> None:
-    """校验类型名在登记表内，否则断言失败。"""
-    if type_name not in SUPPORTED_TYPES:
+def validate_type_name(token: str) -> None:
+    if token not in TYPE_REGISTRY:
         raise SchemaTypeError(
-            f"不支持的变量类型: {type_name!r}（支持: {sorted(SUPPORTED_TYPES)}）"
+            f"不支持的变量类型: {token!r}（支持: {sorted(TYPE_REGISTRY)}）"
         )
 
 
-def check_type(type_name: str, value: Value) -> None:
-    """强校验值是否符合声明类型，不匹配触发断言失败（契约 §5.3.5）。"""
-    validate_type_name(type_name)
-    if not SUPPORTED_TYPES[type_name](value):
-        raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 {type_name!r}")
+def check_type(token: str, value: Value) -> None:
+    """强校验值是否是该 token 对应 Python 类型的实例（契约 §5.3.5）。"""
+    spec = TYPE_REGISTRY.get(token)
+    if spec is None:
+        raise SchemaTypeError(f"不支持的变量类型: {token!r}")
+    if token == "int" and isinstance(value, bool):
+        raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 'int'（排除布尔）")
+    if not isinstance(value, spec.py_type):
+        raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 {token!r}")
+
+
+def coerce(token: str, raw: Value) -> Value:
+    """按 token 把值转成真实存储类型（set 标注驱动；网页值→Python 类型）。
+
+    ``cast is None``（如 page_ref）拒绝文本转换——只能由引擎函数产生。
+    """
+    spec = TYPE_REGISTRY.get(token)
+    if spec is None:
+        raise SchemaTypeError(f"不支持的变量类型: {token!r}")
+    if isinstance(raw, spec.py_type) and token != "int":
+        return raw
+    if spec.cast is None:
+        raise SchemaTypeError(
+            f"类型 {token!r} 不能由值 {raw!r} 转换，只能由引擎函数产生"
+        )
+    if token == "int" and isinstance(raw, spec.py_type) and isinstance(raw, bool):
+        raise SchemaTypeError(f"不能把布尔存成 int: {raw!r}")
+    return spec.cast(raw)
 
 
 def infer_type(value: Value) -> str:
-    """按值推断类型（用于配置参数缺省声明类型）。"""
+    """按 Python 值类型推断 token（用于缺省声明类型）。"""
     if isinstance(value, bool):
-        return "布尔"
+        return "bool"
     if isinstance(value, int):
-        return "整数"
+        return "int"
     if isinstance(value, float):
-        return "数字"
+        return "float"
     if isinstance(value, PageRef):
-        return "页面引用"
-    return "文本"
+        return "page_ref"
+    return "str"

@@ -8,7 +8,8 @@
 - ``SchemaSpace``（``enter_block`` / ``exit_block`` / ``write`` / ``read`` /
   ``set_config`` / ``resolve_config`` / ``current_page`` / ``page_refs``）
 - ``SchemaFrame`` / ``BlockDecl`` / ``PageRef`` / ``Value``
-- ``SUPPORTED_TYPES`` / ``check_type`` / ``infer_type`` / ``validate_type_name``
+- ``TYPE_REGISTRY`` / ``check_type`` / ``coerce`` / ``infer_type`` /
+  ``validate_type_name``
 - 可分类异常：``SchemaError`` / ``SchemaPathError`` / ``SchemaScopeError`` /
   ``SchemaTypeError``
 """
@@ -22,8 +23,9 @@ from webops.schema.errors import (
 from webops.schema.models import BlockDecl, PageRef, SchemaFrame, Value
 from webops.schema.space import SchemaSpace
 from webops.schema.types import (
-    SUPPORTED_TYPES,
+    TYPE_REGISTRY,
     check_type,
+    coerce,
     infer_type,
     validate_type_name,
 )
@@ -34,8 +36,9 @@ __all__ = [
     "BlockDecl",
     "PageRef",
     "Value",
-    "SUPPORTED_TYPES",
+    "TYPE_REGISTRY",
     "check_type",
+    "coerce",
     "infer_type",
     "validate_type_name",
     "SchemaError",
