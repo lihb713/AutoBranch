@@ -23,7 +23,7 @@ from webops.schema import SchemaSpace
 from webops.schema.errors import SchemaError
 
 if TYPE_CHECKING:
-    from webops.parser.models import BehaviorTree, BlockDecl
+    from webops.parser.models import BehaviorTree, BlockDecl, Node
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +67,16 @@ class Engine:
         tree: BehaviorTree,
         blocks: dict[str, BlockDecl],
         config: RunConfig,
+        blocks_tree: dict[str, Node] | None = None,
     ) -> RunResult:
         """执行入口（§9.8 ⓪/①/②）：会话初始化 → 遍历 → 返回运行结果。
 
         校验失败（行为树/块声明/配置缺失或非法）直接返回修正信息，不启动任何
         会话、遍历与报告；成功路径每次运行创建全新浏览器 context、注入全局
         默认配置到根级 schema、遍历结束后统一释放 context。
+
+        :param blocks_tree: 每块预展开的可执行基础树（ref 节点运行期动态调用的
+          目标查找表；None/空 dict 表示无 ref 场景）。
         """
         self._run_context = None
         problem = self._validate_input(tree, blocks, config)
@@ -91,6 +95,7 @@ class Engine:
             browser=self._browser,
             blocks=blocks,
             leaf_executor=self._leaf_executor or make_default_leaf_executor(config, space),
+            blocks_tree=blocks_tree or {},
         )
         self._run_context = ctx
         traverser = Traverser(ctx)
@@ -135,7 +140,7 @@ class Engine:
         state = self._run_context.reporter.exec_state()
         try:
             variables = self._run_context.space.snapshot_variables(
-                self._run_context.current_frame
+                self._run_context.space.root
             )
         except Exception:
             variables = []

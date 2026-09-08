@@ -151,10 +151,10 @@ class TestGlobalTimeout:
 
 
 class TestTimeoutInheritance:
-    """任务 3.5：块覆盖 timeout 的叶子用覆盖值、其余用全局默认。"""
+    """任务 3.5：块覆盖 timeout 的叶子用覆盖值、其余用全局默认（经 ref 建帧）。"""
 
     def test_block_override_and_inheritance(self, config) -> None:
-        from webops.parser.models import BlockDecl, ConfigOverride
+        from webops.parser.models import BlockDecl, ConfigOverride, RefNode
 
         blocks = {
             "登录": BlockDecl(
@@ -162,24 +162,25 @@ class TestTimeoutInheritance:
                 doc_id="主流程",
                 config_overrides=(ConfigOverride(name="timeout", value=0.3),),
             ),
+            "子块": BlockDecl(name="子块", doc_id="主流程"),
         }
-        ctx = make_run_context(config, blocks=blocks)
-        node = seq(
-            action("根叶子", frame="主流程/"),
-            seq(action("块叶子", frame="主流程/登录/"), frame="主流程/登录/"),
-            seq(action("子块叶子", frame="主流程/登录/子块/"), frame="主流程/登录/子块/"),
-        )
-        assert Traverser(ctx).tick(node) == SUCCESS
+        blocks_tree = {
+            "主流程": seq(action("根叶子"), RefNode(ref_target="this/登录")),
+            "登录": seq(action("块叶子"), RefNode(ref_target="this/子块")),
+            "子块": seq(action("子块叶子")),
+        }
+        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        assert Traverser(ctx).tick(blocks_tree["主流程"]) == SUCCESS
         # 全局默认（根级）: config.timeout = 120
         assert ctx.leaf_executor.timeouts["根叶子"] == 120.0
-        # 块覆盖值: 登录块配置覆盖 timeout=0.3
+        # 块覆盖值: 登录块配置覆盖 timeout=0.3（经 ref 建帧注入）
         assert ctx.leaf_executor.timeouts["块叶子"] == 0.3
         # 三级继承: 子块无覆盖 → 继承最近祖先（登录块）的 0.3
         assert ctx.leaf_executor.timeouts["子块叶子"] == 0.3
 
     def test_block_override_used_by_blocking_leaf(self, config) -> None:
         from webops.orchestrator import RunConfig
-        from webops.parser.models import BlockDecl, ConfigOverride
+        from webops.parser.models import BlockDecl, ConfigOverride, RefNode
 
         blocks = {
             "登录": BlockDecl(
@@ -189,7 +190,12 @@ class TestTimeoutInheritance:
             ),
         }
         cfg = RunConfig(report_dir=config.report_dir, timeout=120.0)
-        ctx = make_run_context(cfg, blocks=blocks, leaf_executor=BlockingLeaf(0.15))
-        node = seq(seq(action("块内慢动作", frame="主流程/登录/"), frame="主流程/登录/"))
-        assert Traverser(ctx).tick(node) == FAILURE
+        blocks_tree = {
+            "主流程": seq(RefNode(ref_target="this/登录")),
+            "登录": seq(action("块内慢动作")),
+        }
+        ctx = make_run_context(
+            cfg, blocks=blocks, blocks_tree=blocks_tree, leaf_executor=BlockingLeaf(0.15)
+        )
+        assert Traverser(ctx).tick(blocks_tree["主流程"]) == FAILURE
         assert "执行超时" in ctx.failure_reason

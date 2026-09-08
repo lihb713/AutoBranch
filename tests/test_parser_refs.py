@@ -164,6 +164,42 @@ def test_blocks_tree_contains_all_docs_blocks():
     assert isinstance(login, SequenceNode)
 
 
+def test_cross_doc_block_internal_this_resolves_to_owner_doc():
+    """handoff 2：跨文档块内部的 ``this/块`` 解析到**所属文档**（非根文档）。
+
+    主流程（根文档）引用 导出/导出；导出块内部引用 this/登录——`this` 应为
+    所属文档（导出），而非根文档（主流程）。旧实现恒解析到根文档会误报
+    ref.missing_block。
+    """
+    resolver = build_resolver(
+        DocumentSource(
+            id="主流程",
+            data={"block 主流程": {"Sequence": [{"ref": "导出/导出"}]}},
+        ),
+        DocumentSource(
+            id="导出",
+            data={
+                "block 导出": {"Sequence": [{"ref": "this/登录"}]},
+                "block 登录": {
+                    "Sequence": [{"Step": {"action": "x", "expect": "出现"}}]
+                },
+            },
+        ),
+    )
+    result = parse_doc("主流程", {"block 主流程": {"Sequence": [{"ref": "导出/导出"}]}}, resolver)
+    assert result.checks.ok, result.checks.issues
+    # 导出块树内的 this/登录 保留为 RefNode，目标解析到所属文档（导出）
+    export_tree = result.blocks_tree["导出"]
+    inner = export_tree.children[0]
+    assert isinstance(inner, RefNode)
+    assert inner.ref_target == "this/登录"
+    # 登录块来自导出文档，被预展开进 blocks_tree
+    assert "登录" in result.blocks_tree
+    assert [type(c).__name__ for c in result.blocks_tree["登录"].children] == [
+        "SequenceNode"
+    ]
+
+
 def test_args_and_returns_recorded_on_ir():
     """4.2 引用处记录 args（实参）与 returns（回收输出）而非 bindings。"""
     from webops.parser.document import parse_structure

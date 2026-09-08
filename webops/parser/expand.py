@@ -522,7 +522,7 @@ def _expand_ref(node: IRNode, ctx: ExpandContext) -> Node:
             loc,
         )
         return SequenceNode(loc=loc)
-    tdoc = ctx.ir.doc_id if parts[0] == "this" else parts[0]
+    tdoc = (node.loc.doc_id if node.loc else ctx.ir.doc_id) if parts[0] == "this" else parts[0]
     tblock = parts[1]
     result = ctx.load_block(tdoc, tblock)
     if result is None:
@@ -618,7 +618,7 @@ def _walk_ref_edges(
         parts = [p for p in target.split("/") if p]
         if len(parts) != 2:
             return
-        tdoc = ctx.ir.doc_id if parts[0] == "this" else parts[0]
+        tdoc = (node.loc.doc_id if node.loc else ctx.ir.doc_id) if parts[0] == "this" else parts[0]
         tblock = parts[1]
         key = (tdoc, tblock)
         at = node.loc.path if node.loc else "?"

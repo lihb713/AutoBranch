@@ -13,8 +13,7 @@ def _tree() -> BehaviorTree:
     return BehaviorTree(
         name="主流程",
         root=SequenceNode(
-            children=(action("动作", frame="主流程/"),),
-            frame="主流程/",
+            children=(action("动作"),),
         ),
     )
 

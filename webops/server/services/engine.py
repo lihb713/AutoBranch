@@ -141,7 +141,9 @@ class EmbeddedEngineService(EngineService):
         with self._lock:
             self._runs[run_id] = (engine, None)
         try:
-            run_result = engine.run(result.tree, result.blocks, self._build_run_config())
+            run_result = engine.run(
+                result.tree, result.blocks, self._build_run_config(), result.blocks_tree
+            )
         finally:
             with self._lock:
                 self._runs[run_id] = (engine, engine.get_exec_state())

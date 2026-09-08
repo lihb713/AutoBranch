@@ -399,6 +399,7 @@ class EngineFunctions:
                 "当前 schema 帧不可用，无法写入变量",
                 {"code": ErrorCode.INVALID_ARGUMENT},
             )
+        target = self._normalize_var_path(target)
         type_name = self._declared_type(frame, target)
         if not type_name:
             # 无声明（None）或空类型 ""（M7 ctx.schema_decl 对块 outputs/inputs
@@ -488,11 +489,10 @@ class EngineFunctions:
             return None, None, ref_result
         return page_handle, ref_result.detail["resolution"], None
 
-    @staticmethod
-    def _declared_type(frame: SchemaFrame, path: str) -> str | None:
+    def _declared_type(self, frame: SchemaFrame, path: str) -> str | None:
         """目标变量已声明的类型（帧声明/已写入声明），未声明返回 None。"""
         try:
-            _, var = resolve_target(frame, path)
+            _, var = resolve_target(frame, self._normalize_var_path(path))
         except SchemaError:
             return None
         for source in (frame.outputs, frame.inputs, frame.declared):

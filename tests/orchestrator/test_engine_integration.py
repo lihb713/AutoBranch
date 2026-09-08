@@ -23,7 +23,7 @@ from webops.parser.models import BehaviorTree
 def _tree() -> BehaviorTree:
     return BehaviorTree(
         name="主流程",
-        root=seq(action("动作", frame="主流程/")),
+        root=seq(action("动作")),
     )
 
 
@@ -100,18 +100,17 @@ class TestEngineEndToEnd:
         tree = BehaviorTree(
             name="主流程",
             root=seq(
-                action("打开页面", frame="主流程/"),
+                action("打开页面"),
                 seq(
-                    action("填用户名", frame="主流程/登录/"),
-                    cond("用户名已填", frame="主流程/登录/"),
-                    frame="主流程/登录/",
+                    action("填用户名"),
+                    cond("用户名已填"),
                 ),
                 sel(
-                    branch(cond("已登录", frame="主流程/"), action("进入工作台", frame="主流程/")),
-                    branch(None, action("登录页停留", frame="主流程/")),
+                    branch(cond("已登录"), action("进入工作台")),
+                    branch(None, action("登录页停留")),
                 ),
-                repeat(action("刷新页面", frame="主流程/"), mode="retry", max=3),
-                cond("最终状态OK", frame="主流程/"),
+                repeat(action("刷新页面"), mode="retry", max=3),
+                cond("最终状态OK"),
             ),
         )
         result = engine.run(tree, {}, config)
@@ -120,7 +119,7 @@ class TestEngineEndToEnd:
         final = engine.get_exec_state()
         assert final.finished is True
         descs = [r.node_desc for r in final.completed]
-        # 块引用内叶子、retry 叶子、otherwise 分支叶子均执行
+        # 嵌套子序列、retry 叶子、otherwise 分支叶子均执行
         assert "填用户名" in descs
         assert "刷新页面" in descs
         assert "登录页停留" in descs
@@ -209,8 +208,8 @@ class TestRealBrowserSmoke:
         tree = BehaviorTree(
             name="主流程",
             root=seq(
-                action("打开测试页", frame="主流程/"),
-                cond("页面已打开", frame="主流程/"),
+                action("打开测试页"),
+                cond("页面已打开"),
             ),
         )
         result = engine.run(tree, {}, RunConfig(report_dir=config.report_dir))

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from webops.orchestrator.models import OrchestratorError, RunConfig
@@ -35,6 +35,8 @@ class RunContext:
     :param reporter: M8 报告记录器（节点报告 / 截图 / 执行状态）。
     :param browser: M1 浏览器驱动（会话生命周期）。
     :param blocks: M2 块声明表（块名 -> ``BlockDecl``，建帧注入配置覆盖）。
+    :param blocks_tree: 每块预展开的可执行基础树映射（块名 -> ``Node``，
+      ref 节点运行期动态调用的目标查找表；空 dict 表示无 ref 场景）。
     :param leaf_executor: 叶子执行器（默认包装 M6 ``execute_leaf``；测试注入 mock）。
     :param failure_reason: 首个失败节点描述（沿树传播到根时作为失败原因）。
     """
@@ -45,6 +47,7 @@ class RunContext:
     browser: BrowserDriver
     blocks: dict[str, ParserBlockDecl]
     leaf_executor: LeafExecutor
+    blocks_tree: dict[str, Node] = field(default_factory=dict)
     failure_reason: str | None = None
 
     @property

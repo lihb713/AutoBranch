@@ -26,34 +26,32 @@ ROOT_FRAME = "主流程/"
 
 # ---------------------------------------------------------------- 节点工厂
 
-def action(desc: str = "动作", frame: str = ROOT_FRAME) -> ActionNode:
-    return ActionNode(description=desc, frame=frame)
+def action(desc: str = "动作") -> ActionNode:
+    return ActionNode(description=desc)
 
 
-def cond(desc: str = "条件", frame: str = ROOT_FRAME) -> ConditionNode:
-    return ConditionNode(description=desc, frame=frame)
+def cond(desc: str = "条件") -> ConditionNode:
+    return ConditionNode(description=desc)
 
 
-def seq(*children, frame: str = ROOT_FRAME) -> SequenceNode:
-    return SequenceNode(children=tuple(children), frame=frame)
+def seq(*children) -> SequenceNode:
+    return SequenceNode(children=tuple(children))
 
 
 def branch(condition: ConditionNode | None, child) -> BranchSpec:
     return BranchSpec(condition=condition, child=child)
 
 
-def sel(*branches, frame: str = ROOT_FRAME) -> SelectorNode:
-    return SelectorNode(branches=tuple(branches), frame=frame)
+def sel(*branches) -> SelectorNode:
+    return SelectorNode(branches=tuple(branches))
 
 
-def repeat(
-    body, mode: str = "retry", until=None, max: int = 3, frame: str = ROOT_FRAME
-) -> RepeatNode:
-    return RepeatNode(body=body, mode=mode, until=until, max=max, frame=frame)
+def repeat(body, mode: str = "retry", until=None, max: int = 3) -> RepeatNode:
+    return RepeatNode(body=body, mode=mode, until=until, max=max)
 
 
-def finish(frame: str = ROOT_FRAME) -> FinishNode:
-    return FinishNode(frame=frame)
+def finish() -> FinishNode:
+    return FinishNode()
 
 
 # ---------------------------------------------------------------- 叶子结果
@@ -155,6 +153,7 @@ def make_run_context(
     blocks=None,
     reporter=None,
     tree_name: str = ROOT_FRAME.strip("/"),
+    blocks_tree=None,
 ):
     """构造 ``RunContext``：注入 mock 依赖、注入全局配置并进入根级块帧。
 
@@ -181,6 +180,7 @@ def make_run_context(
         browser=browser or MockBrowser(),
         blocks=blocks or {},
         leaf_executor=leaf_executor,
+        blocks_tree=blocks_tree or {},
     )
     space.enter_block(tree_name, ctx.schema_decl(tree_name))
     return ctx

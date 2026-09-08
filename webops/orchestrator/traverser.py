@@ -1,9 +1,10 @@
-"""M7 遍历器（design D1/D3/D4/D5/D6）：阻塞式 tick、组合节点聚合、帧同步与报告。
+"""M7 遍历器（design D1/D3/D4/D5/D6）：阻塞式 tick、组合节点聚合、ref 动态调用与报告。
 
 遍历器把全部基础节点统一为 ``tick`` 契约（返回 SUCCESS/FAILURE，无 RUNNING）：
 - 组合节点（Sequence/Selector/Repeat/Finish）纯程序执行、按 §5.7.7 聚合短路；
 - 叶子（Action/Condition）触发 M6（经注入的叶子执行器），接收 ``LeafResult``；
-- 进入/退出块引用时同步 M3 schema 帧（design D4：建帧/释放）；
+- ref（``RefNode``）运行时动态调用：建子帧 → 注入实参 → 递归执行目标块树 →
+  回收 returns 到父帧 → 退出子帧（帧由 ``_tick_ref`` 管理，无静态 frame 同步）；
 - 每个节点退出前记录 M8 报告、叶子返回前截图（§5.8.3）；
 - 维护可查询执行状态（Reporter 内）与递归深度安全闸（design R1）。
 """
@@ -24,12 +25,14 @@ from webops.parser.models import (
     ConditionNode,
     FinishNode,
     Node,
+    RefNode,
     RepeatNode,
     SelectorNode,
     SequenceNode,
 )
 from webops.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
 from webops.schema.errors import SchemaError
+from webops.schema.types import coerce, infer_type
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,8 @@ def node_type_name(node: Node) -> str:
         return "Action"
     if isinstance(node, ConditionNode):
         return "Condition"
+    if isinstance(node, RefNode):
+        return "Ref"
     if isinstance(node, SequenceNode):
         return "Sequence"
     if isinstance(node, SelectorNode):
@@ -62,7 +67,10 @@ def node_desc(node: Node) -> str:
 
 
 def count_nodes(node: Node) -> int:
-    """统计树中基础节点总数（供 ``ExecState.progress`` 计算，design D3）。"""
+    """统计树中基础节点总数（供 ``ExecState.progress`` 计算，design D3）。
+
+    ``RefNode`` 计 1（其目标块树独立计数，由运行时 ``_tick_ref`` 递归 tick）。
+    """
     total = 1
     if isinstance(node, SequenceNode):
         for child in node.children:
@@ -98,13 +106,11 @@ class Traverser:
     def tick(self, node: Node) -> NodeStatus:
         """节点统一 tick：返回 SUCCESS/FAILURE（阻塞式，无 RUNNING）。
 
-        进入时把 schema 激活帧同步到节点所属帧（块引用建帧），退出时恢复
-        （释放帧，无论成败，design D4）。运行期 ``SchemaError`` 捕获后按失败
+        帧由运行时动态管理：``RefNode`` 经 ``_tick_ref`` 建子帧/退出子帧；
+        其余节点共享所在块帧，不做帧切换。运行期 ``SchemaError`` 捕获后按失败
         沿树传播（§5.7.7）；致命错误（``FatalBrowserError``）原样上抛。
         """
         self._check_depth()
-        prev = self.ctx.current_frame.path if self.ctx.current_frame is not None else "/"
-        self._sync_frame(node.frame)
         self._depth += 1
         self._start_node(node)
         status: NodeStatus = FAILURE
@@ -118,12 +124,13 @@ class Traverser:
             if not isinstance(node, (ActionNode, ConditionNode)):
                 self._record_node(node, status)
             self._depth -= 1
-            self._sync_frame(prev)
         return status
 
     # ------------------------------------------------------------ 节点分派
 
     def _dispatch(self, node: Node) -> NodeStatus:
+        if isinstance(node, RefNode):
+            return self._tick_ref(node)
         if isinstance(node, (ActionNode, ConditionNode)):
             return self._tick_leaf(node)
         if isinstance(node, SequenceNode):
@@ -135,7 +142,7 @@ class Traverser:
         if isinstance(node, FinishNode):
             return self._tick_finish(node)
         self._note_failure(node, f"未知节点类型: {type(node).__name__}")
-        logger.warning("未知节点类型 %s（frame=%s）", type(node).__name__, node.frame)
+        logger.warning("未知节点类型 %s", type(node).__name__)
         return FAILURE
 
     def _tick_sequence(self, node: SequenceNode) -> NodeStatus:
@@ -253,31 +260,89 @@ class Traverser:
             return None
         return float(value)
 
-    # ------------------------------------------------------------ schema 帧
+    # ------------------------------------------------------------ ref 动态调用
 
-    def _sync_frame(self, target: str) -> None:
-        """把 schema 激活帧同步到节点帧路径（进入/退出块帧，LIFO 严格匹配）。
+    def _tick_ref(self, node: RefNode) -> NodeStatus:
+        """ref 运行时动态调用：建子帧 → 注入实参 → 递归执行目标块树 → 回收返回。
 
-        ``enter_block`` 携带块声明的配置覆盖（design D4），``exit_block`` 恢复
-        父帧为激活帧（释放 = 退出激活栈，帧数据保留供父块读输出）。
+        执行顺序（§3 执行模型）：
+        1. 在父帧上下文求值每个实参（裸路径 ``this/<名>`` 读父帧；字面量原样）。
+        2. 按目标块 ``inputs`` 声明类型 coerce；失败 → ref 断言失败。
+        3. ``enter_block`` 建子帧，cast 后形参写入子帧（``this/形参名``）。
+        4. 递归 ``tick`` 目标块树（其内部 ref 由各自的 ``_tick_ref`` 管理）。
+        5. 子块 SUCCESS → 按 ``returns`` 映射读子帧输出写父帧局部变量；
+           FAILURE → 不写 returns，失败向上传播。
+        6. ``exit_block`` 退出子帧（数据保留至 run 结束）。
         """
+        target = (node.ref_target or "").strip()
+        parts = [p for p in target.split("/") if p]
+        if len(parts) != 2:
+            return self._note_failure(node, f"ref 目标非法: {target!r}") or FAILURE
+        tdoc, block_name = parts
+        child_tree = self._find_ref_tree(tdoc, block_name)
+        if child_tree is None:
+            return self._note_failure(node, f"引用块未在 blocks_tree 中: {target!r}") or FAILURE
+        decl = self.ctx.schema_decl(block_name)
         space = self.ctx.space
-        current = space._current
-        while current is not None and current.path != target:
-            if target.startswith(current.path):
-                segment = target[len(current.path):].strip("/").split("/", 1)[0]
-                if not segment:
-                    raise OrchestratorError(f"节点帧路径非法: {target!r}")
-                space.enter_block(segment, self.ctx.schema_decl(segment))
-            elif current.parent is None:
-                raise OrchestratorError(
-                    f"节点帧路径 {target!r} 与当前 schema 帧链不匹配（已达根帧）"
+        parent = self.ctx.current_frame
+        # 1) 求值 args：裸路径 this/<名> → 父帧读；字面量原样
+        args_values: dict[str, object] = {}
+        for arg_name, expr in node.args:
+            val = self._eval_arg(parent, expr)
+            if val is _MISSING:
+                return self._note_failure(node, f"实参 '{arg_name}' 求值失败: {expr!r}") or FAILURE
+            args_values[arg_name] = val
+        # 2) coerce 到输入类型
+        typed: dict[str, object] = {}
+        input_types = dict(decl.inputs) if decl else {}
+        for name, val in args_values.items():
+            t = input_types.get(name, "")
+            typed[name] = coerce(t, val) if t else val
+        # 3) 建子帧（注入 inputs/config）
+        frame = None
+        try:
+            frame = space.enter_block(block_name, decl)
+            for name, val in typed.items():
+                space.write(
+                    frame, f"this/{name}", val, input_types.get(name, "") or infer_type(val)
                 )
-            else:
+            # 4) 递归执行子块树（不额外管理帧——子块内部 ref 由各自 _tick_ref 管理）
+            status = self.tick(child_tree)
+            # 5) SUCCESS → returns 回收写父帧
+            if status == SUCCESS:
+                for out_name, target_var in node.returns:
+                    rel = _single_segment(target_var)
+                    if rel is None:
+                        continue
+                    value = space.read(frame, f"this/{out_name}")  # 子帧读输出
+                    if value is not None:
+                        space.write(parent, f"this/{rel}", value, infer_type(value))
+        finally:
+            if frame is not None:
+                # 6) 退出子帧（数据保留至 run 结束）
                 space.exit_block()
-            current = space._current
-        if current is None:
-            raise OrchestratorError(f"节点帧路径 {target!r} 无法匹配（schema 帧已全部释放）")
+        return status
+
+    def _find_ref_tree(self, tdoc: str, block_name: str) -> Node | None:
+        """按 ``blocks_tree`` 定位目标块树（镜像 ``_find_block_tree`` 兜底）。
+
+        ``this/<块>`` 同文档引用 → 纯块名键；``文档/<块>`` 跨文档 → 先试
+        ``文档/块`` 键（同名块收纳），再兜底纯块名。
+        """
+        if tdoc == "this":
+            return self.ctx.blocks_tree.get(block_name)
+        return self.ctx.blocks_tree.get(f"{tdoc}/{block_name}") or self.ctx.blocks_tree.get(
+            block_name
+        )
+
+    def _eval_arg(self, frame, expr: str):
+        """求值实参表达式：裸路径 ``this/<名>`` → 父帧读；否则视为字面量。
+
+        读取失败（未定义）返回 ``_MISSING`` 哨兵，由调用方判失败。
+        """
+        if _single_segment(expr) is not None:
+            return self.ctx.space.read(frame, expr)
+        return _parse_literal(expr)
 
     # ------------------------------------------------------------ 报告与状态
 
@@ -300,7 +365,7 @@ class Traverser:
         """记录首个失败节点描述（根统一终止时的失败原因，指向失败叶子）。"""
         if self.ctx.failure_reason is not None:
             return
-        loc = node.loc.path if node.loc is not None else node.frame
+        loc = node.loc.path if node.loc is not None else "?"
         self.ctx.failure_reason = (
             f"{node_type_name(node)}『{node_desc(node)}』失败: {text}（位于 {loc}）"
         )
@@ -308,6 +373,35 @@ class Traverser:
     def _check_depth(self) -> None:
         if self._depth >= _MAX_RECURSION_DEPTH:
             raise OrchestratorError(f"遍历嵌套过深（超过 {_MAX_RECURSION_DEPTH} 层）")
+
+
+#: 实参求值失败哨兵（与有效值区分；None 是合法存储值）。
+_MISSING = object()
+
+
+def _single_segment(path: str) -> str | None:
+    """取单段裸路径 ``this/<名>`` 的 ``<名>``；其余形式（跨段/字面量）返回 None。"""
+    parts = [p for p in (path or "").strip().split("/") if p]
+    if len(parts) == 2 and parts[0] == "this":
+        return parts[1]
+    return None
+
+
+def _parse_literal(expr: str):
+    """把字面量表达式转成基础值（str/int/float/bool），无法转换按原字符串。"""
+    s = (expr or "").strip()
+    lowered = s.lower()
+    if lowered in ("true", "false"):
+        return lowered == "true"
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    return s
 
 
 def _leaf_failure_text(
