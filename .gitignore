@@ -22,6 +22,9 @@ dist/
 data/
 reports/
 *.png
+# 前端源码中的 reports 特性目录属源代码，排除运行时规则误伤
+!webops/frontend/src/features/reports/
+!webops/frontend/src/features/reports/**
 
 # Node / 前端
 node_modules/
