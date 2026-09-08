@@ -222,6 +222,17 @@ class TestExtract:
         assert result.detail["value"] == "42"
         assert space.read(frame, "$this/订单号") == "42"
 
+    def test_extract_empty_declared_type_falls_back_to_inference(self):
+        """M7 经 ctx.schema_decl 注入的 outputs 类型为 ""（无声明）→ 仍按值推断写库。"""
+        browser = FakeBrowser()
+        engine, space, frame = _seeded(browser, value="42")
+        frame.outputs = {"订单号": ""}
+        result = engine.call("extract", {"ref": "[1]", "target": "$this/订单号"})
+        assert result.ok, result.error
+        assert result.detail["value"] == "42"
+        assert result.detail["type"] == "str"
+        assert space.read(frame, "$this/订单号") == "42"
+
     def test_extract_coerces_declared_int(self):
         """声明 int：extract 把网页 str 转成真实存储 int（契约 §5.3.5 收敛）。"""
         browser = FakeBrowser()

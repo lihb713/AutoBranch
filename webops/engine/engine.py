@@ -400,8 +400,10 @@ class EngineFunctions:
                 {"code": ErrorCode.INVALID_ARGUMENT},
             )
         type_name = self._declared_type(frame, target)
-        if type_name is None:
-            type_name = infer_type(value)   # 无声明 → 按值推断（网页值即 str）
+        if not type_name:
+            # 无声明（None）或空类型 ""（M7 ctx.schema_decl 对块 outputs/inputs
+            # 注入的正是空类型，视为"未声明"）→ 按值推断（网页值即 str）
+            type_name = infer_type(value)
         else:
             try:
                 value = coerce(type_name, value)   # 有声明 → 转成真实存储类型
