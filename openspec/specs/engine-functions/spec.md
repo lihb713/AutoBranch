@@ -76,23 +76,23 @@
 
 系统 SHALL 支持两类变量写入副作用，且均经由 M3 变量机制完成：
 
-- `open(url)` 打开页面后 SHALL 返回页面引用，并将该页面引用作为页面引用类型的变量写入 schema（契约 §5.10）
-- `extract(ref, target)` 将目标元素提取出的值写入指定 schema 变量，写入前 SHALL 经 M3 类型校验，类型不匹配时写入失败并回传错误
+- `open(url)` 打开页面后 SHALL 返回页面引用，并将该页面引用作为 `page_ref` 类型变量写入 schema（契约 §5.10）
+- `extract(ref, target)` 将目标元素提取出的值写入指定 schema 变量，写入前 SHALL 经 M3 类型校验；目标已声明类型（非空 token）时 SHALL 先 `coerce` 转换后存储（转换失败 → 断言失败），未声明/空类型按 `infer_type` 推断
 
 #### Scenario: open 写入页面引用变量
 
 - **WHEN** LLM 调用 `open(url)` 成功打开一个页面
-- **THEN** 系统返回包含页面引用的 `OpResult`，且该页面引用已写入当前 schema 的页面引用类型变量，后续可经变量机制绑定为当前页面
+- **THEN** 系统返回包含页面引用的 `OpResult`，且该页面引用已写入当前 schema 的 `page_ref` 类型变量，后续可经变量机制绑定为当前页面
 
 #### Scenario: extract 写入变量并类型校验通过
 
-- **WHEN** LLM 调用 `extract(ref, target)` 且目标 schema 变量声明的类型与提取值匹配
-- **THEN** 提取值写入该变量，`OpResult` 为成功且附写入的变量路径与值
+- **WHEN** LLM 调用 `extract(ref, target)` 且目标 schema 变量声明的类型与提取值匹配（或可 coerce）
+- **THEN** 提取值写入该变量（已声明类型时 coerce 为真实 Python 类型），`OpResult` 为成功且附写入的变量路径与值
 
-#### Scenario: extract 类型校验失败时不写入
+#### Scenario: extract 类型转换失败时不写入
 
-- **WHEN** LLM 调用 `extract(ref, target)` 但提取值与目标 schema 变量声明的类型不匹配
-- **THEN** 系统不写入该变量，返回 ok 为假的 `OpResult` 并附类型不匹配的错误信息
+- **WHEN** LLM 调用 `extract(ref, target)` 但提取值无法转换为目标 schema 变量声明的类型
+- **THEN** 系统不写入该变量，返回 ok 为假的 `OpResult` 并附类型转换失败的错误信息
 
 ### Requirement: 错误语义
 

@@ -139,7 +139,7 @@ class FinishNode(Node): ...
 
 - 分支目标支持裸字符串 = `ref: this/块名` 简写（对齐 §4.3.2「分支目标 = 块引用」）。
 - 配置参数覆盖仅在块 schema 级识别（`timeout`/`retry`/`browser` 标量），未声明不要求用户书写（§4.2/§5.7.5）。
-- 变量作用域校验（§5.3.2）：新语法 `{{get:this/变量}}`（读取引用）/`{{set:this/变量}}`（写入声明）——`this/变量`（自身）、`this/直接子块/变量`（直接子块）合法；三 segment 及以上（孙子/更深）或指向非直接子块 → `scope.out_of_scope`。`ActionNode.set_targets` 记录动作的 `{{set:...}}` 可写集；`ActionNode.set_decls` 记录类型标注 `{{set:page:this/页面A}}`（存页签引用 PageRef）与 `{{set:string:this/url}}`（存文本），type 为空串时按动作推断；`{{get:...}}` 运行时由引擎替换（M6 职责），M2 仅作用域校验。兼容旧 `$this/` 绑定路径（ref `写入:` 机制）。
+- 变量作用域校验（§5.3.2）：新语法 `{{get:this/变量}}`（读取引用）/`{{set:this/变量}}`（写入声明）——`this/变量`（自身）、`this/直接子块/变量`（直接子块）合法；三 segment 及以上（孙子/更深）或指向非直接子块 → `scope.out_of_scope`。`ActionNode.set_targets` 记录动作的 `{{set:...}}` 可写集；`ActionNode.set_decls` 记录类型标注 `{{set:page_ref:this/页面A}}`（存页签引用 PageRef）与 `{{set:str:this/url}}`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`{{get:...}}` 运行时由引擎替换（M6 职责），M2 仅作用域校验。兼容旧 `$this/` 绑定路径（ref `写入:` 机制）。
 - 引用处绑定契约（§5.7.3）：被引用块声明输入必须在 ref 处用 `写入` 全部绑定，绑定目标须为被引用块声明输入，否则校验失败。
 
 ## 6. 验收标准

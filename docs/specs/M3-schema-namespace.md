@@ -94,22 +94,19 @@ class SchemaSpace:
 ### 5.4 类型契约
 
 ```python
-SUPPORTED_TYPES = {
-    "金额":  值必须为数字（int/float 或纯数字字符串，拒绝 bool/含货币符号文本）,
-    "订单号": 非空且不含空白的字符串,
-    "URL":   http:// 或 https:// 开头的字符串,
-    "日期":  date/datetime 或 "YYYY-MM-DD" 字符串,
-    "文本":  任意字符串,
-    "页面引用": PageRef 实例,
-    "布尔":  bool 实例,
-    "整数":  int（不含 bool）,
-    "数字":  int/float（不含 bool）,
+TYPE_REGISTRY = {
+    "str":      TypeSpec("str", str,       lambda v: str(v)),   # 任意字符串
+    "int":      TypeSpec("int", int,       _to_int),            # 真整数（排除 bool）
+    "float":    TypeSpec("float", float,   _to_float),          # 数字/金额
+    "bool":     TypeSpec("bool", bool,     _to_bool),           # 布尔
+    "page_ref": TypeSpec("page_ref", PageRef, None),            # 页签引用，仅引擎 open() 产生
 }
 ```
 
-- 写入时声明类型，读取/提取时强校验（`webops/schema/types.py` 的 `check_type`）
-- 类型不匹配 → `SchemaTypeError` 断言失败并终止（§5.3.5），M7 捕获基类 `SchemaError` 沿树传播
-- `validate_type_name`：未登记类型名 → 断言失败；`infer_type`：按值推断缺省类型（配置参数用）
+- **类型即真实存储类型**：`set` 标注驱动的 `coerce(token, raw)` 把网页 str 转成声明的 Python 类型后存储；`cast is None`（如 page_ref）拒绝文本转换，只能由引擎函数产生。
+- 校验统一 `isinstance`（`webops/schema/types.py` 的 `check_type`），`bool` 是 `int` 子类须排除。
+- 类型不匹配 / 转换失败 → `SchemaTypeError` 断言失败并终止（§5.3.5），M7 捕获基类 `SchemaError` 沿树传播。
+- `validate_type_name`：未登记类型 token → 断言失败；`infer_type`：按值推断英文 token（无声明时的后备，配置参数用）。
 
 ### 5.5 配置参数继承（§5.3.4）
 
@@ -150,7 +147,7 @@ SUPPORTED_TYPES = {
   - `errors.py`：`SchemaError` 基类 + `SchemaPathError`/`SchemaScopeError`/`SchemaTypeError`
   - `models.py`：`Value`/`PageRef`/`BlockDecl`/`SchemaFrame`
   - `path.py`：`split_segments`（按 `/` 分层、拒绝空段）/`resolve_target`（提取首段目标帧 + 单段变量名）
-  - `types.py`：`SUPPORTED_TYPES` 类型登记表 + `check_type`/`validate_type_name`/`infer_type`
+  - `types.py`：`TYPE_REGISTRY` 类型登记表 + `TypeSpec`（token→Python 类→cast）+ `check_type`/`coerce`/`validate_type_name`/`infer_type`
   - `space.py`：`SchemaSpace` 门面（帧生命周期/读写/配置继承/页面变量）
 - **严格作用域解析**（`resolve_target`）：首段为 `$this`/自身块名 → 自身帧；首段为直接子块名 → 直接子帧；其余 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `$this/登录/输入框/值`）→ 越权。
 - **配置继承**：`resolve_config` 沿 parent 链查找自身 `config` → 最近祖先 → 根级帧（`__init__` 注入 `global_config`）；业务变量走 `write`/`read` 严格作用域，天然不向上查找。
