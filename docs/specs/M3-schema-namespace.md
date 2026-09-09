@@ -13,9 +13,9 @@
 | 功能 | 说明 | 契约依据 |
 |---|---|---|
 | 帧模型 | 每次块引用创建独立 schema（命名空间） | §5.7.4 |
-| 严格作用域 | 每块只读写自己的 schema + 直接子块的 schema | §5.3.2 |
+| 严格作用域 | 每块只读写自己的 schema（`this/<名>` 单段） | §5.3.2 |
 | 变量读写 | 路径形式读写（`this/xxx`、`[[get:this/xxx]]`/`[[set:类型:this/xxx]]`） | §5.3 |
-| 传参/返回值 | 父块写直接子块 schema；读直接子块 schema 取返回值 | §5.3.2/§5.3.3 |
+| 传参/返回值 | 经 ref `args` 注入子块、`returns` 回收子块输出 | §5.3.2/§5.3.3 |
 | 配置参数继承 | 自己的 schema → 向上找最近祖先 → 全局默认 | §5.3.4/§5.7.5 |
 | 类型契约 | 创建变量时声明类型，提取错误则断言失败 | §5.3.5 |
 | 页面变量机制 | 页面引用类型变量 + 操作页面绑定 | §5.10 |
@@ -48,10 +48,10 @@ class SchemaSpace:
     def enter_block(self, block_name: str, decl: BlockDecl) -> SchemaFrame: ...
     # 创建子块帧，如 T/登录/
     def exit_block(self, frame: SchemaFrame | None = None) -> None: ...
-    # 退出当前帧并恢复父帧为当前帧（帧数据保留，供父块读返回值）
+    # 退出当前帧并恢复父帧为当前帧（帧数据保留至行为树运行结束，供黑板上报；释放=退出激活栈）
     def write(self, frame: SchemaFrame, path: str, value: Value, value_type: str) -> None: ...
     def read(self, frame: SchemaFrame, path: str) -> Value | None: ...
-    # 读/写严格限定：自己的帧 + 直接子帧
+    # 读/写严格限定：仅自己的帧（this/<名> 单段，resolve_target 单段化）
     def set_config(self, frame: SchemaFrame, name: str, value: Value, value_type: str | None = None) -> None: ...
     # 在指定帧声明配置参数（块覆盖全局默认用）
     def resolve_config(self, frame: SchemaFrame, name: str) -> Value: ...
@@ -69,16 +69,16 @@ class SchemaSpace:
   - `SchemaFrame`：独立帧（`id`/`block_name`/`parent`/`path_segments`/`storage`/`declared`/`config`/`children`/`inputs`/`outputs`/`page_write_order`），帧路径属性 `path`（如 `T/登录/`）
 - **异常契约**（`webops/schema/errors.py`，基类 `SchemaError` 供 M7 捕获沿树传播）：
   - `SchemaPathError`：路径格式错误
-  - `SchemaScopeError`：越权访问（目标帧不是自身或直接子帧）
+  - `SchemaScopeError`：越权访问（目标帧不是自身帧）
   - `SchemaTypeError`：类型断言失败（写入/提取时值不符合声明类型，§5.3.5）
 
 ### 5.2 路径规则
 
 - 路径为层次结构：`T/登录/username`；按 `/` 分层（`webops/schema/path.py`）
-- 首段标识目标帧：`this` 或自身块名（自身帧）、直接子块名（直接子帧）；其余 → 越权（用户层已废除直接子帧读写，传参经 ref `args`/`returns`）
+- 首段仅 `this`/自身块名（自身帧）；直接子块名不再合法 → 越权（跨帧传参经 ref `args`/`returns`）
 - 目标帧后必须恰好一个变量段（变量名不含 `/`，含 `/` 或多段均被拒绝）
-- 写权限：自己的帧 + 直接子帧
-- 读权限：自己的帧 + 直接子帧
+- 写权限：仅自己的帧
+- 读权限：仅自己的帧
 - 不可见：祖先、兄弟、孙子帧（越权访问 → `SchemaScopeError` 校验/运行时错误）
 - 帧内变量为单段平铺存储（`storage`/`declared` 以变量名为 key）
 
@@ -86,9 +86,9 @@ class SchemaSpace:
 
 ```
 每块实例只能:
-  写入 → 自己的 schema + 直接子块的 schema
-  读取 → 自己的 schema + 直接子块的 schema
-  不可见 → 祖先、兄弟、孙子 的 schema
+  写入 → 自己的 schema（this/<名> 单段）
+  读取 → 自己的 schema（this/<名> 单段）
+  不可见 → 直接子块 / 祖先 / 兄弟 / 孙子 的 schema（跨帧传参经 ref args/returns）
 ```
 
 ### 5.4 类型契约
@@ -125,7 +125,7 @@ TYPE_REGISTRY = {
 - [x] 块引用产生独立帧，同名变量互不冲突（`enter_block` 每次创建独立帧，帧隔离测试覆盖）
 - [x] 作用域规则严格：越权读/写祖先/兄弟/孙子帧被拒绝（作用域矩阵参数化测试全组合覆盖）
 - [x] 传参逐层传递正确（T→登录→输入框）
-- [x] 取子块返回值正确（读直接子帧）
+- [x] 取子块返回值正确（经 ref `returns` 回收，非直接读子帧）
 - [x] 配置参数继承正确：块覆盖 → 祖先 → 全局默认 三级查找
 - [x] 类型契约：声明类型后非法值写入/提取被拒绝（`SchemaTypeError`）
 - [x] 页面变量可写入、可传递、可绑定（`current_page` 解析当前页面变量）
@@ -149,7 +149,7 @@ TYPE_REGISTRY = {
   - `path.py`：`split_segments`（按 `/` 分层、拒绝空段）/`resolve_target`（提取首段目标帧 + 单段变量名）
   - `types.py`：`TYPE_REGISTRY` 类型登记表 + `TypeSpec`（token→Python 类→cast）+ `check_type`/`coerce`/`validate_type_name`/`infer_type`
   - `space.py`：`SchemaSpace` 门面（帧生命周期/读写/配置继承/页面变量）
-- **严格作用域解析**（`resolve_target`）：首段为 `this`/自身块名 → 自身帧；首段为直接子块名 → 直接子帧；其余 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `this/登录/输入框/值`）→ 越权。用户层已废除直接子帧读写，传参逐层经 ref `args`/`returns` 进行。
+- **严格作用域解析**（`resolve_target`）：仅 `this`/自身块名 → 自身帧（单段化）；直接子块名/祖先/兄弟/孙子一律越权 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `this/登录/输入框/值`）→ 越权。跨帧传参经 ref `args`/`returns` 进行。
 - **配置继承**：`resolve_config` 沿 parent 链查找自身 `config` → 最近祖先 → 根级帧（`__init__` 注入 `global_config`）；业务变量走 `write`/`read` 严格作用域，天然不向上查找。
 - **类型校验双时机**：`write` 声明类型并即时校验；`read` 提取时二次强校验（防存储被上层绕开）。
 - **页面变量**：`PageRef` 为普通类型值；`current_page` 返回帧中最近写入的页面引用；`page_refs` 列出全部页面变量。

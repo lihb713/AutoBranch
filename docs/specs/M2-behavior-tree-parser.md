@@ -14,12 +14,12 @@
 |---|---|---|
 | yaml/dict 解析 | 读取行为树文档（支持多文档/跨文档引用） | §4.1 |
 | 复合节点展开 | Step/Branch/LoopUntil/IfThenElse/Retry → 基础节点组合 | §4.3 |
-| 块引用解析 | `ref:` 解析（this/文档名/块名），跨文档引用解析 | §5.7.3 |
+| 块引用解析 | `ref:` 解析（this/文档名/块名）生成 `RefNode`，跨文档引用解析；每块预展开基础树入 `blocks_tree` | §5.7.3 |
 | schema 绑定声明提取 | 提取块接口声明（输入/输出）供 M3 建立命名空间 | §5.3/§5.7.4 |
 | 配置参数声明识别 | 识别块 schema 下的配置参数覆盖（§5.7.5） | §5.3.4/§5.7.5 |
 | 清晰度校验 | 结构/展开/引用/循环上界/变量契约/可定位/验证条件校验 | §4.4 |
 
-**输出**：内部行为树对象——只含 `Action / Condition / Sequence / Selector / Repeat / Finish` 基础节点，复合节点对引擎不可见。
+**输出**：内部行为树对象——只含 `Action / Condition / Sequence / Selector / Repeat / Finish` 基础节点 + `RefNode`（块引用调用节点，保留为运行期动态调用），复合节点对引擎不可见。
 
 ## 3. 数据依赖
 
@@ -28,8 +28,9 @@
 - **引用文档**：`ref:` 指向的其他文档（跨文档解析时加载）
 
 ### 3.2 输出
-- **内部行为树对象**：`BehaviorTree`，节点树（基础节点）
+- **内部行为树对象**：`BehaviorTree`，节点树（基础节点 + `RefNode`）
 - **块声明表**：每个命名块的输入/输出/配置参数声明
+- **块树映射**：`blocks_tree`（块名 → 每块预展开可执行基础树，含根块；跨文档同名块以 `文档/块` 收纳，供 M7 运行期 ref 动态调用）
 - **校验报告**：清晰度校验通过/失败 + 错误清单（供返回用户修正）
 
 ## 4. 单元间依赖
@@ -52,9 +53,10 @@ class BehaviorTreeParser:
 ```python
 @dataclass
 class ParseResult:
-    tree: BehaviorTree            # 内部行为树（仅基础节点）
+    tree: BehaviorTree            # 内部行为树（仅基础节点 + RefNode）
     blocks: dict[str, BlockDecl]  # 命名块声明（输入/输出/配置参数）
     checks: CheckReport           # 清晰度校验结果
+    blocks_tree: dict[str, Node]  # 块名 → 每块预展开可执行基础树（ref 动态调用用）
 ```
 
 **实现说明（已落地）**：
@@ -62,8 +64,8 @@ class ParseResult:
 - 模块级便捷入口 `parse(doc, ref_resolver, *, max_expand_depth=64)`。
 - `DocumentSource`：`id`（文档名=根块名）、`data`（yaml 文本或 dict）、可选 `path`。
 - `RefResolver`：`resolve(doc_id, block_name=None) -> DocumentSource`，文档缺失抛 `RefNotFoundError`；提供内存实现 `MappingResolver`（测试/简单场景）。
-- `ParseResult` 扩展字段（超出 §5.1 三字段，供命名空间/绑定校验与下游使用）：
-  `bindings: tuple[ParamBinding]`（引用处 `args`/`returns` 绑定记录；旧 `写入` 机制已弃用恒空）、`frames: tuple[FrameInfo]`（schema 命名空间帧层级，§5.7.4）。
+- `ParseResult` 扩展字段（超出 §5.1 三字段，供运行期 ref 动态调用与下游使用）：
+  `blocks_tree: dict[str, Node]`（块名 → 每块预展开可执行基础树，§5.7.3；含根块与全部命名块，跨文档同名块以 `文档/块` 键收纳）。旧 `bindings`/`frames`（`ParamBinding`/`FrameInfo`）已移除——ref 保留为 `RefNode`，不再内联展开、不再有静态帧层级。
 - 非法输入（非 yaml/dict、非顶层映射）抛 `InvalidDocumentError`，不产生部分结果；结构/语义违规以 `checks` 错误清单返回。
 
 ### 5.2 基础节点模型
@@ -92,12 +94,18 @@ class RepeatNode(Node):
     max: int                       # 循环上界（安全闸）
 @dataclass
 class FinishNode(Node): ...
+@dataclass
+class RefNode(Node):
+    ref_target: str                      # this/块名 或 文档名/块名
+    args: tuple[tuple[str, str], ...]    # (形参名, 实参表达式)；实参 = 父帧裸路径 this/<名> 或字面量
+    returns: tuple[tuple[str, str], ...] # (输出名, 父帧目标变量)；子块 SUCCESS 后回收写父帧
 ```
 
 **实现说明（已落地）**：
 
 - 节点均为 `frozen` dataclass，保证确定性输出；组合结构使用 `tuple`（可哈希、比较稳定）。
-- `Node` 基类含 `loc: Loc | None`（文档位置，路径式定位）与 `frame: str`（所属 schema 命名空间帧路径，§5.7.4，供 M7 执行定位）。
+- `Node` 基类仅含 `loc: Loc | None`（文档位置，路径式定位）。`frame` 字段已移除——运行期帧由 `RefNode` 动态调用（M7 `_tick_ref`）维护，不再有静态帧路径。
+- `RefNode`：块引用调用节点（`this/块名` 或 `文档名/块名`），保留为运行期动态调用，**不再内联展开**；`args`/`returns` 携带绑定声明（§5.7.3）。
 - `ConditionNode` 扩展可选字段（超出 §5.2 的 description-only，供谓词结构校验与 M6 执行）：`target`（谓词指向对象）、`predicate`（比较谓词）。
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：根块名 + 基础节点根。
@@ -116,7 +124,7 @@ class FinishNode(Node): ...
 | Retry | `Repeat(mode=retry, max=上限)` |
 | IfThenElse | `Selector(if→then, else→else)` |
 
-**实现说明（已落地）**：展开规则集中于单一映射表 `EXPANSION_RULES`（`webops/parser/expand.py`），表驱动测试直接覆盖五类复合节点多组样例；展开深度与引用嵌套分别由复合嵌套计数器与调用栈（`ctx.stack`）防护，超限按校验失败处理（`expand.depth_exceeded` / `ref.recursion_depth`）。
+**实现说明（已落地）**：展开规则集中于单一映射表 `EXPANSION_RULES`（`webops/parser/expand.py`），表驱动测试直接覆盖五类复合节点多组样例；复合嵌套深度由计数器防护，引用嵌套由 `_check_ref_graph` 沿**仅根块可达**的 ref 图走查（`ref.cycle` / `ref.recursion_depth`）防护，超限按校验失败处理（`expand.depth_exceeded`）。
 
 ### 5.4 清晰度校验规则（§4.4）
 
@@ -128,7 +136,7 @@ class FinishNode(Node): ...
 |---|---|---|
 | `structure` | 结构合法性 | `structure.unknown_node` / `invalid_flow` / `missing_field` / `invalid_node` |
 | `expand` | 展开后合法性 | `expand.residual_composite` / `depth_exceeded` |
-| `ref` | 块引用存在 | `ref.missing_doc` / `missing_block` / `cycle` / `input_not_bound` / `binding_target` / `binding_not_input` |
+| `ref` | 块引用存在 | `ref.bad_syntax` / `missing_doc` / `missing_block` / `cycle` / `recursion_depth` / `input_not_bound` / `args_not_input` / `returns_not_output` / `output_not_set` |
 | `repeat` | 循环上界 | `repeat.max_missing` / `max_not_int` |
 | `scope` | 变量契约 | `scope.out_of_scope` |
 | `locatable` | 可定位性 | `locatable.not_locatable` |
@@ -159,7 +167,7 @@ class FinishNode(Node): ...
 - **跨文档引用测试**：多文档 fixture，验证解析与引用解析
 - **独立性**：不依赖 LLM、不依赖浏览器，可单独运行全部测试
 
-**实现说明（已落地）**：`tests/test_parser_{models,document,expand,refs,checks,integration}.py` + `tests/parser_fixtures.py` 共 84 项普通 pytest 测试（无 integration 标记）；多文档 fixture 对齐 §5.7.6 完整示例（登录/导出/主流程），覆盖跨文档引用、配置覆盖、变量绑定与命名空间帧。
+**实现说明（已落地）**：`tests/test_parser_{models,document,expand,refs,checks,integration}.py` + `tests/parser_fixtures.py` 共 104 项普通 pytest 测试（无 integration 标记）；多文档 fixture 对齐 §5.7.6 完整示例（登录/导出/主流程），覆盖跨文档引用、配置覆盖、变量绑定、`blocks_tree`（块名 → 预展开基础树）与 `RefNode`（ref 保留为调用节点，不再内联）断言。
 
 ## 8. 依赖与运行说明（实现补充）
 

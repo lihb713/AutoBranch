@@ -16,7 +16,7 @@
 | 组合节点执行 | Sequence/Selector/Repeat 纯程序遍历，零 LLM | §5.7.7 | ✅ `_tick_sequence/selector/repeat` |
 | 叶子节点触发 | 触发 M6 agent 执行，接收结果 | §5.7.2 | ✅ `_tick_leaf`（经注入的叶子执行器） |
 | 失败传播 | 叶子失败沿树传播，根统一终止 + 报告 | §5.7.7/§5.7.2.1 | ✅ 组合节点聚合 + `RunResult.failure_reason` |
-| schema 帧管理 | 每次块引用建立/释放 schema 帧（M3） | §5.7.4 | ✅ `_sync_frame`（enter_block/exit_block） |
+| schema 帧管理 | 每次 ref 动态调用建立/退出 schema 帧（M3） | §5.7.4 | ✅ `Traverser._tick_ref`（RefNode 动态建帧/注入/退出）+ `Engine.run` 根帧 |
 | 会话初始化 | 创建全新浏览器 context，注入全局默认配置到根级 schema | §5.9/§9.8 | ✅ `Engine.run` 开头/结尾 |
 | 执行状态维护 | 当前进度/当前节点/已完成节点报告（供 M9b 轮询） | §12.4 | ✅ 复用 M8 `ExecState`（`Reporter.exec_state`） |
 | 超时 | 全局 timeout 在节点层面生效 | §5.7.7 | ✅ 协作式 deadline 下传 + wall-clock 兜底（design D6） |
@@ -24,7 +24,7 @@
 ## 3. 数据依赖
 
 ### 3.1 输入
-- **内部行为树对象 + 块声明**（来自 M2）：`BehaviorTree` / `ActionNode` / `ConditionNode` / `SequenceNode` / `SelectorNode` / `RepeatNode` / `FinishNode` / `BlockDecl`
+- **内部行为树对象 + 块声明**（来自 M2）：`BehaviorTree` / `ActionNode` / `ConditionNode` / `SequenceNode` / `SelectorNode` / `RepeatNode` / `FinishNode` / `RefNode`（ref 保留为调用节点）/ `BlockDecl`；另接收 `blocks_tree`（块名 → 每块预展开可执行基础树，供 `_tick_ref` 运行期动态调用）
 - **schema 命名空间**（来自 M3）：帧管理（`enter_block`/`exit_block`）、配置继承（`resolve_config`）、页面变量（`current_page`）
 - **叶子执行**（来自 M6）：`execute_leaf(node, ctx)` → `LeafResult`（经 `RunConfig` 注入 M0/M5 依赖或注入 mock）
 - **报告**（来自 M8）：`Reporter.start_node/record_node/capture_screenshot/exec_state/finalize`
@@ -51,7 +51,8 @@
 ```python
 class Engine:
     def run(self, tree: BehaviorTree, blocks: dict[str, BlockDecl],
-            config: RunConfig) -> RunResult: ...
+            config: RunConfig, blocks_tree: dict[str, Node] | None = None) -> RunResult: ...
+    # blocks_tree：块名 → 每块预展开可执行基础树（RefNode 运行期动态调用查找表）
     def get_exec_state(self) -> ExecState: ...   # 供 M9b 轮询
 
 @dataclass(frozen=True)
@@ -105,9 +106,11 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 ### 5.2 可查询执行状态（§12.4，已实现）
 
 复用 M8 `ExecState`（单数据源，design D3）：`run_id` / `progress`（派生
-`completed/total_nodes`）/ `current_node` / `completed` / `finished`。
-`Engine.get_exec_state()` 直接返回 `Reporter.exec_state()` 快照（副本，读侧安全）；
-未运行返回 `ExecState(run_id="")`。节点进入 `start_node` 写 `current_node`、退出
+`completed/total_nodes`）/ `current_node` / `completed` / `finished` / `variables`
+（blackboard 变量快照，供前端变量黑板）。`Engine.get_exec_state()` 直接返回
+`Reporter.exec_state()` 快照（副本，读侧安全），并用 `snapshot_variables(space.root)`
+上报**全部已执行帧**的变量（路径如 `this/主流程/账号`，含所有调用帧，帧保留至运行
+结束）；未运行返回 `ExecState(run_id="")`。节点进入 `start_node` 写 `current_node`、退出
 `record_node` 追加 `completed` 并推进 `progress`，全部节点结束 `finalize` 置
 `finished=True`。
 
@@ -132,7 +135,7 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 1. 入口校验（树/块/配置）
 2. 创建全新浏览器 context（M1 `start`，从 0 开始，无持久化）
 3. 注入全局默认配置到根级 schema（`timeout` + `global_config`）
-4. 建立根级块帧（`enter_block(tree.name)`）
+4. 建立根级块帧（`enter_block(tree.name)`）；`Engine.run` 接收 `blocks_tree`（可选，无 ref 场景可为 None），根帧后 Traverser tick 遇 `RefNode` 动态调用子块
 5. 遍历执行
 6. 遍历结束（无论成败）统一 `browser.stop()` 释放会话
 
@@ -142,7 +145,7 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 - [x] 组合节点纯程序执行，零 LLM
 - [x] Repeat 的 LoopUntil/Retry 两种模式行为正确（先判/后判），上限触发 FAILURE
 - [x] 叶子失败正确沿树传播，根终止
-- [x] 每次块引用建立独立 schema 帧，运行结束释放
+- [x] 每次 `RefNode` 动态调用建立独立子帧（args 注入/returns 回收）；帧保留至运行结束（供黑板上报），激活帧控制访问
 - [x] 会话初始化：全新 context + 全局配置注入根级 schema
 - [x] 执行状态可查询：进度/当前节点/已完成报告正确更新
 - [x] 全局超时生效
@@ -156,7 +159,8 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 | `test_traverser.py` | 1.3 tick 契约（阻塞式、状态映射、报告记录） |
 | `test_composites.py` | 2.1~2.6 Sequence/Selector/Repeat（两模式）表驱动矩阵、上界、短路、节点报告 |
 | `test_leaf_timeout.py` | 3.1 叶子触发与布尔映射；3.2 LeafTrace 随报告；3.3 失败传播；3.4 全局超时；3.5 超时继承 |
-| `test_schema_frames.py` | 4.1 建帧/释放/隔离（含嵌套与失败释放）；4.2 三级配置继承 |
+| `test_schema_frames.py` | 4.1 RefNode 驱动建帧/隔离（含嵌套与失败路径）；4.2 三级配置继承 |
+| `test_ref_call.py` | RefNode 动态调用：args 求值（this/x 与字面量）/coerce 注入/递归 tick/returns 回收/退出子帧 |
 | `test_session.py` | 4.3 每次 run 全新 context；4.4 全局配置注入根级 schema；4.5 会话释放 |
 | `test_exec_state.py` | 5.1~5.4 进度单调推进、current_node 时序、快照副本、finished |
 | `test_engine_integration.py` | 1.4 入口（含校验失败不启动遍历）；6.1 mock 树端到端聚合；6.2 真实浏览器冒烟（`@pytest.mark.integration`） |
@@ -164,8 +168,9 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 - **mock 策略**：mock M6 为 `StubLeaf`（按描述返回固定 `LeafResult`，可脚本化序列）
   / `BlockingLeaf`（慢执行测超时），mock M1 为 `MockBrowser`（记录 start/stop）；
   **不依赖 M9a/M9b**，组合节点逻辑零 LLM。
-- 测试数：78 个（`tests/orchestrator/`），全部经 `webops` conda 环境 `pytest` 通过；
-  全库 636 passed, 3 skipped；`ruff check .` 无告警。
+- 测试数：81 个（`tests/orchestrator/`，静态统计 `def test_`，参数化后实际收集更多）；
+  全库 762 个测试函数（静态统计），全部经 `webops` conda 环境 `pytest` 通过；
+  `ruff check .` 无告警。
 - 集成冒烟（6.2）：真实 `BrowserDriver` + data: URL 页面 + mock 叶子，验证
   页面变量写入、截图落盘与报告链路在真实环境下工作。
 
@@ -188,9 +193,12 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 5. **Selector 命中分支后子节点失败 → 整体 FAILURE（不回落下一分支）**：分支条件
    命中即「提交」，子节点结果即 Selector 结果（§5.7.7「不承载兜底」的落地）。
    **建议 contract §5.7.7 明确命中后失败不回落。**
-6. **schema 帧同步方式**：M7 经 `SchemaSpace._current`（内部当前帧指针）与节点
-   `frame` 字段做 LIFO 建帧/释放同步（M3 无公开「当前帧」读取器）。`resolve_config`
-   继承链 + `enter_block` 注入块配置覆盖，天然实现「自身 → 祖先 → 全局默认」。
+6. **ref 动态调用模型**：M7 经 `SchemaSpace._current`（内部当前帧指针）维护激活帧。
+   遇 `RefNode` 走 `Traverser._tick_ref`：父帧求值 args（`this/x` 或字面量）→ coerce
+   到输入类型 → `enter_block` 建子帧并注入形参 → 递归执行被引用块的可执行树（其内部
+   ref 由各自 `_tick_ref` 管理）→ SUCCESS 时按 returns 读子帧输出写父帧 → `exit_block`
+   退出子帧。`_sync_frame` 与节点 `frame` 字段已移除；`resolve_config` 继承链 +
+   `enter_block` 注入块配置覆盖，天然实现「自身 → 祖先 → 全局默认」。
 7. **ExecState 复用 M8**：M7 不新增执行状态模型，直接经 `Reporter.exec_state()`
    复用 M8 `ExecState`（§12.4 数据源单一，进度由 completed/total_nodes 派生）。
 8. **真实叶子执行的依赖边界**：M7 不构造 M0/M5；真实执行需要调用方在 `RunConfig`
