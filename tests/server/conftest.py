@@ -69,8 +69,22 @@ def session(settings):
     db.close()
 
 
+def make_tree_yaml(name: str) -> str:
+    """生成主块名 = 树名的单块合法文档（方案 2：主块名 = 行为树名）。"""
+    return (
+        f"block {name}:\n"
+        "  Sequence:\n"
+        "    - Step:\n"
+        '        action: 点"登录"\n'
+        '        expect: 出现"工作台"\n'
+    )
+
+
 def create_tree(client: TestClient, name: str = "冒烟流程", content: str | None = None) -> dict:
-    resp = client.post("/api/trees", json={"name": name, "content": content or VALID_YAML})
+    resp = client.post(
+        "/api/trees",
+        json={"name": name, "content": content or make_tree_yaml(name)},
+    )
     assert resp.status_code == 201, resp.text
     return resp.json()
 

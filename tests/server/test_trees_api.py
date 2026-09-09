@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from webops.server.models import Run, Tree
 
-from .conftest import INVALID_REF_YAML, VALID_YAML, create_tree
+from .conftest import INVALID_REF_YAML, VALID_YAML, create_tree, make_tree_yaml
 
 
 def test_list_trees_empty(client):
@@ -33,7 +33,7 @@ def test_get_tree(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["id"] == tree["id"]
-    assert body["content"] == VALID_YAML
+    assert body["content"] == make_tree_yaml("冒烟流程")
 
 
 def test_get_tree_missing_404(client):
@@ -45,18 +45,18 @@ def test_update_tree(client):
     tree = create_tree(client)
     resp = client.put(
         f"/api/trees/{tree['id']}",
-        json={"name": "改名流程", "content": VALID_YAML},
+        json={"name": "改名流程", "content": make_tree_yaml("改名流程")},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "改名流程"
     detail = client.get(f"/api/trees/{tree['id']}").json()
-    assert detail["content"] == VALID_YAML
+    assert detail["content"] == make_tree_yaml("改名流程")
 
 
 def test_update_content_only(client):
     tree = create_tree(client)
-    resp = client.put(f"/api/trees/{tree['id']}", json={"content": VALID_YAML})
+    resp = client.put(f"/api/trees/{tree['id']}", json={"content": make_tree_yaml("冒烟流程")})
     assert resp.status_code == 200
     assert resp.json()["name"] == "冒烟流程"
 
@@ -105,7 +105,9 @@ def test_delete_tree_cascades_runs_and_files(client, session, settings):
 
 def test_create_duplicate_409(client):
     create_tree(client, name="登录流程")
-    resp = client.post("/api/trees", json={"name": "登录流程", "content": VALID_YAML})
+    resp = client.post(
+        "/api/trees", json={"name": "登录流程", "content": make_tree_yaml("登录流程")}
+    )
     assert resp.status_code == 409
     assert len(client.get("/api/trees").json()) == 1
 
@@ -147,7 +149,7 @@ def test_update_invalid_document_422_not_saved(client):
     assert resp.status_code == 422
     detail = client.get(f"/api/trees/{tree['id']}").json()
     assert detail["name"] == "冒烟流程"
-    assert detail["content"] == VALID_YAML
+    assert detail["content"] == make_tree_yaml("冒烟流程")
 
 
 def test_check_endpoint_ok(client):

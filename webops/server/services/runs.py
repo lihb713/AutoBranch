@@ -88,7 +88,7 @@ class RunService:
                 self._set_failed(db, run_id, "行为树不存在")
                 return
             try:
-                parsed = validate_document(tree.content)
+                parsed = validate_document(tree.content, tree.name)
             except CheckValidationError as exc:
                 self._set_failed(db, run_id, f"执行前校验失败: {_issues_summary(exc.detail)}")
                 return

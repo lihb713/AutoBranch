@@ -157,7 +157,20 @@ def parse_structure(doc: DocumentSource, raw: dict) -> StructureResult:
             )
         )
     if blocks_raw:
-        root_block = doc.id if doc.id in blocks_raw else next(iter(blocks_raw))
+        # 方案 2：主块名必须等于文档名（行为树名）；无匹配 → 校验错误
+        if doc.id not in blocks_raw:
+            issues.append(
+                make_issue(
+                    "structure",
+                    "missing_main_block",
+                    f"行为树文档必须含名为 '{doc.id}' 的主块"
+                    f"（主块名 = 行为树名；当前块: {sorted(blocks_raw)}，位于 {_path(doc.id, '$')}）",
+                    _loc(doc.id, "$"),
+                )
+            )
+            root_block = next(iter(blocks_raw))
+        else:
+            root_block = doc.id
         decls: dict[str, BlockDecl] = {}
         irs: dict[str, IRNode] = {}
         for name, body in blocks_raw.items():

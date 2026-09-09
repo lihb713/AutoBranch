@@ -17,7 +17,7 @@ from webops.server.config import ServerConfig
 from webops.server.main import create_app
 from webops.server.services.engine import EmbeddedEngineService, build_reporter_factory
 
-from .conftest import VALID_YAML
+from .conftest import VALID_YAML, make_tree_yaml
 
 pytestmark = pytest.mark.integration
 
@@ -78,19 +78,18 @@ def test_end_to_end_execution_flow(tmp_path):
 
 
 def test_run_after_rename_matches_content_root_block(tmp_path):
-    """回归：库内 name 与内容根块名不一致（改名保存）时执行仍成功。
-
-    帧路径以内容实际根块名命名（M2 展开），doc_id 必须与之对齐，否则
-    引擎报「节点帧路径不匹配」。
-    """
+    """回归：改名后主块名=树名（强制一致），doc_id 对齐后运行成功。"""
     settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
-    created = client.post("/api/trees", json={"name": "我的流程", "content": VALID_YAML})
+    created = client.post("/api/trees", json={"name": "我的流程", "content": make_tree_yaml("我的流程")})
     assert created.status_code == 201
     tree_id = created.json()["id"]
 
-    renamed = client.put(f"/api/trees/{tree_id}", json={"name": "改名后的流程"})
+    renamed = client.put(
+        f"/api/trees/{tree_id}",
+        json={"name": "改名后的流程", "content": make_tree_yaml("改名后的流程")},
+    )
     assert renamed.status_code == 200
 
     run = client.post(f"/api/trees/{tree_id}/run")

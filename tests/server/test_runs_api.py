@@ -8,7 +8,7 @@ from webops.server.db import configure_database, session_factory
 from webops.server.main import create_app
 from webops.server.models import Run, Tree
 
-from .conftest import INVALID_REF_YAML, VALID_YAML, create_tree
+from .conftest import INVALID_REF_YAML, VALID_YAML, create_tree, make_tree_yaml
 
 # ------------------------------------------------------------- 触发（5.2）
 
@@ -22,7 +22,7 @@ def test_run_returns_202_and_state_success(client, mock_engine):
     assert state["finished"] is True
     assert state["progress"] == 1.0
     assert state["failure_reason"] is None
-    assert mock_engine.call_log == [(tree["id"], VALID_YAML, run_id)]
+    assert mock_engine.call_log == [(tree["id"], make_tree_yaml("冒烟流程"), run_id)]
 
 
 def test_run_failure_writes_reason(client, mock_engine, session):
@@ -163,7 +163,7 @@ def test_startup_marks_running_as_interrupted(tmp_path):
     cfg = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
     configure_database(cfg.db_path)
     db = session_factory()()
-    tree = Tree(name="重启用", content=VALID_YAML)
+    tree = Tree(name="重启用", content=make_tree_yaml("重启用"))
     db.add(tree)
     db.commit()
     db.refresh(tree)
