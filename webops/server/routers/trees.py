@@ -36,6 +36,12 @@ def create_tree(payload: TreeCreate, service: TreeServiceDep):
     return service.create(payload)
 
 
+@router.get("/by-name/{name}", response_model=TreeDetailOut)
+def get_tree_by_name(name: str, service: TreeServiceDep):
+    """按文档名查（文档名唯一）：供跨文档引用加载 / ref 展开。"""
+    return TreeDetailOut.model_validate(service.get_by_name(name))
+
+
 @router.get("/{tree_id}", response_model=TreeDetailOut)
 def get_tree(tree_id: int, service: TreeServiceDep):
     return service.get_detail(tree_id)

@@ -108,6 +108,15 @@ class EmbeddedEngineService(EngineService):
 
     # ------------------------------------------------------------- 抽象接口
 
+    def _make_resolver(self) -> MappingResolver:
+        """跨文档引用解析器：DB-backed 文档库；无 DB 时回落空 MappingResolver。"""
+        try:
+            from webops.server.services.doclib import DbResolver
+
+            return DbResolver.from_session()
+        except RuntimeError:
+            return MappingResolver({})
+
     def run(
         self,
         tree_id: int,
@@ -122,13 +131,12 @@ class EmbeddedEngineService(EngineService):
         （行为树可另命名保存，根块名由内容决定）。
         """
         desired = doc_id or f"tree-{tree_id}"
-        probe = BehaviorTreeParser().parse(
-            DocumentSource(id=desired, data=content), MappingResolver({})
-        )
+        resolver = self._make_resolver()
+        probe = BehaviorTreeParser().parse(DocumentSource(id=desired, data=content), resolver)
         actual = probe.tree.name or desired
         if actual != desired:
             result = BehaviorTreeParser().parse(
-                DocumentSource(id=actual, data=content), MappingResolver({})
+                DocumentSource(id=actual, data=content), resolver
             )
         else:
             result = probe

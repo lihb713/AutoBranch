@@ -52,6 +52,13 @@ class TreeService:
     def get_content(self, tree_id: int) -> Tree:
         return self.get(tree_id)
 
+    def get_by_name(self, name: str) -> Tree:
+        """按文档名查（文档名唯一）：供跨文档引用加载 / 前端 ref 展开。"""
+        tree = self.db.scalars(select(Tree).where(Tree.name == name)).first()
+        if tree is None:
+            raise AppError(404, f"行为树不存在 (name={name})")
+        return tree
+
     # ------------------------------------------------------------- 变更
 
     def create(self, payload: TreeCreate) -> TreeOut:

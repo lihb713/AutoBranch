@@ -41,6 +41,19 @@ def test_get_tree_missing_404(client):
     assert resp.status_code == 404
 
 
+def test_get_tree_by_name(client):
+    tree = create_tree(client, name="登录流程")
+    resp = client.get(f"/api/trees/by-name/{tree['name']}")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "登录流程"
+    assert resp.json()["id"] == tree["id"]
+
+
+def test_get_tree_by_name_missing_404(client):
+    resp = client.get("/api/trees/by-name/不存在的文档")
+    assert resp.status_code == 404
+
+
 def test_update_tree(client):
     tree = create_tree(client)
     resp = client.put(

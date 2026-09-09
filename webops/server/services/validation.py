@@ -17,10 +17,23 @@ from webops.server.schemas.check import CheckIssueOut, CheckReportOut
 _DEFAULT_DOC_ID = "文档"
 
 
-def _parse(content: str, doc_id: str) -> ParseResult:
+def _resolver() -> MappingResolver:
+    """跨文档引用解析器：DB-backed 文档库；无 DB 时回落空 MappingResolver。"""
+    try:
+        from webops.server.services.doclib import DbResolver
+
+        return DbResolver.from_session()
+    except RuntimeError:
+        return MappingResolver({})
+
+
+def _parse(content: str, doc_id: str, resolver: MappingResolver | None = None) -> ParseResult:
     parser = BehaviorTreeParser()
     try:
-        return parser.parse(DocumentSource(id=doc_id, data=content), MappingResolver({}))
+        return parser.parse(
+            DocumentSource(id=doc_id, data=content),
+            resolver if resolver is not None else _resolver(),
+        )
     except InvalidDocumentError as exc:
         raise CheckValidationError(
             [
@@ -34,9 +47,11 @@ def _parse(content: str, doc_id: str) -> ParseResult:
         ) from exc
 
 
-def validate_document(content: str, doc_id: str = _DEFAULT_DOC_ID) -> ParseResult:
+def validate_document(
+    content: str, doc_id: str = _DEFAULT_DOC_ID, resolver: MappingResolver | None = None
+) -> ParseResult:
     """校验行为树文档，失败抛 ``CheckValidationError``（422 + 错误清单）。"""
-    result = _parse(content, doc_id)
+    result = _parse(content, doc_id, resolver)
     if not result.checks.ok:
         raise CheckValidationError([_issue_dict(issue) for issue in result.checks.issues])
     return result
@@ -58,8 +73,12 @@ class CheckReportBuilder:
     """
 
     @staticmethod
-    def build(content: str, doc_id: str = _DEFAULT_DOC_ID) -> CheckReportOut:
-        result = _parse(content, doc_id)
+    def build(
+        content: str,
+        doc_id: str = _DEFAULT_DOC_ID,
+        resolver: MappingResolver | None = None,
+    ) -> CheckReportOut:
+        result = _parse(content, doc_id, resolver)
         issues = [
             CheckIssueOut.model_validate(_issue_dict(issue)) for issue in result.checks.issues
         ]
