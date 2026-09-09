@@ -17,10 +17,17 @@ from webops.server.services.validation import CheckReportBuilder, validate_docum
 from .conftest import INVALID_LOOP_YAML, INVALID_REF_YAML, VALID_YAML
 
 INVALID_DOC_YAML = """
-block 缺验证:
-  Sequence:
-    - Step:
-        action: 点"登录"
+tree: 缺验证
+nodes:
+  n1:
+    type: Root
+    name: 根
+    slots: {1: n2}
+  n2:
+    type: Step
+    name: 登录
+    action: 点"登录"
+root: n1
 """.strip()
 
 #: (文档, 期望错误码前缀, 期望规则名/关键词)
@@ -58,8 +65,8 @@ def test_invalid_document_detail_readable():
     with pytest.raises(CheckValidationError) as exc_info:
         validate_document(INVALID_REF_YAML, "坏文档")
     issues = exc_info.value.detail
-    assert issues[0]["code"] == "ref.missing_block"
-    assert "不存在的块" in issues[0]["message"]
+    assert issues[0]["code"] == "ref.missing_doc"
+    assert "不存在的文档" in issues[0]["message"]
     assert issues[0]["loc"]
 
 

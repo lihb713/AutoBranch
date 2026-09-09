@@ -35,21 +35,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from webops.parser.models import (
-    BlockDecl,
     CheckIssue,
-    ConfigOverride,
-    DocumentSource,
     Loc,
     make_issue,
 )
-from webops.schema.types import TYPE_REGISTRY
 
-#: 文档级块定义前缀：``block <块名>:``
-BLOCK_PREFIX = "block "
-#: 块接口声明键
-DECL_KEYS = frozenset({"inputs", "outputs"})
-#: 工具定义配置参数名（§4.2/§5.7.5，名称语义固定）
-CONFIG_PARAMS = frozenset({"timeout", "retry", "browser"})
 #: 节点键（基础 + 复合 + ref）
 NODE_KEYS = frozenset(
     {
@@ -110,221 +100,12 @@ class IRNode:
     raw: object = None
 
 
-@dataclass(frozen=True)
-class DocumentIR:
-    """单份文档的结构化中间表示。"""
-
-    doc_id: str
-    root_block: str
-    blocks: dict[str, BlockDecl]
-    root: IRNode
-    ir_by_block: dict[str, IRNode]
-
-
-@dataclass(frozen=True)
-class StructureResult:
-    """结构解析结果（中间表示 + 结构类校验问题）。"""
-
-    ir: DocumentIR
-    issues: tuple[CheckIssue, ...]
-
-
 def _loc(doc_id: str, path: str) -> Loc:
     return Loc(doc_id=doc_id, path=path)
 
 
 def _empty_ir(kind: str, loc: Loc | None = None) -> IRNode:
     return IRNode(kind=kind, loc=loc)
-
-
-def parse_structure(doc: DocumentSource, raw: dict) -> StructureResult:
-    """识别块定义与根流程，产出中间表示并收集结构类校验问题。"""
-    issues: list[CheckIssue] = []
-    blocks_raw: dict[str, dict | list] = {}
-    extra_keys: list[str] = []
-    for key, value in raw.items():
-        if key.startswith(BLOCK_PREFIX) and isinstance(value, (dict, list)):
-            blocks_raw[key[len(BLOCK_PREFIX) :].strip()] = value
-        else:
-            extra_keys.append(key)
-    if blocks_raw and extra_keys:
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_flow",
-                f"顶层混用 block 定义与其他键: {extra_keys}（位于 {doc.id}/$）",
-                _loc(doc.id, "$"),
-            )
-        )
-    if blocks_raw:
-        # 方案 2：主块名必须等于文档名（行为树名）；无匹配 → 校验错误
-        if doc.id not in blocks_raw:
-            issues.append(
-                make_issue(
-                    "structure",
-                    "missing_main_block",
-                    f"行为树文档必须含名为 '{doc.id}' 的主块"
-                    f"（主块名 = 行为树名；当前块: {sorted(blocks_raw)}，"
-                    f"位于 {_path(doc.id, '$')}）",
-                    _loc(doc.id, "$"),
-                )
-            )
-            root_block = next(iter(blocks_raw))
-        else:
-            root_block = doc.id
-        decls: dict[str, BlockDecl] = {}
-        irs: dict[str, IRNode] = {}
-        for name, body in blocks_raw.items():
-            decl, tree_ir, sub = _parse_block_body(doc.id, name, body)
-            decls[name] = decl
-            irs[name] = tree_ir
-            issues.extend(sub)
-        root_ir = irs[root_block]
-    else:
-        root_block = doc.id
-        decl, root_ir, sub = _parse_block_body(doc.id, doc.id, raw)
-        decls = {doc.id: decl}
-        irs = {doc.id: root_ir}
-        issues.extend(sub)
-    ir = DocumentIR(
-        doc_id=doc.id,
-        root_block=root_block,
-        blocks=decls,
-        root=root_ir,
-        ir_by_block=irs,
-    )
-    return StructureResult(ir=ir, issues=tuple(issues))
-
-
-def _parse_block_body(
-    doc_id: str, name: str, body: dict | list
-) -> tuple[BlockDecl, IRNode, list[CheckIssue]]:
-    issues: list[CheckIssue] = []
-    loc = _loc(doc_id, name)
-    if isinstance(body, list):
-        tree_ir = _parse_sequence(doc_id, name, body, issues)
-        return (
-            BlockDecl(name=name, doc_id=doc_id, loc=loc),
-            tree_ir,
-            issues,
-        )
-    inputs = _parse_decl_list(body.get("inputs"), doc_id, name, "inputs", issues)
-    outputs = tuple(
-        n
-        for n, _ in _parse_decl_list(body.get("outputs"), doc_id, name, "outputs", issues)
-    )
-    overrides: list[ConfigOverride] = []
-    for param in sorted(CONFIG_PARAMS):
-        if param not in body:
-            continue
-        value = body[param]
-        if isinstance(value, (int, float, str, bool)) and not isinstance(value, list):
-            overrides.append(ConfigOverride(name=param, value=value, loc=loc))
-        else:
-            issues.append(
-                make_issue(
-                    "structure",
-                    "invalid_config",
-                    f"块 '{name}' 的配置参数 '{param}' 覆盖值必须是标量"
-                    f"（位于 {_path(doc_id, name)}）",
-                    loc,
-                )
-            )
-    node_keys = [k for k in body if k not in DECL_KEYS and k not in CONFIG_PARAMS]
-    if len(node_keys) != 1:
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_flow",
-                f"块 '{name}' 必须且只能含一个行为树节点键"
-                f"（当前: {node_keys or '无'}，位于 {_path(doc_id, name)}）",
-                loc,
-            )
-        )
-        return (
-            BlockDecl(
-                name=name,
-                doc_id=doc_id,
-                inputs=inputs,
-                outputs=outputs,
-                config_overrides=tuple(overrides),
-                loc=loc,
-            ),
-            _empty_ir("Sequence", loc),
-            issues,
-        )
-    tree_key = node_keys[0]
-    tree_ir = _parse_node(doc_id, name, tree_key, body[tree_key], issues)
-    return (
-        BlockDecl(
-            name=name,
-            doc_id=doc_id,
-            inputs=inputs,
-            outputs=outputs,
-            config_overrides=tuple(overrides),
-            loc=loc,
-        ),
-        tree_ir,
-        issues,
-    )
-
-
-def _parse_decl_list(
-    value: object, doc_id: str, name: str, decl_name: str, issues: list[CheckIssue]
-) -> tuple[tuple[str, str], ...]:
-    if value is None:
-        return ()
-    if decl_name == "inputs" and isinstance(value, dict):
-        result: list[tuple[str, str]] = []
-        for k, v in value.items():
-            if not isinstance(k, str) or not isinstance(v, str):
-                issues.append(
-                    make_issue(
-                        "structure",
-                        "invalid_decl",
-                        f"块 '{name}' 的 inputs 必须是 变量名: 类型 的映射"
-                        f"（位于 {_path(doc_id, name)}）",
-                        _loc(doc_id, name),
-                    )
-                )
-                continue
-            var = k.strip().lstrip("$")
-            typ = v.strip()
-            if not var:
-                continue
-            if typ and typ not in TYPE_REGISTRY:
-                issues.append(
-                    make_issue(
-                        "structure",
-                        "invalid_decl",
-                        f"块 '{name}' 的输入 '{var}' 类型 '{typ}' 未登记"
-                        f"（支持: {sorted(TYPE_REGISTRY)}，位于 {_path(doc_id, name)}）",
-                        _loc(doc_id, name),
-                    )
-                )
-                continue
-            result.append((var, typ))
-        return tuple(result)
-    result: list[tuple[str, str]] = []
-    if isinstance(value, str):
-        items = [s.strip().lstrip("$") for s in value.split(",")]
-    elif isinstance(value, list):
-        items = [str(i).strip().lstrip("$") for i in value]
-    else:
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_decl",
-                f"块 '{name}' 的 {decl_name} 声明必须是字符串/列表"
-                f"（或 inputs 用映射，位于 {_path(doc_id, name)}）",
-                _loc(doc_id, name),
-            )
-        )
-        return ()
-    for s in items:
-        if s:
-            result.append((s, ""))
-    return tuple(result)
 
 
 def _path(doc_id: str, path: str) -> str:

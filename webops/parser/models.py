@@ -247,16 +247,21 @@ class CheckReport:
 
 @dataclass(frozen=True)
 class ParseResult:
-    """解析输出契约（M2 spec §5.1）。
+    """解析输出契约（M2 spec §5.1，一文档一树）。
 
-    :param tree: 内部行为树（根块基础树，ref 保留为 RefNode）。
-    :param blocks: 命名块声明表（输入/输出/配置参数覆盖）。
-    :param blocks_tree: 每块预展开的基础树映射（块名 → Node，含根块与全部
-       命名块；跨文档同名块以 ``文档/块`` 键收纳）。
+    :param tree: 内部行为树（主树基础树，ref 保留为 RefNode）。
+    :param blocks_tree: 文档名 → 主树（一文档一树；运行期 ref 按文档名经
+        resolver 加载，本字段仅承载当前文档主树）。
+    :param decl_inputs: 文档级入参声明（名 → 类型）。
+    :param decl_outputs: 文档级出参名列表。
+    :param config: 全局配置覆盖（timeout/retry/browser）。
     :param checks: 清晰度校验报告。
     """
 
     tree: BehaviorTree
-    blocks: dict[str, BlockDecl]
     checks: CheckReport
+    blocks: dict[str, BlockDecl] = field(default_factory=dict)
     blocks_tree: dict[str, Node] = field(default_factory=dict)
+    decl_inputs: dict[str, str] = field(default_factory=dict)
+    decl_outputs: list[str] = field(default_factory=list)
+    config: dict[str, object] = field(default_factory=dict)

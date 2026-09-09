@@ -18,9 +18,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from webops.parser import document as document_mod
-from webops.parser.document import DocumentIR, IRNode
-from webops.parser.errors import RefNotFoundError
+from webops.parser.document import IRNode
 from webops.parser.models import (
     ActionNode,
     BranchSpec,
@@ -35,8 +33,6 @@ from webops.parser.models import (
     SequenceNode,
     make_issue,
 )
-from webops.parser.refs import RefResolver
-from webops.parser.yamlio import normalize_document
 
 #: ``[[get:this/path]]`` 读取引用（叶子执行前程序替换为真实值）
 _GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
@@ -120,102 +116,110 @@ def _display_path(path: str) -> str:
 
 @dataclass
 class ExpandContext:
-    """展开期共享上下文：文档缓存、校验问题。"""
+    """展开期共享上下文：校验问题（一文档一树，ref 运行时按文档名加载）。"""
 
-    ir: DocumentIR
-    resolver: RefResolver
     max_depth: int
     issues: list[CheckIssue] = field(default_factory=list)
-    doc_cache: dict[str, DocumentIR] = field(default_factory=dict)
-    absent_docs: set[str] = field(default_factory=set)
-    _doc_issues: dict[tuple[str, str, str], CheckIssue] = field(default_factory=dict)
 
     def add_issue(self, prefix: str, code: str, message: str, loc: Loc | None = None) -> None:
         self.issues.append(make_issue(prefix, code, message, loc))
 
-    def load_block(self, tdoc: str, tblock: str) -> tuple[DocumentIR, IRNode] | None:
-        """加载目标块（本文档直接取；跨文档经 RefResolver 解析并缓存）。"""
-        if tdoc == self.ir.doc_id:
-            ir = self.ir
-        elif tdoc in self.doc_cache:
-            ir = self.doc_cache[tdoc]
-        else:
-            try:
-                src = self.resolver.resolve(tdoc)
-            except RefNotFoundError:
-                self.absent_docs.add(tdoc)
-                return None
-            raw = normalize_document(src.data)
-            st = document_mod.parse_structure(src, raw)
-            self.doc_cache[tdoc] = st.ir
-            for iss in st.issues:
-                key = (iss.code, iss.message, iss.loc.path if iss.loc else "")
-                if key not in self._doc_issues:
-                    self._doc_issues[key] = iss
-            ir = st.ir
-        if tblock not in ir.ir_by_block:
-            return None
-        return ir, ir.ir_by_block[tblock]
-
-    @property
-    def resolved_doc_issues(self) -> list[CheckIssue]:
-        return list(self._doc_issues.values())
-
 
 @dataclass(frozen=True)
 class ExpansionResult:
-    """展开结果：根块基础树 + 每块预展开树 + 展开期校验问题。"""
+    """展开结果：主树基础树 + 展开期校验问题。"""
 
     tree: Node
-    blocks_tree: dict[str, Node]
     issues: tuple[CheckIssue, ...]
 
 
-def expand_document(ctx: ExpandContext) -> ExpansionResult:
-    """对每块独立预展开为基础树；根块树 = ``tree``，全部块树存入 ``blocks_tree``。
+def expand_document(
+    main_ir: IRNode | None,
+    ctx: ExpandContext,
+    decl_inputs: dict[str, str] | None = None,
+) -> ExpansionResult:
+    """展开主树 IR 为基础树（复合节点展开；ref 保留为 RefNode）。
 
-    遍历顺序：先根文档全部命名块，再跨文档缓存（``doc_cache``）中陆续加载的
-    文档全部命名块，直至无新文档。随后做跨块 ref 图的静态环/深度检测与声明级
-    output 全赋值校验。
+    :param decl_inputs: 文档级入参声明（get 已定义校验用）。
     """
-    blocks_tree: dict[str, Node] = {}
-    root_block = ctx.ir.root_block
-    seen_docs: set[str] = set()
-    while True:
-        pending = [ir for ir in _all_docs(ctx) if ir.doc_id not in seen_docs]
-        if not pending:
-            break
-        for ir in pending:
-            seen_docs.add(ir.doc_id)
-            for block_name in ir.ir_by_block:
-                tree = _expand_block_ir(ir, block_name, ctx)
-                if block_name not in blocks_tree:
-                    blocks_tree[block_name] = tree
-                else:
-                    blocks_tree[f"{ir.doc_id}/{block_name}"] = tree
-    root_tree = blocks_tree[root_block]
-    _check_ref_graph(ctx, blocks_tree)
-    run_block_static_checks(ctx)
-    return ExpansionResult(
-        tree=root_tree,
-        blocks_tree=blocks_tree,
-        issues=tuple(ctx.issues),
-    )
+    if main_ir is None:
+        return ExpansionResult(tree=SequenceNode(), issues=tuple(ctx.issues))
+    tree = _expand_ir(main_ir, ctx, 0)
+    _check_get_defined(ctx, tree, set(decl_inputs or {}))
+    return ExpansionResult(tree=tree, issues=tuple(ctx.issues))
 
 
-def _expand_block_ir(ir: DocumentIR, block_name: str, ctx: ExpandContext) -> Node:
-    """对单块 IR 展开为基础树（不含 ref 内联；遇 ref 生成 ``RefNode``）。"""
-    node = ir.ir_by_block.get(block_name)
-    if node is None:
-        return SequenceNode(loc=None)
-    return _expand_ir(node, ctx, 0)
+def _check_get_defined(
+    ctx: ExpandContext, tree: Node, input_names: set[str]
+) -> None:
+    """主树内 ``[[get:this/x]]`` 变量已定义校验（§5）。
+
+    get 可读取 = 文档级 inputs 声明 + 主树内 ``[[set:...]]`` 目标
+    + ref returns 目标变量；output 不构成 get 源。未定义 → get_undeclared。
+    """
+    defined = set(input_names) | _collect_output_assignment_names_ir(tree)
+
+    def walk(node: Node) -> None:
+        if isinstance(node, ActionNode):
+            for name in _iter_get_paths(node.description or ""):
+                if name not in defined:
+                    ctx.add_issue(
+                        "scope",
+                        "get_undeclared",
+                        f"读取变量 '{name}' 未定义"
+                        f"（get 只能读 inputs 声明、块内 set 或 ref returns 目标）",
+                        node.loc,
+                    )
+        elif isinstance(node, ConditionNode):
+            for name in _iter_get_paths(node.description or ""):
+                if name not in defined:
+                    ctx.add_issue(
+                        "scope",
+                        "get_undeclared",
+                        f"读取变量 '{name}' 未定义"
+                        f"（get 只能读 inputs 声明、块内 set 或 ref returns 目标）",
+                        node.loc,
+                    )
+        if isinstance(node, SequenceNode):
+            for c in node.children:
+                walk(c)
+        elif isinstance(node, SelectorNode):
+            for b in node.branches:
+                if b.condition is not None:
+                    walk(b.condition)
+                walk(b.child)
+        elif isinstance(node, RepeatNode):
+            if node.until is not None:
+                walk(node.until)
+            walk(node.body)
+
+    walk(tree)
 
 
-def _all_docs(ctx: ExpandContext) -> list[DocumentIR]:
-    """当前文档 + 展开期跨文档缓存（供逐块预展开与声明级 output 校验遍历）。"""
-    docs = [ctx.ir]
-    docs.extend(ctx.doc_cache.values())
-    return docs
+def _collect_output_assignment_names_ir(node: Node) -> set[str]:
+    """基础树内赋值点变量名集合（Action 的 set 目标 + RefNode 的 returns 目标）。"""
+    names: set[str] = set()
+    if isinstance(node, RefNode):
+        for _out, target in node.returns:
+            rel = target.rsplit("/", 1)[-1]
+            if rel:
+                names.add(rel)
+        return names
+    if isinstance(node, ActionNode):
+        return _set_decl_names(node.description or "")
+    if isinstance(node, SequenceNode):
+        for c in node.children:
+            names |= _collect_output_assignment_names_ir(c)
+    elif isinstance(node, SelectorNode):
+        for b in node.branches:
+            if b.condition is not None:
+                names |= _collect_output_assignment_names_ir(b.condition)
+            names |= _collect_output_assignment_names_ir(b.child)
+    elif isinstance(node, RepeatNode):
+        if node.until is not None:
+            names |= _collect_output_assignment_names_ir(node.until)
+        names |= _collect_output_assignment_names_ir(node.body)
+    return names
 
 
 def _set_decl_names(desc: str) -> set[str]:
@@ -258,31 +262,6 @@ def _collect_output_assignment_names(node: IRNode | None) -> set[str]:
     return names
 
 
-def _check_all_block_outputs(ctx: ExpandContext) -> None:
-    """声明级 output 全赋值校验（§4）：每个声明的输出名须在块体内有赋值点。"""
-    for ir in _all_docs(ctx):
-        for block_name, decl in ir.blocks.items():
-            if not decl.outputs:
-                continue
-            node = ir.ir_by_block.get(block_name)
-            assigned = _collect_output_assignment_names(node)
-            for out in decl.outputs:
-                if out in assigned:
-                    continue
-                at = (
-                    f"{ir.doc_id}/{block_name}"
-                    if node is None or node.loc is None
-                    else node.loc.path
-                )
-                ctx.add_issue(
-                    "ref",
-                    "output_not_set",
-                    f"块 '{block_name}' 声明的输出 '{out}' 在块体内未赋值"
-                    f"（需叶子 [[set:...:this/{out}]] 或 ref 的 returns 目标，位于 {at}）",
-                    node.loc if node is not None else None,
-                )
-
-
 def _collect_get_refs(node: IRNode | None) -> list[tuple[str, Loc | None]]:
     """收集块内全部叶子（Action/Condition/Finish）描述中的 ``[[get:this/x]]`` 引用。
 
@@ -307,37 +286,6 @@ def _collect_get_refs(node: IRNode | None) -> list[tuple[str, Loc | None]]:
         if sub is not None:
             refs.extend(_collect_get_refs(sub))
     return refs
-
-
-def _check_block_get_defined(ctx: ExpandContext) -> None:
-    """块内 ``[[get:this/x]]`` 变量已定义校验（§5）。
-
-    get 可读取的变量 = 本块 inputs 声明 + 本块内 ``[[set:...]]`` 目标
-    + 本块 ref 的 returns 目标变量。output 声明不构成 get 源（输出是
-    本块返回给调用方的值）。未定义即 get → ``scope.get_undeclared``。
-    """
-    for ir in _all_docs(ctx):
-        for block_name, decl in ir.blocks.items():
-            defined: set[str] = {name for name, _ in decl.inputs}
-            node = ir.ir_by_block.get(block_name)
-            defined |= _collect_output_assignment_names(node)
-            for name, loc in _collect_get_refs(node):
-                if name in defined:
-                    continue
-                at = loc.path if loc is not None else f"{ir.doc_id}/{block_name}"
-                ctx.add_issue(
-                    "scope",
-                    "get_undeclared",
-                    f"块 '{block_name}' 读取变量 '{name}' 未定义"
-                    f"（get 只能读本块 inputs 声明、块内 set 或 ref returns 目标，位于 {at}）",
-                    loc,
-                )
-
-
-def run_block_static_checks(ctx: ExpandContext) -> None:
-    """块级静态检查统一入口（便于扩展后续检查项）。"""
-    _check_all_block_outputs(ctx)
-    _check_block_get_defined(ctx)
 
 
 def _check_schema_path(ctx: ExpandContext, path_str: str, loc: Loc | None) -> None:
@@ -406,6 +354,10 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
             predicate=node.predicate,
             loc=node.loc,
         )
+    if kind == "Root":
+        # Root：真实节点类型（子限制 1），展开其唯一子节点
+        children = tuple(_expand_ir(c, ctx, depth + 1) for c in node.children)
+        return SequenceNode(children=children, loc=node.loc)
     if kind == "Sequence":
         return SequenceNode(
             children=tuple(_expand_ir(c, ctx, depth + 1) for c in node.children),
@@ -561,149 +513,20 @@ EXPANSION_RULES: dict[str, Callable[[IRNode, ExpandContext, int], Node]] = {
 
 
 def _expand_ref(node: IRNode, ctx: ExpandContext) -> Node:
-    """ref 保留为 ``RefNode``（不再内联）：静态校验 + 返回调用节点。
+    """ref 保留为 ``RefNode``（不内联）：一文档一树下目标为另一文档整棵树。
 
-    静态校验：目标语法/存在性、args⊆inputs、inputs 全必填、returns⊆outputs、
-    实参与 returns 目标作用域单段。环/深度检测在 ``_check_ref_graph`` 中
-    跨 ``blocks_tree`` 的 ref 图统一走查（本函数不再递归展开目标块）。
+    参数对齐/目标存在/跨文档环等静态校验已在 onedoc 解析期完成（``_check_ref_params``）；
+    此处仅把 IR ref 转为基础 ``RefNode``，运行时 ``_tick_ref`` 按文档名加载。
     """
     loc = node.loc
     at = loc.path if loc else "?"
     target = (node.ref_target or "").strip()
-    parts = [p for p in target.split("/") if p]
-    if len(parts) != 2:
+    if not target or "/" in target:
         ctx.add_issue(
             "ref",
             "bad_syntax",
-            f"ref 目标 '{target}' 语法错误（应为 'this/块名' 或 '文档名/块名'，位于 {at}）",
+            f"ref 目标 '{target}' 语法错误（应为文档名单段，位于 {at}）",
             loc,
         )
         return SequenceNode(loc=loc)
-    tdoc = (node.loc.doc_id if node.loc else ctx.ir.doc_id) if parts[0] == "this" else parts[0]
-    tblock = parts[1]
-    result = ctx.load_block(tdoc, tblock)
-    if result is None:
-        if tdoc in ctx.absent_docs:
-            ctx.add_issue(
-                "ref",
-                "missing_doc",
-                f"引用目标文档 '{tdoc}' 不存在（ref: {target}，位于 {at}）",
-                loc,
-            )
-        else:
-            ctx.add_issue(
-                "ref",
-                "missing_block",
-                f"引用目标块 '{tdoc}/{tblock}' 不存在（ref: {target}，位于 {at}）",
-                loc,
-            )
-        return SequenceNode(loc=loc)
-    _t_ir, _t_node = result
-    t_decl = _t_ir.blocks.get(tblock)
-    t_inputs = t_decl.inputs if t_decl is not None else ()
-    t_outputs = t_decl.outputs if t_decl is not None else ()
-    input_names = {n for n, _ in t_inputs}
-    bound_vars: set[str] = set()
-    # args：实参表达式（裸路径 this/<名> 或字面量）
-    for arg_name, expr in node.args:
-        if arg_name not in input_names:
-            ctx.add_issue(
-                "ref",
-                "args_not_input",
-                f"实参 '{arg_name}' 不是块 '{tblock}' 声明的输入"
-                f"（声明: {', '.join(sorted(input_names)) or '无'}，位于 {at}）",
-                loc,
-            )
-        else:
-            bound_vars.add(arg_name)
-        _scope_check_texts(ctx, loc, expr)
-    # inputs 全必填
-    missing = [n for n, _ in t_inputs if n not in bound_vars]
-    if missing:
-        ctx.add_issue(
-            "ref",
-            "input_not_bound",
-            f"引用 '{target}' 未绑定其声明输入: {', '.join(missing)}"
-            f"（在 ref 处用 args 传实参，位于 {at}）",
-            loc,
-        )
-    # returns：接收输出 → 本帧局部变量
-    for out_name, target_var in node.returns:
-        if out_name not in t_outputs:
-            ctx.add_issue(
-                "ref",
-                "returns_not_output",
-                f"返回值 '{out_name}' 不是块 '{tblock}' 声明的输出"
-                f"（声明: {', '.join(t_outputs) or '无'}，位于 {at}）",
-                loc,
-            )
-        _check_schema_path(ctx, target_var, loc)
     return RefNode(ref_target=target, args=node.args, returns=node.returns, loc=loc)
-
-
-def _find_block_tree(
-    blocks_tree: dict[str, Node], tdoc: str, tblock: str
-) -> Node | None:
-    """按 ``blocks_tree`` 定位块树：优先 ``文档/块`` 键（跨文档同名块），
-    否则按纯块名（``this/`` 同文档引用与单文档场景）。"""
-    qualified = blocks_tree.get(f"{tdoc}/{tblock}")
-    if qualified is not None:
-        return qualified
-    return blocks_tree.get(tblock)
-
-
-def _check_ref_graph(ctx: ExpandContext, blocks_tree: dict[str, Node]) -> None:
-    """静态环/深度检测：沿根块可达的 ref 图走查（跨 ``blocks_tree``）。
-
-    与旧内联展开语义一致：只检查从根块可达的引用链；``path`` 即调用链
-    （栈语义，进入/退出各自拷贝），遇已在链上的目标块 → ``ref.cycle``；
-    链长达到上限 → ``ref.recursion_depth``。
-    """
-    root_tree = blocks_tree.get(ctx.ir.root_block)
-    if root_tree is None:
-        return
-    path = [(ctx.ir.doc_id, ctx.ir.root_block)]
-    _walk_ref_edges(ctx, blocks_tree, root_tree, path)
-
-
-def _walk_ref_edges(
-    ctx: ExpandContext, blocks_tree: dict[str, Node], node: Node, path: list[tuple[str, str]]
-) -> None:
-    """DFS 走查块树内全部 ref 边；遇 RefNode 校验环/深度后进入目标块树。"""
-    if isinstance(node, RefNode):
-        target = (node.ref_target or "").strip()
-        parts = [p for p in target.split("/") if p]
-        if len(parts) != 2:
-            return
-        tdoc = (node.loc.doc_id if node.loc else ctx.ir.doc_id) if parts[0] == "this" else parts[0]
-        tblock = parts[1]
-        key = (tdoc, tblock)
-        at = node.loc.path if node.loc else "?"
-        if key in path:
-            chain = " -> ".join(f"{d}/{b}" for d, b in [*path, key])
-            ctx.add_issue("ref", "cycle", f"检测到循环块引用: {chain}（位于 {at}）", node.loc)
-            return
-        if len(path) >= ctx.max_depth:
-            ctx.add_issue(
-                "ref",
-                "recursion_depth",
-                f"引用展开嵌套超过上限 {ctx.max_depth} 层（位于 {at}）",
-                node.loc,
-            )
-            return
-        child = _find_block_tree(blocks_tree, tdoc, tblock)
-        if child is not None:
-            _walk_ref_edges(ctx, blocks_tree, child, [*path, key])
-        return
-    if isinstance(node, SequenceNode):
-        for c in node.children:
-            _walk_ref_edges(ctx, blocks_tree, c, path)
-    elif isinstance(node, SelectorNode):
-        for b in node.branches:
-            if b.condition is not None:
-                _walk_ref_edges(ctx, blocks_tree, b.condition, path)
-            _walk_ref_edges(ctx, blocks_tree, b.child, path)
-    elif isinstance(node, RepeatNode):
-        if node.until is not None:
-            _walk_ref_edges(ctx, blocks_tree, node.until, path)
-        _walk_ref_edges(ctx, blocks_tree, node.body, path)
