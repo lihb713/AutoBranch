@@ -168,7 +168,7 @@ body {
 
 .editor {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 200px 220px 1fr;
   gap: var(--space-4);
 }
 
@@ -216,6 +216,59 @@ body {
 .palette__item-hint {
   font-size: var(--font-size-sm);
   color: var(--color-muted);
+}
+
+.block-list {
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  align-self: start;
+}
+
+.block-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  margin-bottom: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+.block-list__item--active {
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 1px var(--color-primary, #2563eb) inset;
+}
+
+.block-list__name {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+
+.block-list__badge {
+  margin-left: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-primary, #2563eb);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.block-list__delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-danger, #dc2626);
+  flex-shrink: 0;
 }
 
 .canvas {
