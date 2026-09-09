@@ -172,5 +172,5 @@ class RefNode(Node):
 ## 8. 依赖与运行说明（实现补充）
 
 - 模块为纯逻辑，无外部运行时依赖（不依赖 LLM / 浏览器）。
-- yaml 文本入口优先使用 PyYAML；当前 `webops` conda 环境未安装 PyYAML，由标准库内置的 **YAML 子集解析器**（`webops/parser/yamlio.py`）兜底，覆盖行为树文档常见结构（缩进映射/序列、流式 `{k: v}`/`[a, b]`、引号、注释、块标量）。完整 YAML 规范（别名/锚点/多文档流）需安装 PyYAML。
+- yaml 文本入口优先使用 PyYAML（**已列入项目硬依赖，`pyproject.toml` `pyyaml>=6.0`**）；标准库内置的 **YAML 子集解析器**（`webops/parser/yamlio.py`）仅作 PyYAML 缺失时的兜底，覆盖行为树文档常见结构（缩进映射/序列、流式 `{k: v}`/`[a, b]`、引号、注释、块标量）。完整 YAML 规范（别名/锚点/多文档流）需 PyYAML。
 - 解析器测试在 `webops` conda 环境内随 `pytest` 全量运行。

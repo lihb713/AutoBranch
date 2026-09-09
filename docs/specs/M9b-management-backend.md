@@ -47,9 +47,9 @@ WebOps 的后端服务：行为树文档 CRUD API、清晰度校验（复用 M2�
 
 ```
 GET    /api/trees              # 列表（200，元数据数组）
-POST   /api/trees              # 创建（201，元数据；保存时校验 422 拒绝）
+POST   /api/trees              # 创建（201，元数据；保存时校验 422 拒绝，含主块名=树名强制）
 GET    /api/trees/{id}         # 查看（200，含 content）
-PUT    /api/trees/{id}         # 修改（200；至少提交 name/content 之一，校验 422 拒绝）
+PUT    /api/trees/{id}         # 修改（200；至少提交 name/content 之一，校验 422 拒绝，含主块名=树名强制）
 DELETE /api/trees/{id}         # 删除（204；级联删除执行记录并清理报告文件）
 POST   /api/trees/{id}/check   # 清晰度校验（200，CheckReport：ok + issues 错误清单，不落库）
 ```
@@ -67,7 +67,7 @@ GET    /api/runs/{run_id}/trace       # 回溯报告（同上）
 GET    /api/reports/{path}            # 截图/报告文件（白名单防目录穿越）
 ```
 
-- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id。
+- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id。以树名（name）作为主块名 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的根块名。
 - 并发去重：同一 tree 存在 pending/running 的 run 时返回 409。
 - `GET /api/reports/{path}`：`resolve()` 做 `is_relative_to(REPORT_ROOT)` 白名单，越界 400、不存在 404；`.md`→`text/markdown`、`.png`→`image/png`。
 
