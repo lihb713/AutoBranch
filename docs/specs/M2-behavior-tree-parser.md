@@ -110,7 +110,7 @@ class RefNode(Node):
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：根块名 + 基础节点根。
 - 文档格式明确化（§4.1 图示的落地写法，见实现）：
-  - 写法 A/B：顶层 `block <块名>:` 键（可多个），**主块** = 名字匹配文档名的块，无匹配取第一个；其余为**附属块**（供 `this/块名` 同文档引用或 `文档/块` 跨文档引用）。
+  - 写法 A/B：顶层 `block <块名>:` 键（可多个），**主块** = 名字匹配文档名的块（**主块名必须等于行为树名**，无匹配报 `structure.missing_main_block`）；其余为**附属块**（供 `this/块名` 同文档引用或 `文档/块` 跨文档引用）。
   - 写法 C（极简）：整个 dict 即根块行为树（根块名 = 文档名）。
   - 块体 = `inputs`/`outputs` 声明 + 配置参数覆盖（`timeout`/`retry`/`browser` 标量）+ 恰好一个行为树节点键。
 
@@ -134,7 +134,7 @@ class RefNode(Node):
 
 | 错误码前缀 | 规则名 | 典型错误码 |
 |---|---|---|
-| `structure` | 结构合法性 | `structure.unknown_node` / `invalid_flow` / `missing_field` / `invalid_node` |
+| `structure` | 结构合法性 | `structure.unknown_node` / `invalid_flow` / `missing_field` / `invalid_node` / `missing_main_block`（主块名 ≠ 行为树名） |
 | `expand` | 展开后合法性 | `expand.residual_composite` / `depth_exceeded` |
 | `ref` | 块引用存在 | `ref.bad_syntax` / `missing_doc` / `missing_block` / `cycle` / `recursion_depth` / `input_not_bound` / `args_not_input` / `returns_not_output` / `output_not_set` |
 | `repeat` | 循环上界 | `repeat.max_missing` / `max_not_int` |
