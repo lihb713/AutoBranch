@@ -164,7 +164,8 @@ def parse_structure(doc: DocumentSource, raw: dict) -> StructureResult:
                     "structure",
                     "missing_main_block",
                     f"行为树文档必须含名为 '{doc.id}' 的主块"
-                    f"（主块名 = 行为树名；当前块: {sorted(blocks_raw)}，位于 {_path(doc.id, '$')}）",
+                    f"（主块名 = 行为树名；当前块: {sorted(blocks_raw)}，"
+                    f"位于 {_path(doc.id, '$')}）",
                     _loc(doc.id, "$"),
                 )
             )

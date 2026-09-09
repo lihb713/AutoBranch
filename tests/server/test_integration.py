@@ -82,7 +82,9 @@ def test_run_after_rename_matches_content_root_block(tmp_path):
     settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
-    created = client.post("/api/trees", json={"name": "我的流程", "content": make_tree_yaml("我的流程")})
+    created = client.post(
+        "/api/trees", json={"name": "我的流程", "content": make_tree_yaml("我的流程")}
+    )
     assert created.status_code == 201
     tree_id = created.json()["id"]
 

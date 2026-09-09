@@ -8,7 +8,7 @@ from webops.server.db import configure_database, session_factory
 from webops.server.main import create_app
 from webops.server.models import Run, Tree
 
-from .conftest import INVALID_REF_YAML, VALID_YAML, create_tree, make_tree_yaml
+from .conftest import INVALID_REF_YAML, create_tree, make_tree_yaml
 
 # ------------------------------------------------------------- 触发（5.2）
 
