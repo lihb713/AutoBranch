@@ -84,7 +84,7 @@ class Engine:
             return RunResult(status="failure", failure_reason=problem)
 
         run_id = _make_run_id(tree.name)
-        total = count_nodes(tree.root)
+        total = count_nodes(tree.root, blocks_tree or {})
         space = self._space_factory()
         reporter = self._make_reporter(run_id, total, config)
         self._inject_global_config(space, config)

@@ -269,6 +269,124 @@ class TestRefCall:
         # 激活帧恢复父帧
         assert space._current.block_name == "主流程"
 
+    def test_ref_progress_not_premature(self, config) -> None:
+        """ref 树的进度：count_nodes 计入被引用块子树，进度不提前饱和 1.0。
+
+        ref 递归 tick 记录全部子块节点；total 必须同样计入，否则
+        completed/total > 1 导致 progress 提前钳到 1.0（子块仍在执行）。
+        """
+        from orchestrator_helpers import make_engine
+
+        from webops.parser.models import BehaviorTree
+
+        blocks_tree = {
+            "主流程": seq(RefNode(ref_target="this/导出"), action("根后")),
+            "导出": seq(RefNode(ref_target="this/登录"), action("导出叶")),
+            "登录": seq(action("登录叶")),
+        }
+        tree = BehaviorTree(name="主流程", root=blocks_tree["主流程"])
+        engine = make_engine()
+        snapshots = []
+
+        def probe(node, timeout):
+            snapshots.append(engine.get_exec_state())
+            return leaf_success(node.description)
+
+        engine._leaf_executor = probe
+        result = engine.run(tree, {}, config, blocks_tree=blocks_tree)
+        assert result.status == "success"
+        # 8 节点 = 主流程seq/RefNode主/根后/导出seq/RefNode导/导出叶/登录seq/登录叶
+        progresses = [s.progress for s in snapshots]
+        assert progresses == [0.0, 3 / 8, 6 / 8]
+        # 结束状态进度到达 1.0，且子块节点计入已完成
+        state = engine.get_exec_state()
+        assert state.finished is True
+        assert state.progress == 1.0
+        descs = [r.node_desc for r in state.completed]
+        assert "登录叶" in descs
+        assert "导出叶" in descs
+
+    def test_cross_doc_same_name_block_resolves_to_owner(self, config) -> None:
+        """跨文档同名块碰撞：导出块内部 this/登录 运行期解析到所属文档。
+
+        根文档（主流程）与跨文档（导出）各有同名块「登录」；静态解析已把
+        导出块的 this/登录 指到所属文档，运行期必须同样命中「导出/登录」，
+        而非误取根文档同名块。
+        """
+        from parser_fixtures import build_resolver
+
+        from webops.parser.models import DocumentSource
+        from webops.parser.parser import BehaviorTreeParser
+
+        resolver = build_resolver(
+            DocumentSource(
+                id="主流程",
+                data={"block 主流程": {"Sequence": [{"ref": "导出/导出"}]}},
+            ),
+            DocumentSource(
+                id="导出",
+                data={
+                    "block 导出": {"Sequence": [{"ref": "this/登录"}]},
+                    "block 登录": {
+                        "Sequence": [{"Step": {"action": "导出文档登录块", "expect": "非空"}}]
+                    },
+                },
+            ),
+        )
+        result = BehaviorTreeParser().parse(
+            DocumentSource(
+                id="主流程",
+                data={
+                    "block 主流程": {"Sequence": [{"ref": "导出/导出"}]},
+                    "block 登录": {
+                        "Sequence": [{"Step": {"action": "根文档登录块", "expect": "非空"}}]
+                    },
+                },
+            ),
+            resolver,
+        )
+        assert result.checks.ok, result.checks.issues
+        ctx = make_run_context(
+            config, blocks=result.blocks, blocks_tree=result.blocks_tree, tree_name="主流程"
+        )
+        calls: list[str] = []
+        base = _space_leaf(ctx.space)
+
+        def rec(node, timeout):
+            calls.append(node.description)
+            return base(node, timeout)
+
+        ctx.leaf_executor = rec
+        assert Traverser(ctx).tick(result.blocks_tree["主流程"]) == SUCCESS
+        # 命中导出文档的同名块，而非根文档同名块
+        assert "导出文档登录块" in calls
+        assert "根文档登录块" not in calls
+
+    def test_returns_respects_declared_type(self, config) -> None:
+        """returns 回收输出时优先父帧已声明类型，不覆盖为推断类型。
+
+        父帧预声明 this/结果 为 str；被引用块输出 int。returns 回写必须尊重
+        声明类型（类型契约），而不静默以 infer_type(int)=int 覆盖。
+        """
+        blocks = {
+            "导出": BlockDecl(name="导出", doc_id="主流程", outputs=("num",)),
+        }
+
+        def write_int(frame):
+            space.write(frame, "this/num", 5, "int")
+            return None
+
+        blocks_tree = {
+            "主流程": seq(RefNode(ref_target="this/导出", returns=(("num", "this/结果"),))),
+            "导出": seq(action("产整数")),
+        }
+        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        space = ctx.space
+        space.write(space._current, "this/结果", "initial", "str")
+        ctx.leaf_executor = _space_leaf(space, extra={"产整数": write_int})
+        assert Traverser(ctx).tick(blocks_tree["主流程"]) == FAILURE
+        assert "类型" in (ctx.failure_reason or "")
+
     def test_cross_doc_chain_owner_this_at_runtime(self, config) -> None:
         """跨文档链 主流程→导出→(this/登录)：导出块内部 this/ 解析到所属文档。
 

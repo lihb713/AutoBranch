@@ -67,25 +67,64 @@ def node_desc(node: Node) -> str:
     return node_type_name(node)
 
 
-def count_nodes(node: Node) -> int:
+def count_nodes(
+    node: Node,
+    blocks_tree: dict[str, Node] | None = None,
+    _seen: set[str] | None = None,
+) -> int:
     """统计树中基础节点总数（供 ``ExecState.progress`` 计算，design D3）。
 
-    ``RefNode`` 计 1（其目标块树独立计数，由运行时 ``_tick_ref`` 递归 tick）。
+    ``RefNode`` 计 1，并递归计入其被引用块子树（``blocks_tree`` 中查找）。
+    运行期 ``_tick_ref`` 递归 tick 目标块并逐节点记录，故 total 必须同样
+    计入，否则 completed/total 提前超 1、进度饱和到 1.0。ref 图静态已保证
+    DAG，此处 ``_seen`` 作防御性环保护。
     """
     total = 1
-    if isinstance(node, SequenceNode):
+    if isinstance(node, RefNode):
+        if blocks_tree is not None:
+            target = (node.ref_target or "").strip()
+            parts = [p for p in target.split("/") if p]
+            if len(parts) == 2:
+                owner_doc = node.loc.doc_id if node.loc else ""
+                tdoc = owner_doc if parts[0] == "this" else parts[0]
+                child = _resolve_ref_tree(blocks_tree, tdoc, parts[1], owner_doc)
+                if child is not None:
+                    key = f"{tdoc}/{parts[1]}"
+                    if _seen is None:
+                        _seen = set()
+                    if key not in _seen:
+                        _seen.add(key)
+                        total += count_nodes(child, blocks_tree, _seen)
+    elif isinstance(node, SequenceNode):
         for child in node.children:
-            total += count_nodes(child)
+            total += count_nodes(child, blocks_tree, _seen)
     elif isinstance(node, SelectorNode):
         for branch in node.branches:
             if branch.condition is not None:
-                total += count_nodes(branch.condition)
-            total += count_nodes(branch.child)
+                total += count_nodes(branch.condition, blocks_tree, _seen)
+            total += count_nodes(branch.child, blocks_tree, _seen)
     elif isinstance(node, RepeatNode):
         if node.until is not None:
-            total += count_nodes(node.until)
-        total += count_nodes(node.body)
+            total += count_nodes(node.until, blocks_tree, _seen)
+        total += count_nodes(node.body, blocks_tree, _seen)
     return total
+
+
+def _resolve_ref_tree(
+    blocks_tree: dict[str, Node], tdoc: str, block_name: str, owner_doc: str
+) -> Node | None:
+    """按 ``blocks_tree`` 定位目标块树（镜像静态 ``_find_block_tree`` 兜底）。
+
+    ``this/<块>`` 同文档引用：先试 ``<所属文档>/<块>`` 键（跨文档同名块收纳），
+    再兜底纯块名。``文档/<块>`` 跨文档：先试 ``文档/块`` 键再兜底纯块名。
+    """
+    if tdoc == "this":
+        if owner_doc:
+            qualified = blocks_tree.get(f"{owner_doc}/{block_name}")
+            if qualified is not None:
+                return qualified
+        return blocks_tree.get(block_name)
+    return blocks_tree.get(f"{tdoc}/{block_name}") or blocks_tree.get(block_name)
 
 
 def _now_iso() -> str:
@@ -280,7 +319,8 @@ class Traverser:
         if len(parts) != 2:
             return self._note_failure(node, f"ref 目标非法: {target!r}") or FAILURE
         tdoc, block_name = parts
-        child_tree = self._find_ref_tree(tdoc, block_name)
+        owner_doc = node.loc.doc_id if node.loc else ""
+        child_tree = self._find_ref_tree(tdoc, block_name, owner_doc)
         if child_tree is None:
             return self._note_failure(node, f"引用块未在 blocks_tree 中: {target!r}") or FAILURE
         decl = self.ctx.schema_decl(block_name)
@@ -317,24 +357,31 @@ class Traverser:
                         continue
                     value = space.read(frame, f"this/{out_name}")  # 子帧读输出
                     if value is not None:
-                        space.write(parent, f"this/{rel}", value, infer_type(value))
+                        declared = (
+                            parent.declared.get(rel)
+                            or parent.outputs.get(rel)
+                            or parent.inputs.get(rel)
+                        )
+                        space.write(
+                            parent,
+                            f"this/{rel}",
+                            value,
+                            declared or infer_type(value),
+                        )
         finally:
             if frame is not None:
                 # 6) 退出子帧（数据保留至 run 结束）
                 space.exit_block()
         return status
 
-    def _find_ref_tree(self, tdoc: str, block_name: str) -> Node | None:
-        """按 ``blocks_tree`` 定位目标块树（镜像 ``_find_block_tree`` 兜底）。
+    def _find_ref_tree(self, tdoc: str, block_name: str, owner_doc: str) -> Node | None:
+        """按 ``blocks_tree`` 定位目标块树（镜像静态 ``_find_block_tree`` 兜底）。
 
-        ``this/<块>`` 同文档引用 → 纯块名键；``文档/<块>`` 跨文档 → 先试
-        ``文档/块`` 键（同名块收纳），再兜底纯块名。
+        ``owner_doc`` 为 ref 节点所属文档（``node.loc.doc_id``）：``this/<块>``
+        先试 ``<所属文档>/<块>`` 键（跨文档同名块收纳、命中所属文档），再兜底
+        纯块名；``文档/<块>`` 先试 ``文档/块`` 键再兜底纯块名。
         """
-        if tdoc == "this":
-            return self.ctx.blocks_tree.get(block_name)
-        return self.ctx.blocks_tree.get(f"{tdoc}/{block_name}") or self.ctx.blocks_tree.get(
-            block_name
-        )
+        return _resolve_ref_tree(self.ctx.blocks_tree, tdoc, block_name, owner_doc)
 
     def _eval_arg(self, frame, expr: str):
         """求值实参表达式：裸路径 ``this/<名>`` → 父帧读；否则视为字面量。

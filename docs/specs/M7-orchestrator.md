@@ -194,11 +194,20 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
    命中即「提交」，子节点结果即 Selector 结果（§5.7.7「不承载兜底」的落地）。
    **建议 contract §5.7.7 明确命中后失败不回落。**
 6. **ref 动态调用模型**：M7 经 `SchemaSpace._current`（内部当前帧指针）维护激活帧。
-   遇 `RefNode` 走 `Traverser._tick_ref`：父帧求值 args（`this/x` 或字面量）→ coerce
-   到输入类型 → `enter_block` 建子帧并注入形参 → 递归执行被引用块的可执行树（其内部
-   ref 由各自 `_tick_ref` 管理）→ SUCCESS 时按 returns 读子帧输出写父帧 → `exit_block`
-   退出子帧。`_sync_frame` 与节点 `frame` 字段已移除；`resolve_config` 继承链 +
-   `enter_block` 注入块配置覆盖，天然实现「自身 → 祖先 → 全局默认」。
+    遇 `RefNode` 走 `Traverser._tick_ref`：父帧求值 args（`this/x` 或字面量）→ coerce
+    到输入类型 → `enter_block` 建子帧并注入形参 → 递归执行被引用块的可执行树（其内部
+    ref 由各自 `_tick_ref` 管理）→ SUCCESS 时按 returns 读子帧输出写父帧 → `exit_block`
+    退出子帧。`_sync_frame` 与节点 `frame` 字段已移除；`resolve_config` 继承链 +
+    `enter_block` 注入块配置覆盖，天然实现「自身 → 祖先 → 全局默认」。
+   - **目标块运行期解析**（`_find_ref_tree`）：`this/<块>` 以 ref 节点所属文档
+     （`node.loc.doc_id`）为 `owner_doc`，先试 `owner_doc/块` 键（跨文档同名块收纳、
+     命中所属文档），再兜底纯块名；`文档/<块>` 先试 `文档/块` 键再兜底纯块名。
+     与静态 `_find_block_tree`/`_check_ref_graph` 语义一致，消除同名块跨文档分歧。
+   - **returns 回收写父帧**：优先父帧对目标变量已声明类型（`parent.declared`/
+     `outputs`/`inputs`），无则 `infer_type(value)`——类型一致性，不覆盖已声明类型。
+   - **节点总数（`count_nodes`）ref 感知**：`RefNode` 计 1 并递归计入被引用块子树
+     （经 `blocks_tree`，防御性 `_seen` 环保护），与运行期逐节点记录对齐，保证
+     `completed/total_nodes ≤ 1.0`、进度不提前饱和 1.0。
 7. **ExecState 复用 M8**：M7 不新增执行状态模型，直接经 `Reporter.exec_state()`
    复用 M8 `ExecState`（§12.4 数据源单一，进度由 completed/total_nodes 派生）。
 8. **真实叶子执行的依赖边界**：M7 不构造 M0/M5；真实执行需要调用方在 `RunConfig`
