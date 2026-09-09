@@ -95,6 +95,18 @@ def parse_document(doc) -> OneDocResult:
 
     decl_inputs = raw.get("inputs", {})
     if isinstance(decl_inputs, dict):
+        from webops.schema.types import TYPE_REGISTRY
+
+        for name, typ in decl_inputs.items():
+            if typ not in TYPE_REGISTRY:
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "structure",
+                        "invalid_decl",
+                        f"入参 '{name}' 类型 '{typ}' 未登记（支持: {sorted(TYPE_REGISTRY)}）",
+                    )
+                )
         result.decl_inputs = dict(decl_inputs)
     decl_outputs = raw.get("outputs", [])
     if isinstance(decl_outputs, list):
@@ -122,8 +134,9 @@ def parse_document(doc) -> OneDocResult:
             child_ids = [v for v in slots.values() if isinstance(v, str)]
         nodes[nid] = (node, child_ids)
 
-    # 引用关系：子 id 必须存在；统计被引用次数
+    # 引用关系：子 id 必须存在；统计被引用次数；检测重复引用
     referenced: set[str] = set()
+    parent_of: dict[str, str] = {}
     for nid, (_, child_ids) in nodes.items():
         for cid in child_ids:
             if cid not in nodes:
@@ -136,12 +149,65 @@ def parse_document(doc) -> OneDocResult:
                     )
                 )
             else:
+                if cid in parent_of:
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "structure",
+                            "duplicate_reference",
+                            f"节点 '{cid}' 被多个槽位引用（{parent_of[cid]} 与 {nid}），破坏纯树结构",
+                        )
+                    )
+                parent_of[cid] = nid
                 referenced.add(cid)
 
+    # 无环检测：从 root 与每个游离根 DFS，遇环报错
+    child_map = {nid: child_ids for nid, (_, child_ids) in nodes.items()}
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def detect_cycle(start: str) -> bool:
+        if start in visited:
+            return False
+        stack = [(start, iter(child_map.get(start, [])))]
+        visiting = {start}
+        while stack:
+            node, it = stack[-1]
+            advanced = False
+            for c in it:
+                if c not in child_map:
+                    continue
+                if c in visiting:
+                    return True
+                if c not in visited:
+                    visiting.add(c)
+                    stack.append((c, iter(child_map.get(c, []))))
+                    advanced = True
+                    break
+            if not advanced:
+                visiting.discard(node)
+                visited.add(node)
+                stack.pop()
+        return False
+
+    cycle_starts = [root_id] if root_id in nodes else []
+    cycle_starts.extend(
+        nid for nid in nodes if nid not in referenced and nid != root_id
+    )
+    for start in cycle_starts:
+        if detect_cycle(start):
+            issues.append(
+                _issue(doc_id, "structure", "cycle", f"节点 '{start}' 的槽位引用存在循环")
+            )
+
     # 构建 IR 树：把 slot 子节点挂到父节点（子节点的 IR 由 nodes 提供）
-    def build(node: IRNode, nid: str) -> IRNode:
+    def build(node: IRNode, nid: str, seen: frozenset[str] = frozenset()) -> IRNode:
+        if nid in seen:  # 环保护（校验已报 cycle，构建时避免递归）
+            return node
         _, child_ids = nodes[nid]
-        children = [build(nodes[c][0], c) for c in child_ids if c in nodes]
+        children = [
+            build(nodes[c][0], c, seen | {nid}) for c in child_ids if c in nodes
+        ]
         if node.kind in ("Sequence", "Root"):
             node = _with_children(node, children)
         return node

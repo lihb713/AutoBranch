@@ -100,7 +100,6 @@ def test_parse_slots_reference_missing():
     assert not result.checks_ok()
 
 
-@pytest.mark.skip(reason="slot 重复引用校验在任务 2.3 实现")
 def test_parse_duplicate_reference_rejected():
     """同一节点被多个槽位引用 → 校验失败。"""
     raw = {
@@ -110,6 +109,50 @@ def test_parse_duplicate_reference_rejected():
             "n2": {"type": "Sequence", "name": "s", "slots": {"1": "n4"}},
             "n3": {"type": "Sequence", "name": "s2", "slots": {"1": "n4"}},
             "n4": {"type": "Step", "name": "x", "action": "a", "expect": "b"},
+        },
+        "root": "n1",
+    }
+    result = parse_document(_doc(raw))
+    assert not result.checks_ok()
+
+
+def test_parse_cycle_detected():
+    """slots 引用成环（n2↔n3）→ 校验失败。"""
+    raw = {
+        "tree": "主流程",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {"type": "Sequence", "name": "s", "slots": {"1": "n3"}},
+            "n3": {"type": "Sequence", "name": "s2", "slots": {"1": "n2"}},
+        },
+        "root": "n1",
+    }
+    result = parse_document(_doc(raw))
+    assert not result.checks_ok()
+
+
+def test_parse_step_missing_expect():
+    """Step 缺 expect → 校验失败（必填字段）。"""
+    raw = {
+        "tree": "主流程",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {"type": "Step", "name": "x", "action": "点登录"},
+        },
+        "root": "n1",
+    }
+    result = parse_document(_doc(raw))
+    assert not result.checks_ok()
+
+
+def test_parse_invalid_inputs_type():
+    """inputs 类型非法 → 校验失败。"""
+    raw = {
+        "tree": "主流程",
+        "inputs": {"url": "不存在的类型"},
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {"type": "Step", "name": "x", "action": "a", "expect": "b"},
         },
         "root": "n1",
     }
