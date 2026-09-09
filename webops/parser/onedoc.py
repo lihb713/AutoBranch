@@ -45,10 +45,11 @@ class OneDocResult:
         return not self.issues
 
 
-def parse_document(doc) -> OneDocResult:
+def parse_document(doc, resolver=None) -> OneDocResult:
     """解析一文档一树 DSL。
 
     :param doc: DocumentSource（id 为文档名）。
+    :param resolver: 跨文档引用解析器（可选，ref 参数对齐/跨文档环校验用）。
     """
     result = OneDocResult()
     issues: list = result.issues
@@ -221,7 +222,125 @@ def parse_document(doc) -> OneDocResult:
             continue
         result.free_trees.append(build(node, nid))
 
+    if resolver is not None:
+        _check_ref_params(doc_id, nodes, resolver, issues)
+
     return result
+
+
+def _check_ref_params(doc_id, nodes, resolver, issues) -> None:
+    """校验 ref 节点参数对齐（args/returns 数量/字面量/类型）与跨文档环。"""
+
+    def collect_refs(node: IRNode) -> list[IRNode]:
+        refs: list[IRNode] = []
+        if node.kind == "ref":
+            refs.append(node)
+        for c in node.children:
+            refs.extend(collect_refs(c))
+        return refs
+
+    all_refs: list[IRNode] = []
+    for _, (node, _) in nodes.items():
+        all_refs.extend(collect_refs(node))
+
+    for ref in all_refs:
+        target = (ref.ref_target or "").strip()
+        if not target:
+            continue
+        # 跨文档环：被引文档（直接/间接）引回本文档
+        if _leads_back_to(target, doc_id, resolver, set()):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "ref",
+                    "cross_doc_cycle",
+                    f"引用 '{target}' 形成跨文档循环（引回 '{doc_id}'）",
+                )
+            )
+        # 参数对齐：加载被引文档 inputs/outputs
+        try:
+            src = resolver.resolve(target)
+        except Exception:
+            issues.append(
+                _issue(doc_id, "ref", "missing_doc", f"引用目标文档 '{target}' 不存在")
+            )
+            continue
+        try:
+            ref_doc = parse_document(src, resolver)
+        except Exception:
+            continue
+        if not ref_doc.checks_ok():
+            continue
+        in_types = ref_doc.decl_inputs
+        out_names = ref_doc.decl_outputs
+        # args 数量 = inputs 数量
+        if ref.args and len(ref.args) != len(in_types):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "ref",
+                    "args_mismatch",
+                    f"引用 '{target}' args 数量 {len(ref.args)} ≠ 入参数量 {len(in_types)}",
+                )
+            )
+        # returns 数量 = outputs 数量；键不得与本树 inputs 重名
+        if ref.returns and len(ref.returns) != len(out_names):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "ref",
+                    "returns_mismatch",
+                    f"引用 '{target}' returns 数量 {len(ref.returns)} ≠ 出参数量 {len(out_names)}",
+                )
+            )
+        for key, _typ in ref.returns:
+            if key in in_types:
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "ref",
+                        "name_conflict",
+                        f"接收参数 '{key}' 与本树入参重名",
+                    )
+                )
+
+
+def _leads_back_to(target: str, doc_id: str, resolver, seen: set[str]) -> bool:
+    """被引文档 target 是否（直接/间接）引用回 doc_id。"""
+    if target == doc_id:
+        return True
+    if target in seen:
+        return False
+    seen = seen | {target}
+    try:
+        src = resolver.resolve(target)
+    except Exception:
+        return False
+    try:
+        ref_doc = parse_document(src, resolver)
+    except Exception:
+        return False
+    # 不依赖 checks_ok（参数校验失败不阻断环检测）；直接收集 ref 目标
+    for ref in _collect_ref_targets(ref_doc.main_tree):
+        if _leads_back_to(ref, doc_id, resolver, seen):
+            return True
+    for tree in ref_doc.free_trees:
+        for ref in _collect_ref_targets(tree):
+            if _leads_back_to(ref, doc_id, resolver, seen):
+                return True
+    return False
+
+
+def _collect_ref_targets(node: IRNode | None) -> list[str]:
+    """收集树中全部 ref 目标文档名。"""
+    if node is None:
+        return []
+    targets: list[str] = []
+    if node.kind == "ref" and node.ref_target:
+        targets.append(node.ref_target.strip())
+    for c in node.children:
+        targets.extend(_collect_ref_targets(c))
+    return targets
 
 
 def _build_ir_node(

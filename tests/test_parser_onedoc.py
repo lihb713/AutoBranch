@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from webops.parser.models import DocumentSource
 from webops.parser.onedoc import parse_document
+from webops.parser.refs import MappingResolver
 
 
 def _doc(raw: str | dict) -> DocumentSource:
     return DocumentSource(id="主流程", data=raw)
+
+
+def _resolver(sources: dict[str, dict]) -> MappingResolver:
+    resolver = MappingResolver()
+    for name, data in sources.items():
+        resolver.add(DocumentSource(id=name, data=data))
+    return resolver
 
 
 def test_parse_simple_tree():
@@ -155,4 +163,81 @@ def test_parse_invalid_inputs_type():
         "root": "n1",
     }
     result = parse_document(_doc(raw))
+    assert not result.checks_ok()
+
+
+# ---- 任务 2.4：ref 参数校验（需 resolver 加载被引文档） ----
+
+B_DOC = {
+    "tree": "文档B",
+    "inputs": {"url": "str", "page": "page_ref"},
+    "outputs": ["url文本"],
+    "nodes": {
+        "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+        "n2": {"type": "Step", "name": "s", "action": "a", "expect": "b"},
+    },
+    "root": "n1",
+}
+
+
+def test_ref_args_mismatch_rejected():
+    """args 数量与被引文档 inputs 不匹配 → 校验失败。"""
+    raw = {
+        "tree": "主流程",
+        "inputs": {"起始订单": "str"},
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {
+                "type": "ref",
+                "name": "B",
+                "target": "文档B",
+                "args": ["起始订单"],  # 只传 1 个，B 有 2 个 inputs
+                "returns": {"结果": "str"},
+            },
+        },
+        "root": "n1",
+    }
+    result = parse_document(_doc(raw), _resolver({"文档B": B_DOC}))
+    assert not result.checks_ok()
+
+
+def test_ref_args_ok_with_literal():
+    """args 含字面量（非变量名）且数量匹配 → 通过。"""
+    raw = {
+        "tree": "主流程",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {
+                "type": "ref",
+                "name": "B",
+                "target": "文档B",
+                "args": ["起始订单", "http://x"],  # 变量 + 字面量
+                "returns": {"结果": "str"},
+            },
+        },
+        "root": "n1",
+    }
+    result = parse_document(_doc(raw), _resolver({"文档B": B_DOC}))
+    assert result.checks_ok()
+
+
+def test_ref_cross_doc_cycle_rejected():
+    """A ref B、B ref A → 跨文档环校验失败。"""
+    a_raw = {
+        "tree": "主流程",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {"type": "ref", "name": "B", "target": "文档B"},
+        },
+        "root": "n1",
+    }
+    b_raw = {
+        "tree": "文档B",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {"type": "ref", "name": "A", "target": "主流程"},
+        },
+        "root": "n1",
+    }
+    result = parse_document(_doc(a_raw), _resolver({"文档B": b_raw}))
     assert not result.checks_ok()
