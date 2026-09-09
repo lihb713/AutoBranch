@@ -110,7 +110,7 @@ class RefNode(Node):
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：根块名 + 基础节点根。
 - 文档格式明确化（§4.1 图示的落地写法，见实现）：
-  - 写法 A/B：顶层 `block <块名>:` 键（可多个），根块 = 名字匹配文档名的块，无匹配取第一个；其余为命名块（供 `this/块名` 引用）。
+  - 写法 A/B：顶层 `block <块名>:` 键（可多个），**主块** = 名字匹配文档名的块，无匹配取第一个；其余为**附属块**（供 `this/块名` 同文档引用或 `文档/块` 跨文档引用）。
   - 写法 C（极简）：整个 dict 即根块行为树（根块名 = 文档名）。
   - 块体 = `inputs`/`outputs` 声明 + 配置参数覆盖（`timeout`/`retry`/`browser` 标量）+ 恰好一个行为树节点键。
 
