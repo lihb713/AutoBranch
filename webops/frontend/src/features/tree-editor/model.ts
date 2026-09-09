@@ -370,46 +370,83 @@ export function parseTree(yamlText: string, docName?: string): EditorNode {
         const match = blockKeys.find((k) => k.slice("block ".length).trim() === docName);
         if (match) key = match;
       }
-      data = data[key];
+      const body = data[key];
+      if (isRecord(body)) {
+        return blockDocFromBody(key.slice("block ".length).trim(), body).tree;
+      }
+      return nodeFromYaml(body);
     }
   }
   return nodeFromYaml(data);
 }
 
 /**
- * 方案 2 文档级解析：返回主块名 + 全部块映射（块名 → 块体）。
+ * 方案 2 块文档模型：一块 = 声明（inputs/outputs/config）+ 行为树（EditorNode）。
+ */
+export type BlockDoc = {
+  name: string;
+  decl: Record<string, unknown>;
+  tree: EditorNode;
+};
+
+/** 块声明键（inputs/outputs 及配置参数），与行为树节点键区分。 */
+const BLOCK_DECL_KEYS = new Set(["inputs", "outputs", "timeout", "retry", "browser"]);
+
+/**
+ * 方案 2 文档级解析：返回主块名 + 全部块（BlockDoc）。
  * 无 block 定义（旧写法整文档即根块）时 mainBlock 为空、blocks 为空。
  */
-export function parseDocument(yamlText: string): { mainBlock: string; blocks: Record<string, unknown> } {
+export function parseDocument(
+  yamlText: string,
+): { mainBlock: string; blocks: BlockDoc[] } {
   let data: unknown;
   try {
     data = load(yamlText);
   } catch (err) {
     throw new Error(`yaml 解析失败: ${(err as Error).message}`);
   }
-  if (!isRecord(data)) return { mainBlock: "", blocks: {} };
+  if (!isRecord(data)) return { mainBlock: "", blocks: [] };
   const blockKeys = Object.keys(data).filter((k) => k.startsWith("block "));
-  if (blockKeys.length === 0) return { mainBlock: "", blocks: {} };
-  const blocks: Record<string, unknown> = {};
+  if (blockKeys.length === 0) return { mainBlock: "", blocks: [] };
+  const blocks: BlockDoc[] = [];
   for (const k of blockKeys) {
-    blocks[k.slice("block ".length).trim()] = data[k];
+    const name = k.slice("block ".length).trim();
+    const body = data[k];
+    if (isRecord(body)) {
+      blocks.push(blockDocFromBody(name, body));
+    } else {
+      // 块体为列表（无声明，直接行为树序列）
+      blocks.push({ name, decl: {}, tree: nodeFromYaml(body) });
+    }
   }
   return { mainBlock: blockKeys[0].slice("block ".length).trim(), blocks };
 }
 
+/** 从块体 dict（含声明键 + 一个行为树键）构建 BlockDoc。 */
+function blockDocFromBody(name: string, body: Record<string, unknown>): BlockDoc {
+  const decl: Record<string, unknown> = {};
+  const nodeKeys: string[] = [];
+  for (const [k, v] of Object.entries(body)) {
+    if (BLOCK_DECL_KEYS.has(k)) {
+      decl[k] = v;
+    } else {
+      nodeKeys.push(k);
+    }
+  }
+  if (nodeKeys.length !== 1) {
+    throw new Error(`块 '${name}' 必须含且仅含一个行为树节点键（实际: ${nodeKeys.join(", ")}）`);
+  }
+  return { name, decl, tree: nodeFromYaml({ [nodeKeys[0]]: body[nodeKeys[0]] }) };
+}
+
 /**
- * 方案 2 文档级序列化：重建多块文档（主块 + 附属块）。
- * 主块体 mainValue 为块内容（如 {Sequence: [...]}）。
+ * 方案 2 文档级序列化：重建多块文档（主块 + 附属块，含各块声明）。
  */
-export function serializeDocument(
-  mainBlock: string,
-  mainValue: unknown,
-  otherBlocks: Record<string, unknown>,
-): string {
+export function serializeDocument(blocks: BlockDoc[]): string {
   const doc: Record<string, unknown> = {};
-  doc[`block ${mainBlock}`] = mainValue;
-  for (const [name, value] of Object.entries(otherBlocks)) {
-    doc[`block ${name}`] = value;
+  for (const b of blocks) {
+    const blockBody: Record<string, unknown> = { ...b.decl, ...nodeToYamlEntry(b.tree) };
+    doc[`block ${b.name}`] = blockBody;
   }
   return dump(doc, { noRefs: true, lineWidth: -1 }).trimEnd() + "\n";
 }

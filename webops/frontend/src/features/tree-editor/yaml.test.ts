@@ -149,10 +149,10 @@ block 附属:
 `.trim();
     const doc = parseDocument(text);
     expect(doc.mainBlock).toBe("主流程");
-    expect(Object.keys(doc.blocks).sort()).toEqual(["主流程", "附属"]);
+    expect(doc.blocks.map((b) => b.name).sort()).toEqual(["主流程", "附属"]);
   });
 
-  it("serializeDocument 重建多块文档（主块 + 附属块）", () => {
+  it("serializeDocument 重建多块文档（主块 + 附属块，保留声明）", () => {
     const text = `
 block 主流程:
   Sequence:
@@ -168,13 +168,12 @@ block 附属:
         expect: d
 `.trim();
     const doc = parseDocument(text);
-    const others: Record<string, unknown> = {};
-    for (const [n, v] of Object.entries(doc.blocks)) {
-      if (n !== doc.mainBlock) others[n] = v;
-    }
-    const rebuilt = serializeDocument(doc.mainBlock, doc.blocks[doc.mainBlock], others);
+    const rebuilt = serializeDocument(doc.blocks);
     const reloaded = load(rebuilt) as Record<string, unknown>;
     expect(Object.keys(reloaded).sort()).toEqual(["block 主流程", "block 附属"]);
+    // 附属块声明保留
+    const aux = reloaded["block 附属"] as Record<string, unknown>;
+    expect(aux["inputs"]).toEqual({ x: "str" });
   });
 
   it("空字段不写入 yaml（交给后端 /check 报告缺失）", () => {
