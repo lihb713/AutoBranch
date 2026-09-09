@@ -138,7 +138,7 @@ class RefNode(Node):
 | `expand` | 展开后合法性 | `expand.residual_composite` / `depth_exceeded` |
 | `ref` | 块引用存在 | `ref.bad_syntax` / `missing_doc` / `missing_block` / `cycle` / `recursion_depth` / `input_not_bound` / `args_not_input` / `returns_not_output` / `output_not_set` |
 | `repeat` | 循环上界 | `repeat.max_missing` / `max_not_int` |
-| `scope` | 变量契约 | `scope.out_of_scope` |
+| `scope` | 变量契约 | `scope.out_of_scope` / `get_undeclared` |
 | `locatable` | 可定位性 | `locatable.not_locatable` |
 | `verify` | 验证条件 | `verify.missing_condition` |
 | `predicate` | 谓词可校验 | `predicate.empty_condition` |
@@ -147,7 +147,7 @@ class RefNode(Node):
 
 - 分支目标支持裸字符串 = `ref: this/块名` 简写（对齐 §4.3.2「分支目标 = 块引用」）。
 - 配置参数覆盖仅在块 schema 级识别（`timeout`/`retry`/`browser` 标量），未声明不要求用户书写（§4.2/§5.7.5）。
-- 变量作用域校验（§5.3.2）：新语法 `[[get:this/变量]]`（读取引用）/`[[set:类型:this/变量]]`（写入声明）——用户层仅 `this/变量`（自身）单段合法；多段（`this/子块/变量`）或指向非自身 → `scope.out_of_scope`。`ActionNode.set_targets` 记录动作的 `[[set:...]]` 可写集；`ActionNode.set_decls` 记录类型标注 `[[set:page_ref:this/页面A]]`（存页签引用 PageRef）与 `[[set:str:this/url]]`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`[[get:...]]` 运行时由引擎替换（M6 职责），M2 仅作用域校验。
+- 变量作用域校验（§5.3.2）：新语法 `[[get:this/变量]]`（读取引用）/`[[set:类型:this/变量]]`（写入声明）——用户层仅 `this/变量`（自身）单段合法；多段（`this/子块/变量`）或指向非自身 → `scope.out_of_scope`。**get 已定义校验**：`[[get:this/x]]` 的 x 必须是本块 inputs 声明、块内 `[[set:...]]` 目标或 ref returns 目标，否则 `scope.get_undeclared`（output 声明不构成 get 源）。`ActionNode.set_targets` 记录动作的 `[[set:...]]` 可写集；`ActionNode.set_decls` 记录类型标注 `[[set:page_ref:this/页面A]]`（存页签引用 PageRef）与 `[[set:str:this/url]]`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`[[get:...]]` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
 - 引用处绑定契约（§5.7.3）：被引用块声明输入必须在 ref 处用 `args` 全部绑定，绑定目标须为被引用块声明输入，否则校验失败。
 
 ## 6. 验收标准

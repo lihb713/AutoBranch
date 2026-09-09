@@ -376,6 +376,11 @@ Retry:
 - **读取（get）确定性**：`[[get:this/xxx]]` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
   读取失败（变量未定义 / 越出可见作用域）→ 该叶子直接 FAILURE（程序错误）。
+- **get 变量静态校验**：`[[get:this/x]]` 读取的变量必须是**本块 inputs 声明**（其他块
+  传入参数）、**本块内 `[[set:...:this/x]]` 声明**或 **ref 的 returns 目标变量**；
+  未定义即读取 → 清晰度校验报 `scope.get_undeclared`（解析期拦截）。output 声明不构成
+  get 源（输出是本块返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
+  也须配 `[[set:...]]` 标注才能被 get。
 - **写入（set）声明**：`[[set:类型:this/xxx]]` 声明本动作的可写变量集。LLM 决定何时调用
   extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**（未声明路径拒绝）。
 - 用户层统一 `this` 单段（`this/变量`）；`$this` 仅为内部兼容（M3 保留，新代码用 `this`）。

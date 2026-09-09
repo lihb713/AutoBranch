@@ -159,6 +159,7 @@ TYPE_REGISTRY: dict[str, TypeSpec] = {
 - 实参路径 = 本帧裸路径 `this/<名>`（单段，无跨帧）
 - ref 图静态环检测（沿用现有 cycle / recursion_depth）
 - **output 全赋值**：块声明的每个 `outputs` 名，其块体内必须存在赋值点——叶子 `[[set:...:this/<名>]]` 或嵌套 ref 的 `returns` 目标含 `<名>`；缺失 → `output_not_set`（对称于 input_not_bound）。仅要求"存在赋值点"，**不分析分支路径**：走某分支未赋值时运行期 SUCCESS 该 output 为空/未定义并在报告提示，不阻断流程。
+- **get 已定义**：块内 `[[get:this/<名>]]` 读取的变量必须是本块 `inputs` 声明、块内 `[[set:...:this/<名>]]` 目标或 ref `returns` 目标；否则 → `scope.get_undeclared`。output 声明不构成 get 源。
 
 **阶段二：运行期（动态调用时）**
 - 实参在父帧求值（裸路径 `this/<名>` → 实际值；字面量）
