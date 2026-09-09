@@ -200,6 +200,30 @@ tree 订单流程:                          # 顶层键承载树名（=文档名
 
 **性能**：当前全量布局（不做视口裁剪/性能优化）；多数行为树节点规模小（< 100）。
 
+### 14. 文档库与跨文档引用
+
+**现状**：parser 层已有 `RefResolver` 抽象（按文档名取文档源）+ `MappingResolver` 内存实现（测试用）。但 **server 生产装配用空 `MappingResolver({})`，没有 DB-backed resolver**——跨文档引用仅在 fixture 测试可用，server 环境 `ref: 文档X` 必然 missing_doc。
+
+**新设计**：一文档一树下 `ref: 文档B` 是唯一引用形式，文档库成为刚需。
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ 文档库（DB-backed RefResolver）                          │
+│   按文档名查 DB → 返回文档内容 → 解析为文档树            │
+└─────────────────────────────────────────────────────────┘
+        ▲                                    ▲
+        │ 编辑时（前端 ref 展开/校验）         │ 运行时（ref 执行）
+        │ 按名查 API → 加载目标文档树          │ _tick_ref → resolver 取文档 → 从 Root 执行
+```
+
+**需要新增**：
+- **DB 层**：文档名唯一（已有重名 409 约束）→ **按名查 API**（`GET /api/trees/by-name/{name}` 或等价）。
+- **解析/执行**：DB-backed resolver（从 DB 按名加载文档源喂给 `RefResolver`），替换 server 空 `MappingResolver`。
+- **前端 ref 展开/校验**：选引用树时按名查 API 加载目标文档 inputs/outputs；展开时加载其树。
+- **运行时 ref 执行**：`_tick_ref` 经 resolver 按名取被引文档树，从其 Root 执行。
+
+**校验**：保存/编辑时 ref 目标文档存在（前端按名查可知）；运行时缺失 → 明确错误。
+
 ## 待定项（后续讨论）
 
 1. **parser 改造范围**：一文档一树 → M2 parser 简化（删多块解析；`blocks_tree` 简化为"文档名→树"）；RefNode 执行器适配（ref 按文档名加载，从被引文档 Root 执行——执行器基本不变）。
@@ -209,4 +233,4 @@ tree 订单流程:                          # 顶层键承载树名（=文档名
 - **前端**：重写 CanvasTree（画布布局 + 槽位 UI + 主树/游离区）；model.ts 重构（节点对象池/槽位引用/id+name）；ref args/returns 编辑（修复数据丢失缺陷）；BlockListPanel 移除（无附属块）；根节点；节点卡片（固定尺寸、类型图标/颜色、name 显示）。
 - **M2 parser**：一文档一树（`tree`/`nodes`/`root` 结构，删多块解析）。
 - **M7 执行**：ref = 挂载被引文档 Root；blocks_tree 语义变为"文档名→树"。
-- **后端 API**：按文档名查文档（供 ref 展开加载）；保存校验（单根/根可达/无环）；导入文档（md/yaml → 创建行为树，保留原 id）。
+- **后端 API**：**按文档名查文档（文档库，DB-backed resolver）**；保存校验（单根/无环）；导入文档（md/yaml → 创建行为树，保留原 id）。
