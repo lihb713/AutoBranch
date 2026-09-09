@@ -3,7 +3,7 @@
 - [x] 1.1 新增 DB-backed `RefResolver`：按文档名从 DB 加载 `Tree.content` → 构造 `DocumentSource`，实现 `RefResolver` 接口（文档不存在抛 `RefNotFoundError`）。验证：单测覆盖"按名查到/查不到"。
 - [x] 1.2 server 装配改用 DB-backed resolver 替换空 `MappingResolver`（engine.py / validation.py）。验证：`pytest tests/server -q` 通过。
 - [x] 1.3 新增按文档名查 API（`GET /api/trees/by-name/{name}`，name 唯一约束）。验证：API 单测覆盖命中/404。
-- [ ] 1.4 跨文档引用端到端：创建两个文档（A ref B），校验 A 通过、执行 A 成功（B 的 Root 被执行）。验证：集成测试 + `pytest -q` 全量通过。
+- [ ] 1.4 跨文档引用端到端：创建两个文档（A ref B），校验 A 通过、执行 A 成功（B 的 Root 被执行）。验证：集成测试 + `pytest -q` 全量通过。（待任务 3 执行器适配后完成）
 - [ ] 1.5 文档同步：contract.md / M7 spec / openspec orchestrator 记录跨文档引用经文档库。验证：文档 grep 确认无旧"空 resolver"表述。
 
 ## 2. DSL 一文档一树（阶段 2）
@@ -12,8 +12,8 @@
 - [x] 2.2 从 `root` 沿 `slots` 构建主树（基础节点，Root 起始）；游离节点保留为游离树。验证：单测断言主树结构与游离树集合。
 - [x] 2.3 解析校验：单根（恰一个 type:Root 且 root 引用指向它）、主树与每棵游离树无环、slots 引用存在、节点必填字段（action/expect/max 等）、文档级声明合法。验证：校验单测覆盖各反例。
 - [x] 2.4 ref 参数校验：args 数量/顺序/类型匹配被引文档 inputs（含**字面量**传入：非变量名则按 str/int/float/bool 解析并校验类型）；returns 数量匹配 outputs、键为本树新参数名且不重名、类型合法；目标文档存在（经 resolver）；**跨文档引用环检测**（A→B→A 直接/间接循环）。验证：校验单测覆盖参数对齐反例、字面量、跨文档环。
-- [ ] 2.5 迁移工具：旧树形 DSL（多块/嵌套）→ 新 nodes/slots 结构转换。验证：迁移单测覆盖代表性文档（登录/导出/主流程）。
-- [ ] 2.6 文档同步：contract.md §4.1 / M2 spec / openspec behavior-tree-parser 同步一文档一树。验证：文档 grep 确认无旧 `block`/多块表述（历史设计稿除外）。
+- [x] 2.5 迁移工具：**已废弃**——旧多块 DSL 完全移除（用户决策：不为兼容保留冗余），parser 重写为纯一文档一树，无需迁移工具；旧 parser 测试删除，新 DSL 测试建立（onedoc + onedoc_integration）。
+- [ ] 2.6 文档同步：contract.md §4.1 / M2 spec / openspec behavior-tree-parser 同步一文档一树（含 `tree: <名>` 顶层键）。验证：文档 grep 确认无旧 `block`/多块表述（历史设计稿除外）。（随批次 L 完成）
 
 ## 3. M7 执行器适配（阶段 2 收尾）
 

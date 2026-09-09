@@ -128,32 +128,32 @@
 
 ```
 # 行为树文档（自包含）
-tree 订单流程:                          # 顶层键承载树名（=文档名，必需）
-  inputs: {起始订单: str}               # 可选：接口入参（创建参数：字典+类型）
-  outputs: [处理结果]                    # 可选：接口出参（传递参数：列表）
-  timeout: 30                           # 可选：全局配置（保留名，含义固定）
-  retry: 3
-  nodes:                                # 节点对象池（平铺定义全部节点）
-    n1:
-      type: Root                        # 根节点（真实节点类型）
-      name: 根
-      slots: {1: n2}
-    n2:
-      type: Sequence
-      name: 主流程
-      slots: {1: n3, 2: n4}
-    n3:
-      type: Step
-      name: 登录
-      action: 点"登录"
-      expect: 出现"工作台"
-    n4:
-      type: ref
-      name: 处理B
-      target: 文档B                      # ref 引用另一文档整棵树
-      args: [起始订单]                   # 传参：列表，按序对应被引树 inputs
-      returns: {结果: str}              # 接收：字典 {本树新建参数名: 类型}
-  root: n1                              # 树根引用（指向 nodes 里 type: Root 的节点 id）
+tree: 订单流程                         # 顶层键：树名（=文档名，必需）
+inputs: {起始订单: str}               # 可选：接口入参（创建参数：字典+类型）
+outputs: [处理结果]                    # 可选：接口出参（传递参数：列表）
+timeout: 30                           # 可选：全局配置（保留名，含义固定）
+retry: 3
+nodes:                                # 节点对象池（平铺定义全部节点）
+  n1:
+    type: Root                        # 根节点（真实节点类型）
+    name: 根
+    slots: {1: n2}
+  n2:
+    type: Sequence
+    name: 主流程
+    slots: {1: n3, 2: n4}
+  n3:
+    type: Step
+    name: 登录
+    action: 点"登录"
+    expect: 出现"工作台"
+  n4:
+    type: ref
+    name: 处理B
+    target: 文档B                      # ref 引用另一文档整棵树
+    args: [起始订单]                   # 传参：列表，按序对应被引树 inputs
+    returns: {结果: str}              # 接收：字典 {本树新建参数名: 类型}
+root: n1                              # 树根引用（指向 nodes 里 type: Root 的节点 id）
 ```
 
 **节点模型**（画布卡片尺寸固定，类型用颜色/形状/图标区分）：
@@ -161,7 +161,7 @@ tree 订单流程:                          # 顶层键承载树名（=文档名
 - **id**：节点唯一标识（文档内唯一，供槽位引用/ref 定位/游离判定），自动生成（`n1/n2...`），**导入时保留原 id**
 - **name**：用户自定义的纯字符串（画布显示名），**不包含类型前缀**——类型靠图标/颜色区分
 
-**顶层键分类**：`tree <名>:`（文档名，恰一）+ `inputs`/`outputs`（声明）+ `timeout`/`retry`/`browser`（全局配置保留名）+ `nodes:`（节点池，必需）+ `root: <id>`（树根引用，指向 nodes 中 `type: Root` 节点）；其他键报错。
+**顶层键分类**：`tree: <名>`（树名=文档名，恰一）+ `inputs`/`outputs`（声明）+ `timeout`/`retry`/`browser`（全局配置保留名）+ `nodes:`（节点池，必需）+ `root: <id>`（树根引用，指向 nodes 中 `type: Root` 节点）；其他键报错。
 
 **槽位引用（方案 B：平铺 + 引用）**：
 - 父子关系 = 容器节点的 `slots: {1: <子id>, 2: <子id>}`（有序）
