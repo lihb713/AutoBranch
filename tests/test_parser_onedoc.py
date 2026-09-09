@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from webops.parser.models import DocumentSource
 from webops.parser.onedoc import parse_document
 

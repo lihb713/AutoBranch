@@ -155,7 +155,8 @@ def parse_document(doc) -> OneDocResult:
                             doc_id,
                             "structure",
                             "duplicate_reference",
-                            f"节点 '{cid}' 被多个槽位引用（{parent_of[cid]} 与 {nid}），破坏纯树结构",
+                            f"节点 '{cid}' 被多个槽位引用"
+                            f"（{parent_of[cid]} 与 {nid}），破坏纯树结构",
                         )
                     )
                 parent_of[cid] = nid
@@ -163,7 +164,6 @@ def parse_document(doc) -> OneDocResult:
 
     # 无环检测：从 root 与每个游离根 DFS，遇环报错
     child_map = {nid: child_ids for nid, (_, child_ids) in nodes.items()}
-    visiting: set[str] = set()
     visited: set[str] = set()
 
     def detect_cycle(start: str) -> bool:
