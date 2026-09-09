@@ -10,7 +10,8 @@ import { TextField } from "../../components/TextField";
 import type { CheckIssue } from "../../types/check";
 import { CanvasTree } from "./CanvasTree";
 import { NodePalette } from "./NodePalette";
-import { findNodeById, parseTree, serializeTree } from "./model";
+import { load } from "js-yaml";
+import { findNodeById, parseDocument, parseTree, serializeDocument, serializeTree } from "./model";
 import { useBehaviorTree } from "./useBehaviorTree";
 
 export function TreeEditorPage() {
@@ -25,6 +26,8 @@ export function TreeEditorPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 方案 2 多块文档：保存时保留主块之外的全部附属块原文
+  const [otherBlocks, setOtherBlocks] = useState<Record<string, unknown>>({});
 
   const { root, loadTree, createAndAddNode, updateNode, setField, removeNode, moveNode } =
     useBehaviorTree();
@@ -45,7 +48,14 @@ export function TreeEditorPage() {
       .then((tree) => {
         if (cancelled) return;
         setName(tree.name);
-        loadTree(parseTree(tree.content));
+        // 方案 2：多块文档展示主块，附属块原文保留待保存
+        const doc = parseDocument(tree.content);
+        const others: Record<string, unknown> = {};
+        for (const [blockName, value] of Object.entries(doc.blocks)) {
+          if (blockName !== doc.mainBlock) others[blockName] = value;
+        }
+        setOtherBlocks(others);
+        loadTree(parseTree(tree.content, tree.name));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -97,7 +107,11 @@ export function TreeEditorPage() {
       setActionError("请填写行为树名称");
       return;
     }
-    const content = serializeTree(root);
+    const mainValue = load(serializeTree(root));
+    const content =
+      Object.keys(otherBlocks).length > 0
+        ? serializeDocument(name.trim(), mainValue, otherBlocks)
+        : serializeTree(root);
     setSaving(true);
     try {
       if (treeId !== null) {

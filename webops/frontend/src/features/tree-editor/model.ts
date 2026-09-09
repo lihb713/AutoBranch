@@ -351,7 +351,7 @@ function branchFromYaml(item: unknown): EditorNode {
   return makeNode("branch", [{ key: "otherwise", value: coerceScalar(item.otherwise) }], []);
 }
 
-export function parseTree(yamlText: string): EditorNode {
+export function parseTree(yamlText: string, docName?: string): EditorNode {
   if (!yamlText.trim()) {
     throw new Error("行为树文档为空");
   }
@@ -363,11 +363,53 @@ export function parseTree(yamlText: string): EditorNode {
   }
   if (isRecord(data)) {
     const blockKeys = Object.keys(data).filter((k) => k.startsWith("block "));
-    if (blockKeys.length === 1 && Object.keys(data).length === 1) {
-      data = data[blockKeys[0]];
-    } else if (blockKeys.length > 0) {
-      throw new Error("该文档含多个 block 定义，暂不支持在编辑器中展示");
+    if (blockKeys.length > 0) {
+      // 方案 2（多块）：编辑器展示主块——文档名匹配的块，无匹配取第一个
+      let key = blockKeys[0];
+      if (docName) {
+        const match = blockKeys.find((k) => k.slice("block ".length).trim() === docName);
+        if (match) key = match;
+      }
+      data = data[key];
     }
   }
   return nodeFromYaml(data);
+}
+
+/**
+ * 方案 2 文档级解析：返回主块名 + 全部块映射（块名 → 块体）。
+ * 无 block 定义（旧写法整文档即根块）时 mainBlock 为空、blocks 为空。
+ */
+export function parseDocument(yamlText: string): { mainBlock: string; blocks: Record<string, unknown> } {
+  let data: unknown;
+  try {
+    data = load(yamlText);
+  } catch (err) {
+    throw new Error(`yaml 解析失败: ${(err as Error).message}`);
+  }
+  if (!isRecord(data)) return { mainBlock: "", blocks: {} };
+  const blockKeys = Object.keys(data).filter((k) => k.startsWith("block "));
+  if (blockKeys.length === 0) return { mainBlock: "", blocks: {} };
+  const blocks: Record<string, unknown> = {};
+  for (const k of blockKeys) {
+    blocks[k.slice("block ".length).trim()] = data[k];
+  }
+  return { mainBlock: blockKeys[0].slice("block ".length).trim(), blocks };
+}
+
+/**
+ * 方案 2 文档级序列化：重建多块文档（主块 + 附属块）。
+ * 主块体 mainValue 为块内容（如 {Sequence: [...]}）。
+ */
+export function serializeDocument(
+  mainBlock: string,
+  mainValue: unknown,
+  otherBlocks: Record<string, unknown>,
+): string {
+  const doc: Record<string, unknown> = {};
+  doc[`block ${mainBlock}`] = mainValue;
+  for (const [name, value] of Object.entries(otherBlocks)) {
+    doc[`block ${name}`] = value;
+  }
+  return dump(doc, { noRefs: true, lineWidth: -1 }).trimEnd() + "\n";
 }

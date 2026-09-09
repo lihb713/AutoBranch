@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { load } from "js-yaml";
 import type { EditorNode } from "../../types/node";
-import { makeNode, nodeToYamlValue, parseTree, serializeTree } from "./model";
+import {
+  makeNode,
+  nodeToYamlValue,
+  parseDocument,
+  parseTree,
+  serializeDocument,
+  serializeTree,
+} from "./model";
 
 function stripIds(node: EditorNode): unknown {
   return {
@@ -100,6 +107,74 @@ block 冒烟流程:
     const parsed = parseTree(text);
     expect(parsed.type).toBe("Sequence");
     expect(parsed.children[0].type).toBe("Step");
+  });
+
+  it("多块文档：parseTree 展示主块（文档名匹配，无匹配取第一个）", () => {
+    const text = `
+block 主流程:
+  Sequence:
+    - ref: this/打开页面
+      args: {url: "http://x"}
+      returns: {url文本: this/当前url}
+
+block 打开页面:
+  inputs: {url: str}
+  outputs: url文本
+  Sequence:
+    - Step:
+        action: 打开页面 [[get:this/url]]
+        expect: 出现"登录"
+`.trim();
+    const parsed = parseTree(text, "主流程");
+    expect(parsed.type).toBe("Sequence");
+    expect(parsed.children[0].type).toBe("ref");
+    const fallback = parseTree(text); // 无 docName → 取第一个块
+    expect(fallback.type).toBe("Sequence");
+  });
+
+  it("parseDocument 返回主块名与全部块映射", () => {
+    const text = `
+block 主流程:
+  Sequence:
+    - Step:
+        action: a
+        expect: b
+
+block 附属:
+  inputs: {x: str}
+  Sequence:
+    - Step:
+        action: c
+        expect: d
+`.trim();
+    const doc = parseDocument(text);
+    expect(doc.mainBlock).toBe("主流程");
+    expect(Object.keys(doc.blocks).sort()).toEqual(["主流程", "附属"]);
+  });
+
+  it("serializeDocument 重建多块文档（主块 + 附属块）", () => {
+    const text = `
+block 主流程:
+  Sequence:
+    - Step:
+        action: a
+        expect: b
+
+block 附属:
+  inputs: {x: str}
+  Sequence:
+    - Step:
+        action: c
+        expect: d
+`.trim();
+    const doc = parseDocument(text);
+    const others: Record<string, unknown> = {};
+    for (const [n, v] of Object.entries(doc.blocks)) {
+      if (n !== doc.mainBlock) others[n] = v;
+    }
+    const rebuilt = serializeDocument(doc.mainBlock, doc.blocks[doc.mainBlock], others);
+    const reloaded = load(rebuilt) as Record<string, unknown>;
+    expect(Object.keys(reloaded).sort()).toEqual(["block 主流程", "block 附属"]);
   });
 
   it("空字段不写入 yaml（交给后端 /check 报告缺失）", () => {
