@@ -308,3 +308,74 @@ def test_report_passes_ok_empty():
     result = parse_doc("主流程", _MAIN_DOC, RESOLVER)
     assert result.checks.ok is True
     assert result.checks.issues == ()
+
+
+# ---- 5.7 块内 get 变量已定义校验（scope.get_undeclared） ----
+
+def test_get_undeclared_variable_fails():
+    """get 读取的变量既非 inputs、也未在块内 set/ref returns 定义 → scope.get_undeclared。"""
+    doc = {
+        "block 坏": {
+            "Sequence": [
+                {"Step": {"action": "填 [[get:this/不存在的变量]]", "expect": "ok"}}
+            ]
+        }
+    }
+    result = parse_doc("坏", doc, RESOLVER)
+    assert "scope.get_undeclared" in _codes(result)
+
+
+def test_get_from_inputs_passes():
+    """get 读取 inputs 声明的变量 → 通过。"""
+    doc = {
+        "block 好": {
+            "inputs": {"username": "str"},
+            "Sequence": [{"Step": {"action": "填 [[get:this/username]]", "expect": "ok"}}],
+        }
+    }
+    result = parse_doc("好", doc, RESOLVER)
+    assert "scope.get_undeclared" not in _codes(result)
+    assert result.checks.ok is True
+
+
+def test_get_from_block_set_passes():
+    """get 读取块内 set 过的变量 → 通过。"""
+    doc = {
+        "block 好": {
+            "Sequence": [
+                {"Step": {"action": "提取 [[set:str:this/x]]", "expect": "ok"}},
+                {"Step": {"action": "填 [[get:this/x]]", "expect": "ok"}},
+            ]
+        }
+    }
+    result = parse_doc("好", doc, RESOLVER)
+    assert "scope.get_undeclared" not in _codes(result)
+
+
+def test_get_from_ref_returns_passes():
+    """get 读取 ref returns 目标变量（子块输出回收）→ 通过。"""
+    doc = {
+        "block 主": {
+            "Sequence": [
+                {"ref": "this/子块", "returns": {"result": "this/结果"}},
+                {"Step": {"action": "填 [[get:this/结果]]", "expect": "ok"}},
+            ]
+        },
+        "block 子块": {
+            "outputs": "result",
+            "Sequence": [{"Step": {"action": "提取 [[set:str:this/result]]", "expect": "ok"}}],
+        },
+    }
+    result = parse_doc("主", doc, RESOLVER)
+    assert "scope.get_undeclared" not in _codes(result)
+
+
+def test_get_in_condition_validated():
+    """Condition 里的 get 同样校验。"""
+    doc = {
+        "block 坏": {
+            "Sequence": [{"Step": {"action": "点x", "expect": "出现 [[get:this/未定义]]"}}]
+        }
+    }
+    result = parse_doc("坏", doc, RESOLVER)
+    assert "scope.get_undeclared" in _codes(result)

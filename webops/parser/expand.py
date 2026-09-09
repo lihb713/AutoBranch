@@ -195,7 +195,7 @@ def expand_document(ctx: ExpandContext) -> ExpansionResult:
                     blocks_tree[f"{ir.doc_id}/{block_name}"] = tree
     root_tree = blocks_tree[root_block]
     _check_ref_graph(ctx, blocks_tree)
-    _check_all_block_outputs(ctx)
+    run_block_static_checks(ctx)
     return ExpansionResult(
         tree=root_tree,
         blocks_tree=blocks_tree,
@@ -281,6 +281,63 @@ def _check_all_block_outputs(ctx: ExpandContext) -> None:
                     f"（需叶子 [[set:...:this/{out}]] 或 ref 的 returns 目标，位于 {at}）",
                     node.loc if node is not None else None,
                 )
+
+
+def _collect_get_refs(node: IRNode | None) -> list[tuple[str, Loc | None]]:
+    """收集块内全部叶子（Action/Condition/Finish）描述中的 ``[[get:this/x]]`` 引用。
+
+    返回 ``(变量名, loc)`` 列表，供 get 已定义校验使用。
+    """
+    if node is None:
+        return []
+    refs: list[tuple[str, Loc | None]] = []
+    if node.kind in ("Action", "Condition"):
+        desc = node.description or ""
+        for name in _iter_get_paths(desc):
+            refs.append((name, node.loc))
+        return refs
+    for child in node.children:
+        refs.extend(_collect_get_refs(child))
+    for b in node.branches:
+        if b.when is not None:
+            refs.extend(_collect_get_refs(b.when))
+        if b.target is not None:
+            refs.extend(_collect_get_refs(b.target))
+    for sub in (node.action, node.condition, node.until, node.body):
+        if sub is not None:
+            refs.extend(_collect_get_refs(sub))
+    return refs
+
+
+def _check_block_get_defined(ctx: ExpandContext) -> None:
+    """块内 ``[[get:this/x]]`` 变量已定义校验（§5）。
+
+    get 可读取的变量 = 本块 inputs 声明 + 本块内 ``[[set:...]]`` 目标
+    + 本块 ref 的 returns 目标变量。output 声明不构成 get 源（输出是
+    本块返回给调用方的值）。未定义即 get → ``scope.get_undeclared``。
+    """
+    for ir in _all_docs(ctx):
+        for block_name, decl in ir.blocks.items():
+            defined: set[str] = {name for name, _ in decl.inputs}
+            node = ir.ir_by_block.get(block_name)
+            defined |= _collect_output_assignment_names(node)
+            for name, loc in _collect_get_refs(node):
+                if name in defined:
+                    continue
+                at = loc.path if loc is not None else f"{ir.doc_id}/{block_name}"
+                ctx.add_issue(
+                    "scope",
+                    "get_undeclared",
+                    f"块 '{block_name}' 读取变量 '{name}' 未定义"
+                    f"（get 只能读本块 inputs 声明、块内 set 或 ref returns 目标，位于 {at}）",
+                    loc,
+                )
+
+
+def run_block_static_checks(ctx: ExpandContext) -> None:
+    """块级静态检查统一入口（便于扩展后续检查项）。"""
+    _check_all_block_outputs(ctx)
+    _check_block_get_defined(ctx)
 
 
 def _check_schema_path(ctx: ExpandContext, path_str: str, loc: Loc | None) -> None:
