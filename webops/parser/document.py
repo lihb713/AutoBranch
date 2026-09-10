@@ -1,14 +1,9 @@
-"""行为树文档结构解析：中间表示（设计决策 D1 第一阶段，任务 2.x）。
+"""行为树文档结构解析：节点级中间表示（一文档一树，§12）。
 
-输入规范化后的 dict，输出**保留复合节点与 ``ref:`` 标记**的中间表示
-（``DocumentIR`` / ``IRNode``），同步完成：
-
-- block 定义识别（§4.1：根块 = 文档名，附加命名块供 ``this/块名`` 复用）
-- 块接口声明提取（输入 / 输出，§5.3.3）
-- 配置参数覆盖识别（§5.7.5，``timeout``/``retry``/``browser``）
-- 结构合法性 / 验证条件 / 循环上界 三类校验问题收集
-
-复合节点展开与块引用解析在第二阶段（``expand.py``）。
+输入为单个节点的 dict，输出**保留复合节点与 ``ref:`` 标记**的中间表示
+（``IRNode``）。一文档一树文档（``tree``/``nodes``/``root``）的节点池
+由 ``onedoc.py`` 解析，本模块提供各节点类型的单节点解析（Step/Sequence/
+ref/...）。ref 目标为**文档名单段**（引用另一文档整棵树）。
 
 **文档格式（本模块明确定义）**：
 
@@ -115,18 +110,19 @@ def _path(doc_id: str, path: str) -> str:
 def _parse_node(
     doc_id: str, path: str, key: str, value: object, issues: list[CheckIssue]
 ) -> IRNode:
-    """按节点键解析单个节点（不含 ref 的键附加值处理，见 _parse_node_entry）。"""
+    """按节点键解析单个节点（一文档一树；ref/Sequence 由 onedoc 处理）。"""
     loc = _loc(doc_id, f"{path}/{key}")
     if key == "ref":
-        return _parse_ref(doc_id, path, value, issues)
+        ref_target = str(value).strip() if isinstance(value, str) else ""
+        return IRNode(kind="ref", ref_target=ref_target, loc=loc)
     if key == "Action":
         return _parse_action(doc_id, path, value, issues)
     if key == "Condition":
         return _parse_condition(doc_id, path, value, issues)
     if key == "Sequence":
-        return _parse_sequence(doc_id, path, value, issues)
+        return _empty_ir("Sequence", loc)
     if key == "Selector":
-        return _parse_selector(doc_id, path, value, issues)
+        return _empty_ir("Selector", loc)
     if key == "Repeat":
         return _parse_repeat(doc_id, path, value, issues)
     if key == "Finish":
@@ -144,132 +140,6 @@ def _parse_node(
     )
     return _empty_ir("Sequence", loc)
 
-
-def _parse_node_entry(
-    doc_id: str, path: str, entry: dict[str, object], issues: list[CheckIssue]
-) -> IRNode:
-    """解析节点项映射：恰好一个节点键；``ref`` 可附带 ``args``/``returns``。"""
-    loc = _loc(doc_id, path)
-    node_keys = [k for k in entry if k in NODE_KEYS]
-    if len(node_keys) != 1:
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_node",
-                f"节点项必须含且仅含一个节点键（实际: {list(entry)}，位于 {_path(doc_id, path)}）",
-                loc,
-            )
-        )
-        return _empty_ir("Sequence", loc)
-    key = node_keys[0]
-    extra = [k for k in entry if k not in NODE_KEYS]
-    if key == "ref":
-        bad = [k for k in extra if k not in ("args", "returns")]
-        if bad:
-            issues.append(
-                make_issue(
-                    "structure",
-                    "invalid_node",
-                    f"ref 节点不允许附带键: {bad}（位于 {_path(doc_id, path)}）",
-                    loc,
-                )
-            )
-        return _parse_ref(
-            doc_id,
-            path,
-            entry[key],
-            args=entry.get("args"),
-            returns=entry.get("returns"),
-            issues=issues,
-        )
-    if extra:
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_node",
-                f"节点 '{key}' 不允许附带键: {extra}（位于 {_path(doc_id, path)}）",
-                loc,
-            )
-        )
-    return _parse_node(doc_id, path, key, entry[key], issues)
-
-
-def _parse_ref(
-    doc_id: str,
-    path: str,
-    target: object,
-    args: object = None,
-    returns: object = None,
-    issues: list[CheckIssue] | None = None,
-) -> IRNode:
-    if issues is None:
-        issues = []
-    loc = _loc(doc_id, path)
-    if not isinstance(target, str) or not target.strip():
-        issues.append(
-            make_issue(
-                "ref",
-                "bad_syntax",
-                f"ref 目标必须是字符串（'this/块名' 或 '文档名/块名'，位于 {_path(doc_id, path)}）",
-                loc,
-            )
-        )
-        return _empty_ir("Sequence", loc)
-    target = target.strip()
-    parts = [p for p in target.split("/") if p]
-    if len(parts) != 2:
-        issues.append(
-            make_issue(
-                "ref",
-                "bad_syntax",
-                f"ref 目标 '{target}' 语法错误：应为 'this/块名' 或 '文档名/块名'"
-                f"（位于 {_path(doc_id, path)}）",
-                loc,
-            )
-        )
-        return IRNode(kind="ref", ref_target=target, loc=loc)
-    args_pairs = _parse_kv(args, "args", doc_id, path, issues)
-    returns_pairs = _parse_kv(returns, "returns", doc_id, path, issues)
-    return IRNode(
-        kind="ref",
-        ref_target=target,
-        args=tuple(args_pairs),
-        returns=tuple(returns_pairs),
-        loc=loc,
-    )
-
-
-def _parse_kv(
-    value: object, key_name: str, doc_id: str, path: str, issues: list[CheckIssue]
-) -> list[tuple[str, str]]:
-    """解析 ref 的 ``args``/``returns`` 映射：键值须为标量，返回 ``(k, str(v))``。"""
-    pairs: list[tuple[str, str]] = []
-    if value is None:
-        return pairs
-    if not isinstance(value, dict):
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_binding",
-                f"ref 的 '{key_name}' 必须是映射（args/returns 键: 表达式，"
-                f"位于 {_path(doc_id, path)}）",
-                _loc(doc_id, path),
-            )
-        )
-        return pairs
-    for k, v in value.items():
-        if not isinstance(k, str) or not isinstance(v, (str, int, float, bool)):
-            issues.append(
-                make_issue(
-                    "structure",
-                    "invalid_binding",
-                    f"ref 的 '{key_name}' 项 '{k}' 的键或值不是标量（位于 {_path(doc_id, path)}）",
-                    _loc(doc_id, path),
-                )
-            )
-            continue
-        pairs.append((k.strip(), str(v)))
-    return pairs
 
 
 def _parse_action(doc_id: str, path: str, value: object, issues: list[CheckIssue]) -> IRNode:
@@ -341,100 +211,32 @@ def _parse_condition(doc_id: str, path: str, value: object, issues: list[CheckIs
     return IRNode(kind="Condition", description="", loc=loc)
 
 
-def _parse_sequence(doc_id: str, path: str, value: object, issues: list[CheckIssue]) -> IRNode:
+
+def _parse_target(
+    doc_id: str, path: str, value: object, issues: list[CheckIssue]
+) -> IRNode:
+    """把分支/循环体的目标（节点映射或文档名单段字符串）解析为 IRNode。"""
     loc = _loc(doc_id, path)
-    if isinstance(value, list):
-        children: list[IRNode] = []
-        for i, item in enumerate(value):
-            child_loc = _loc(doc_id, f"{path}/{i}")
-            if isinstance(item, dict):
-                children.append(_parse_node_entry(doc_id, f"{path}/{i}", item, issues))
-            else:
-                issues.append(
-                    make_issue(
-                        "structure",
-                        "invalid_node",
-                        f"Sequence 第 {i} 项必须是节点映射（位于 {_path(doc_id, f'{path}/{i}')}）",
-                        child_loc,
-                    )
-                )
-                children.append(_empty_ir("Sequence", child_loc))
-        return IRNode(kind="Sequence", children=tuple(children), loc=loc)
     if isinstance(value, dict):
-        return IRNode(
-            kind="Sequence",
-            children=(_parse_node_entry(doc_id, path, value, issues),),
-            loc=loc,
+        node_keys = [k for k in value if k in NODE_KEYS or k in COMPOSITE_KEYS]
+        if len(node_keys) == 1:
+            return _parse_node(doc_id, path, node_keys[0], value[node_keys[0]], issues)
+        issues.append(
+            make_issue(
+                "structure",
+                "invalid_node",
+                f"目标节点必须含一个节点键（位于 {_path(doc_id, path)}）",
+                loc,
+            )
         )
+        return _empty_ir("Sequence", loc)
+    if isinstance(value, str) and value.strip():
+        return IRNode(kind="ref", ref_target=value.strip(), loc=loc)
     issues.append(
         make_issue(
             "structure",
             "invalid_value",
-            f"Sequence 的值必须是节点列表或单个节点映射（位于 {_path(doc_id, path)}）",
-            loc,
-        )
-    )
-    return IRNode(kind="Sequence", loc=loc)
-
-
-def _parse_selector(doc_id: str, path: str, value: object, issues: list[CheckIssue]) -> IRNode:
-    loc = _loc(doc_id, path)
-    branches: list[IRBranch] = []
-    if not isinstance(value, list):
-        issues.append(
-            make_issue(
-                "structure",
-                "invalid_value",
-                f"Selector 的值必须是分支列表（位于 {_path(doc_id, path)}）",
-                loc,
-            )
-        )
-        return IRNode(kind="Selector", loc=loc)
-    for i, item in enumerate(value):
-        branch_loc = _loc(doc_id, f"{path}/{i}")
-        if not isinstance(item, dict):
-            issues.append(
-                make_issue(
-                    "structure",
-                    "invalid_node",
-                    f"Selector 第 {i} 项必须是分支映射（when/then 或 otherwise，"
-                    f"位于 {_path(doc_id, f'{path}/{i}')}）",
-                    branch_loc,
-                )
-            )
-            continue
-        if "when" in item or "then" in item:
-            when = _parse_condition(doc_id, f"{path}/{i}/when", item.get("when"), issues)
-            target = _parse_target(doc_id, f"{path}/{i}/then", item.get("then"), issues)
-            branches.append(IRBranch(when=when, target=target))
-        elif "otherwise" in item:
-            target = _parse_target(doc_id, f"{path}/{i}/otherwise", item.get("otherwise"), issues)
-            branches.append(IRBranch(when=None, target=target))
-        else:
-            issues.append(
-                make_issue(
-                    "structure",
-                    "invalid_node",
-                    f"Selector 第 {i} 项缺少 when/then 或 otherwise（"
-                    f"位于 {_path(doc_id, f'{path}/{i}')}）",
-                    branch_loc,
-                )
-            )
-    return IRNode(kind="Selector", branches=tuple(branches), loc=loc)
-
-
-def _parse_target(doc_id: str, path: str, value: object, issues: list[CheckIssue]) -> IRNode:
-    """分支目标解析：节点映射；裸字符串 = 引用同名命名块（§4.3 分支目标）。"""
-    loc = _loc(doc_id, path)
-    if isinstance(value, dict):
-        return _parse_node_entry(doc_id, path, value, issues)
-    if isinstance(value, str) and value.strip():
-        return IRNode(kind="ref", ref_target=f"this/{value.strip()}", loc=loc)
-    issues.append(
-        make_issue(
-            "structure",
-            "invalid_target",
-            f"分支目标必须是节点映射或块名（位于 {_path(doc_id, path)}）",
+            f"目标必须是节点映射或文档名（位于 {_path(doc_id, path)}）",
             loc,
         )
     )
