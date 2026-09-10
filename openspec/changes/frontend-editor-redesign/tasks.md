@@ -3,7 +3,7 @@
 - [x] 1.1 新增 DB-backed `RefResolver`：按文档名从 DB 加载 `Tree.content` → 构造 `DocumentSource`，实现 `RefResolver` 接口（文档不存在抛 `RefNotFoundError`）。验证：单测覆盖"按名查到/查不到"。
 - [x] 1.2 server 装配改用 DB-backed resolver 替换空 `MappingResolver`（engine.py / validation.py）。验证：`pytest tests/server -q` 通过。
 - [x] 1.3 新增按文档名查 API（`GET /api/trees/by-name/{name}`，name 唯一约束）。验证：API 单测覆盖命中/404。
-- [ ] 1.4 跨文档引用端到端：创建两个文档（A ref B），校验 A 通过、执行 A 成功（B 的 Root 被执行）。验证：集成测试 + `pytest -q` 全量通过。（待任务 3 执行器适配后完成）
+- [x] 1.4 跨文档引用端到端：创建两个文档（A ref B），校验 A 通过、执行 A 成功（B 的 Root 被执行）。验证：集成测试 + `pytest -q` 全量通过。
 - [ ] 1.5 文档同步：contract.md / M7 spec / openspec orchestrator 记录跨文档引用经文档库。验证：文档 grep 确认无旧"空 resolver"表述。
 
 ## 2. DSL 一文档一树（阶段 2）
@@ -19,8 +19,8 @@
 
 ## 3. M7 执行器适配（阶段 2 收尾）
 
-- [ ] 3.1 `_tick_ref` 改为按文档名加载被引文档树（经 resolver），从其 Root 执行；args/returns 语义不变。验证：执行集成测试覆盖多层引用（A→B→C）与引用不存在 FAILURE。
-- [ ] 3.2 `blocks_tree` 语义从"块名→树"调整为"文档名→树"（或由 resolver 加载替代）。验证：现有执行器测试适配后全量通过。
+- [x] 3.1 `_tick_ref` 改为按文档名加载被引文档树（经 resolver），从其 Root 执行；args/returns 语义不变。验证：执行集成测试覆盖多层引用（A→B→C）与引用不存在 FAILURE。
+- [x] 3.2 `blocks_tree` 语义从"块名→树"调整为"文档名→树"（或由 resolver 加载替代）。验证：现有执行器测试适配后全量通过。
 
 ## 4. 前端画布重写（阶段 3）
 
