@@ -15,6 +15,8 @@
 - [x] 2.5 迁移工具：**已废弃**——旧多块 DSL 完全移除（用户决策：不为兼容保留冗余），parser 重写为纯一文档一树，无需迁移工具；旧 parser 测试删除，新 DSL 测试建立（onedoc + onedoc_integration）。
 - [ ] 2.6 文档同步：contract.md §4.1 / M2 spec / openspec behavior-tree-parser 同步一文档一树（含 `tree: <名>` 顶层键）。验证：文档 grep 确认无旧 `block`/多块表述（历史设计稿除外）。（随批次 L 完成）
 
+> **阶段 2 完成（2026-09-10）**：一文档一树 DSL 解析（tree/nodes/root + slots + 校验 + ref 参数/跨文档环）已实现并测试；旧多块 DSL 与 parser 死代码完全废弃删除；全量 703 passed / 3 skipped，ruff 全绿。剩余：任务 3（执行器适配）、任务 4/5（前端重写）为后续阶段。
+
 ## 3. M7 执行器适配（阶段 2 收尾）
 
 - [ ] 3.1 `_tick_ref` 改为按文档名加载被引文档树（经 resolver），从其 Root 执行；args/returns 语义不变。验证：执行集成测试覆盖多层引用（A→B→C）与引用不存在 FAILURE。
