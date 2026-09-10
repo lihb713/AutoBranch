@@ -2,7 +2,7 @@
 
 ### Requirement: 行为树文档解析
 
-系统 SHALL 接受一份行为树文档（yaml/dict，一文档一树）作为输入，解析为内部行为树对象（`BehaviorTree`）。文档结构为：`tree <名>:`（树名=文档名）+ 可选文档级 `inputs`/`outputs`（接口声明，`inputs` 值为类型 token：str/int/float/bool/page_ref，非法类型报错）+ 可选全局配置（`timeout`/`retry`/`browser` 保留名）+ `nodes:`（节点对象池平铺定义，每节点含 `id`/`type`/`name`/节点字段/`slots`）+ `root: <id>`（指向 `type: Root` 节点）。解析过程 MUST 是纯逻辑的：不依赖 LLM、不依赖浏览器、不产生外部副作用。解析入口 MUST 返回行为树、文档接口声明与清晰度校验报告。系统 SHALL 从 `root` 沿 `slots` 引用构建主树；未被任何 `slots` 引用的节点为游离树（允许出现在文档中）。
+系统 SHALL 接受一份行为树文档（yaml/dict，一文档一树）作为输入，解析为内部行为树对象（`BehaviorTree`）。文档结构为：`tree: <名>`（树名=文档名）+ 可选文档级 `inputs`/`outputs`（接口声明，`inputs` 值为类型 token：str/int/float/bool/page_ref，非法类型报错）+ 可选全局配置（`timeout`/`retry`/`browser` 保留名）+ `nodes:`（节点对象池平铺定义，每节点含 `id`/`type`/`name`/节点字段/`slots`）+ `root: <id>`（指向 `type: Root` 节点）。解析过程 MUST 是纯逻辑的：不依赖 LLM、不依赖浏览器、不产生外部副作用。解析入口 MUST 返回行为树、文档接口声明与清晰度校验报告。系统 SHALL 从 `root` 沿 `slots` 引用构建主树；未被任何 `slots` 引用的节点为游离树（允许出现在文档中）。
 
 #### Scenario: 合法文档解析为基础节点行为树
 - **WHEN** 输入一份含 `tree`/`nodes`/`root` 的一文档一树文档

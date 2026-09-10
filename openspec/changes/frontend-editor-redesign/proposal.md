@@ -12,7 +12,7 @@
 - 移除块列表（BlockListPanel）；根节点为真实节点类型。
 
 **DSL 重定义（BREAKING：行为树文档格式完全更换）**
-- 一文档一树：`tree <名>:` + 文档级 `inputs`/`outputs` + 全局配置 + `nodes:`（节点对象池平铺）+ `root: <id>`。
+- 一文档一树：`tree: <名>` + 文档级 `inputs`/`outputs` + 全局配置 + `nodes:`（节点对象池平铺）+ `root: <id>`。
 - 节点模型含 `id`（自动生成、导入保留）与 `name`（用户自定义）；槽位引用 `slots: {1: <id>}`。
 - ref 参数对称：`args`（列表，传参）与 `returns`（字典，接收）。
 
