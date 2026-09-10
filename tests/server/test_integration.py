@@ -78,7 +78,7 @@ def test_end_to_end_execution_flow(tmp_path):
 
 
 def test_run_after_rename_matches_content_root_block(tmp_path):
-    """回归：改名后主块名=树名（强制一致），doc_id 对齐后运行成功。"""
+    """回归：改名后 tree 名对齐，doc_id 对齐后运行成功。"""
     settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
@@ -137,4 +137,42 @@ def test_end_to_end_execution_failure_flow(tmp_path):
     configure_database(settings.db_path)
     db = session_factory()()
     assert db.query(Run).count() == 0
-    db.close()
+
+
+def _ref_doc(name: str, target: str) -> str:
+    """生成「ref 另一文档」的新 DSL 文档文本。"""
+    return (
+        f"tree: {name}\n"
+        "nodes:\n"
+        "  n1:\n    type: Root\n    name: 根\n    slots: {1: n2}\n"
+        f"  n2:\n    type: ref\n    name: 引用{target}\n    target: {target}\n"
+        "root: n1\n"
+    )
+
+
+def test_cross_doc_ref_end_to_end(tmp_path):
+    """跨文档引用端到端：A ref B，A 校验通过、执行成功（B 的 Root 被执行）。"""
+    settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    client = _make_client(settings)
+
+    # 先建被引文档 B（含一个可执行叶子），再建引用文档 A
+    b = client.post("/api/trees", json={"name": "文档B", "content": make_tree_yaml("文档B")})
+    assert b.status_code == 201, b.text
+    a = client.post("/api/trees", json={"name": "文档A", "content": _ref_doc("文档A", "文档B")})
+    assert a.status_code == 201, a.text
+    a_id = a.json()["id"]
+
+    # A 校验通过（跨文档 ref 经文档库解析）
+    check = client.post(f"/api/trees/{a_id}/check")
+    assert check.status_code == 200
+    assert check.json()["ok"] is True, check.text
+
+    # A 执行成功（B 的 Root 被执行）
+    run = client.post(f"/api/trees/{a_id}/run")
+    assert run.status_code == 202, run.text
+    run_id = run.json()["run_id"]
+    state = client.get(f"/api/runs/{run_id}/state").json()
+    assert state["finished"] is True
+    assert state["failure_reason"] is None
+    # B 的叶子（Step action）被执行记录
+    assert any(nr["node_type"] == "Action" for nr in state["completed"])
