@@ -150,7 +150,13 @@ class EmbeddedEngineService(EngineService):
             self._runs[run_id] = (engine, None)
         try:
             run_result = engine.run(
-                result.tree, result.blocks, self._build_run_config(), result.blocks_tree
+                result.tree,
+                self._build_run_config(),
+                resolver=resolver,
+                blocks_tree=result.blocks_tree,
+                decl_inputs=result.decl_inputs,
+                decl_outputs=result.decl_outputs,
+                config_overrides=result.config,
             )
         finally:
             with self._lock:

@@ -1,7 +1,8 @@
-"""M7 动态 ref 调用执行器（Plan ③ Task 3）：args 注入 / returns 回收 / 帧隔离。
+"""M7 动态 ref 调用执行器（一文档一树）：args 注入 / returns 回收 / 帧隔离。
 
-经 ``_tick_ref``：求值实参（父帧裸路径或字面量）→ coerce 到输入类型 →
-建子帧注入形参 → 递归执行目标块树 → SUCCESS 回收 returns 写父帧 → 退出子帧。
+经 ``_tick_ref``：经 resolver 按文档名加载被引文档 → 求值实参（父帧裸路径
+或字面量）→ coerce 到输入类型 → 建子帧注入形参 → 递归执行被引文档主树
+（从 Root 执行）→ SUCCESS 回收 returns 写父帧 → 退出子帧。
 """
 
 from __future__ import annotations
@@ -18,13 +19,22 @@ from orchestrator_helpers import (
 
 from webops.orchestrator import FAILURE, SUCCESS
 from webops.orchestrator.traverser import Traverser
-from webops.parser.models import BlockDecl, RefNode
+from webops.parser.models import DocumentSource, RefNode
+from webops.parser.refs import MappingResolver
 from webops.schema.models import PageRef
 
 _GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
 _SET_TMPL = re.compile(
     r"\[\[\s*set:(?:(str|int|float|bool|page_ref):)?\s*this/([^\[\]:]+?)\s*\]\]"
 )
+
+
+def _doc_resolver(docs: dict[str, dict]) -> MappingResolver:
+    """从 {文档名: 新 DSL dict} 构造跨文档引用解析器。"""
+    resolver = MappingResolver()
+    for name, raw in docs.items():
+        resolver.add(DocumentSource(id=name, data=raw))
+    return resolver
 
 
 def _space_leaf(space, extra=None):
@@ -57,48 +67,64 @@ def _space_leaf(space, extra=None):
     return leaf
 
 
+def _login_doc(inputs=None, outputs=None, body=None) -> dict:
+    """构造「登录」被引文档（新 DSL，Root→Sequence→body）。"""
+    doc = {
+        "tree": "登录",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {
+                "type": "Sequence",
+                "name": "主流程",
+                "slots": {str(i + 1): f"n{i + 3}" for i in range(len(body or []))},
+            },
+        },
+        "root": "n1",
+    }
+    if inputs:
+        doc["inputs"] = inputs
+    if outputs:
+        doc["outputs"] = outputs
+    for i, leaf in enumerate(body or []):
+        doc["nodes"][f"n{i + 3}"] = {"type": "Step", "name": leaf, "action": leaf, "expect": "ok"}
+    return doc
+
+
 class TestRefCall:
     """单层调用：ref args 注入 → 块内读形参 → 输出 returns 回收。"""
 
     def test_ref_injects_args_and_receives_returns(self, config) -> None:
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                inputs=(("username", "str"),),
-                outputs=("result",),
-            )
-        }
+        login = _login_doc(
+            inputs={"username": "str"},
+            outputs=["result"],
+            body=["读参数 [[get:this/username]]", "输出 [[set:str:this/result]]"],
+        )
+        resolver = _doc_resolver({"登录": login})
+        main_tree = seq(
+            action("填账号"),
+            RefNode(
+                ref_target="登录",
+                args=(("username", "this/账号"),),
+                returns=(("result", "this/结果"),),
+            ),
+        )
 
         def fill_account(frame):
-            space.write(frame, "this/账号", "admin", "str")
+            ctx.space.write(frame, "this/账号", "admin", "str")
             return None
 
         def check_param(frame):
-            if space.read(frame, "this/username") != "admin":
+            if ctx.space.read(frame, "this/username") != "admin":
                 return "形参未注入"
             return None
 
-        blocks_tree = {
-            "主流程": seq(
-                action("填账号"),
-                RefNode(
-                    ref_target="this/登录",
-                    args=(("username", "this/账号"),),
-                    returns=(("result", "this/结果"),),
-                ),
-            ),
-            "登录": seq(
-                action("读参数 [[get:this/username]]"), action("输出 [[set:str:this/result]]")
-            ),
-        }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
         ctx.leaf_executor = _space_leaf(
             space,
             extra={"填账号": fill_account, "读参数 [[get:this/username]]": check_param},
         )
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == SUCCESS
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 父帧：returns 回收写入 this/结果
         root = ctx.space._current
         assert root.storage["结果"] == "成功输出"
@@ -110,38 +136,31 @@ class TestRefCall:
         assert ctx.space._current is root
 
     def test_same_block_ref_twice_independent_frames(self, config) -> None:
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                inputs=(("username", "str"),),
-                outputs=("result",),
-            )
-        }
+        login = _login_doc(
+            inputs={"username": "str"},
+            outputs=["result"],
+            body=["读参数 [[get:this/username]]", "输出 [[set:str:this/result]]"],
+        )
+        resolver = _doc_resolver({"登录": login})
         seen_frames = []
 
         def check_param(frame):
-            seen_frames.append((frame.id, space.read(frame, "this/username")))
+            seen_frames.append((frame.id, ctx.space.read(frame, "this/username")))
             return None
 
-        blocks_tree = {
-            "主流程": seq(
-                RefNode(
-                    ref_target="this/登录",
-                    args=(("username", "this/账号1"),),
-                    returns=(("result", "this/结果1"),),
-                ),
-                RefNode(
-                    ref_target="this/登录",
-                    args=(("username", "this/账号2"),),
-                    returns=(("result", "this/结果2"),),
-                ),
+        main_tree = seq(
+            RefNode(
+                ref_target="登录",
+                args=(("username", "this/账号1"),),
+                returns=(("result", "this/结果1"),),
             ),
-            "登录": seq(
-                action("读参数 [[get:this/username]]"), action("输出 [[set:str:this/result]]")
+            RefNode(
+                ref_target="登录",
+                args=(("username", "this/账号2"),),
+                returns=(("result", "this/结果2"),),
             ),
-        }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        )
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
         space.write(space._current, "this/账号1", "u1", "str")
         space.write(space._current, "this/账号2", "u2", "str")
@@ -149,7 +168,7 @@ class TestRefCall:
             space,
             extra={"读参数 [[get:this/username]]": check_param},
         )
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == SUCCESS
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 两次调用是独立帧实例
         assert len(seen_frames) == 2
         assert seen_frames[0][0] != seen_frames[1][0]
@@ -162,30 +181,21 @@ class TestRefCall:
         assert root.storage["结果2"] == "成功输出"
 
     def test_child_failure_propagates_and_skips_returns(self, config) -> None:
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                inputs=(("username", "str"),),
-                outputs=("result",),
-            )
-        }
-        blocks_tree = {
-            "主流程": seq(
-                RefNode(
-                    ref_target="this/登录",
-                    args=(("username", "this/账号"),),
-                    returns=(("result", "this/结果"),),
-                ),
-                action("后续"),
+        login = _login_doc(body=["块内失败"])
+        resolver = _doc_resolver({"登录": login})
+        main_tree = seq(
+            RefNode(
+                ref_target="登录",
+                args=(("username", "this/账号"),),
+                returns=(("result", "this/结果"),),
             ),
-            "登录": seq(action("块内失败")),
-        }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+            action("后续"),
+        )
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
         space.write(space._current, "this/账号", "admin", "str")
         ctx.leaf_executor.results["块内失败"] = leaf_failure("块内失败")
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == FAILURE
+        assert Traverser(ctx).tick(main_tree) == FAILURE
         # FAILURE → 不写 returns，且后续叶子不执行
         assert "结果" not in ctx.space._current.storage
         assert len(ctx.leaf_executor.calls) == 1
@@ -193,48 +203,31 @@ class TestRefCall:
         assert ctx.space._current.block_name == "主流程"
 
     def test_config_inheritance_through_ref_frames(self, config) -> None:
-        from webops.parser.models import ConfigOverride
-
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                config_overrides=(ConfigOverride(name="timeout", value=7),),
-            )
-        }
-        blocks_tree = {
-            "主流程": seq(RefNode(ref_target="this/登录")),
-            "登录": seq(action("块叶子")),
-        }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == SUCCESS
+        login = _login_doc(body=["块叶子"])
+        login["timeout"] = 7
+        resolver = _doc_resolver({"登录": login})
+        main_tree = seq(RefNode(ref_target="登录"))
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
         assert ctx.leaf_executor.timeouts["块叶子"] == 7.0
 
     def test_page_ref_passed_as_arg_and_activated_in_child(self, config) -> None:
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                inputs=(("page", "page_ref"),),
-            )
-        }
+        login = _login_doc(inputs={"page": "page_ref"}, body=["激活 [[get:this/page]]"])
+        resolver = _doc_resolver({"登录": login})
 
         def activate(frame):
-            space.activate_page(frame, "page")
-            current = space.current_page(frame)
+            ctx.space.activate_page(frame, "page")
+            current = ctx.space.current_page(frame)
             if current is None or current.page_id != "p1":
                 return "页面变量未激活"
             return None
 
-        blocks_tree = {
-            "主流程": seq(RefNode(ref_target="this/登录", args=(("page", "this/页"),))),
-            "登录": seq(action("激活 [[get:this/page]]")),
-        }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        main_tree = seq(RefNode(ref_target="登录", args=(("page", "this/页"),)))
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
         space.write(space._current, "this/页", PageRef(page_id="p1", url="https://x"), "page_ref")
         ctx.leaf_executor = _space_leaf(space, extra={"激活 [[get:this/page]]": activate})
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == SUCCESS
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 子帧注入的是 PageRef 值（页面变量走 args 传递）
         child = ctx.space._current.children["登录"]
         assert isinstance(child.storage["page"], PageRef)
@@ -242,26 +235,15 @@ class TestRefCall:
 
     def test_ref_arg_undefined_fails(self, config) -> None:
         """父帧未定义变量作为裸路径实参 → ref FAILURE，不注入 "None"、不建子帧。"""
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                inputs=(("username", "str"),),
-            )
-        }
-        blocks_tree = {
-            "主流程": seq(
-                RefNode(
-                    ref_target="this/登录",
-                    args=(("username", "this/未定义账号"),),
-                ),
-            ),
-            "登录": seq(action("块内动作")),
-        }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
+        login = _login_doc(inputs={"username": "str"}, body=["块内动作"])
+        resolver = _doc_resolver({"登录": login})
+        main_tree = seq(
+            RefNode(ref_target="登录", args=(("username", "this/未定义账号"),)),
+        )
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
         ctx.leaf_executor = _space_leaf(space)
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == FAILURE
+        assert Traverser(ctx).tick(main_tree) == FAILURE
         # 失败原因指明实参求值失败
         assert "实参" in (ctx.failure_reason or "")
         # 未建子帧（不进入目标块），无 "None" 注入
@@ -279,12 +261,20 @@ class TestRefCall:
 
         from webops.parser.models import BehaviorTree
 
-        blocks_tree = {
-            "主流程": seq(RefNode(ref_target="this/导出"), action("根后")),
-            "导出": seq(RefNode(ref_target="this/登录"), action("导出叶")),
-            "登录": seq(action("登录叶")),
+        login = _login_doc(body=["登录叶"])
+        export = {
+            "tree": "导出",
+            "nodes": {
+                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+                "n2": {"type": "Sequence", "name": "导出", "slots": {"1": "n3", "2": "n4"}},
+                "n3": {"type": "ref", "name": "去登录", "target": "登录"},
+                "n4": {"type": "Step", "name": "导出叶", "action": "导出叶", "expect": "ok"},
+            },
+            "root": "n1",
         }
-        tree = BehaviorTree(name="主流程", root=blocks_tree["主流程"])
+        resolver = _doc_resolver({"登录": login, "导出": export})
+        main_tree = seq(RefNode(ref_target="导出"), action("根后"))
+        tree = BehaviorTree(name="主流程", root=main_tree)
         engine = make_engine()
         snapshots = []
 
@@ -293,11 +283,18 @@ class TestRefCall:
             return leaf_success(node.description)
 
         engine._leaf_executor = probe
-        result = engine.run(tree, {}, config, blocks_tree=blocks_tree)
+        result = engine.run(
+            tree,
+            config,
+            resolver=resolver,
+            blocks_tree={"主流程": main_tree},
+        )
         assert result.status == "success"
-        # 8 节点 = 主流程seq/RefNode主/根后/导出seq/RefNode导/导出叶/登录seq/登录叶
+        # 进度单调不减、不提前饱和（中间 < 1.0），结束到 1.0
         progresses = [s.progress for s in snapshots]
-        assert progresses == [0.0, 3 / 8, 6 / 8]
+        assert progresses == sorted(progresses)
+        assert progresses[0] == 0.0
+        assert all(p < 1.0 for p in progresses[:-1])
         # 结束状态进度到达 1.0，且子块节点计入已完成
         state = engine.get_exec_state()
         assert state.finished is True

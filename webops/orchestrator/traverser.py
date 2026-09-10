@@ -31,6 +31,7 @@ from webops.parser.models import (
     SequenceNode,
 )
 from webops.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
+from webops.schema import BlockDecl as SchemaBlockDecl
 from webops.schema.errors import SchemaError
 from webops.schema.path import resolve_target
 from webops.schema.types import coerce, infer_type
@@ -71,43 +72,61 @@ def count_nodes(
     node: Node,
     blocks_tree: dict[str, Node] | None = None,
     _seen: set[str] | None = None,
+    resolver=None,
 ) -> int:
     """统计树中基础节点总数（供 ``ExecState.progress`` 计算，design D3）。
 
-    ``RefNode`` 计 1，并递归计入其被引用块子树（``blocks_tree`` 中查找）。
-    运行期 ``_tick_ref`` 递归 tick 目标块并逐节点记录，故 total 必须同样
-    计入，否则 completed/total 提前超 1、进度饱和到 1.0。ref 图静态已保证
-    DAG，此处 ``_seen`` 作防御性环保护。
+    ``RefNode`` 计 1，并递归计入其被引用文档树（经 resolver 加载；无
+    resolver 时回退 ``blocks_tree``）。运行期 ``_tick_ref`` 递归 tick 被引
+    文档并逐节点记录，故 total 必须同样计入，否则 completed/total 提前
+    超 1、进度饱和到 1.0。ref 图静态已保证 DAG，此处 ``_seen`` 作防御性
+    环保护。
     """
     total = 1
     if isinstance(node, RefNode):
-        if blocks_tree is not None:
-            target = (node.ref_target or "").strip()
-            parts = [p for p in target.split("/") if p]
-            if len(parts) == 2:
-                owner_doc = node.loc.doc_id if node.loc else ""
-                tdoc = owner_doc if parts[0] == "this" else parts[0]
-                child = _resolve_ref_tree(blocks_tree, tdoc, parts[1], owner_doc)
-                if child is not None:
-                    key = f"{tdoc}/{parts[1]}"
-                    if _seen is None:
-                        _seen = set()
-                    if key not in _seen:
-                        _seen.add(key)
-                        total += count_nodes(child, blocks_tree, _seen)
+        target = (node.ref_target or "").strip()
+        child = None
+        if target and "/" not in target:
+            if resolver is not None:
+                child = _load_doc_tree_for_count(resolver, target)
+            elif blocks_tree is not None:
+                child = blocks_tree.get(target)
+        if child is not None:
+            key = target
+            if _seen is None:
+                _seen = set()
+            if key not in _seen:
+                _seen.add(key)
+                total += count_nodes(child, blocks_tree, _seen, resolver)
     elif isinstance(node, SequenceNode):
         for child in node.children:
-            total += count_nodes(child, blocks_tree, _seen)
+            total += count_nodes(child, blocks_tree, _seen, resolver)
     elif isinstance(node, SelectorNode):
         for branch in node.branches:
             if branch.condition is not None:
-                total += count_nodes(branch.condition, blocks_tree, _seen)
-            total += count_nodes(branch.child, blocks_tree, _seen)
+                total += count_nodes(branch.condition, blocks_tree, _seen, resolver)
+            total += count_nodes(branch.child, blocks_tree, _seen, resolver)
     elif isinstance(node, RepeatNode):
         if node.until is not None:
-            total += count_nodes(node.until, blocks_tree, _seen)
-        total += count_nodes(node.body, blocks_tree, _seen)
+            total += count_nodes(node.until, blocks_tree, _seen, resolver)
+        total += count_nodes(node.body, blocks_tree, _seen, resolver)
     return total
+
+
+def _load_doc_tree_for_count(resolver, doc_id: str):
+    """经 resolver 加载被引文档并展开其主树（仅进度计数用，不执行）。"""
+    try:
+        from webops.parser.expand import ExpandContext, expand_document
+        from webops.parser.onedoc import parse_document as parse_onedoc
+
+        src = resolver.resolve(doc_id)
+        ores = parse_onedoc(src, resolver)
+        if not ores.checks_ok() or ores.main_tree is None:
+            return None
+        ectx = ExpandContext(max_depth=64)
+        return expand_document(ores.main_tree, ectx, decl_inputs=ores.decl_inputs).tree
+    except Exception:
+        return None
 
 
 def _resolve_ref_tree(
@@ -303,53 +322,52 @@ class Traverser:
     # ------------------------------------------------------------ ref 动态调用
 
     def _tick_ref(self, node: RefNode) -> NodeStatus:
-        """ref 运行时动态调用：建子帧 → 注入实参 → 递归执行目标块树 → 回收返回。
+        """ref 运行时动态调用（一文档一树）：加载被引文档 → 从其 Root 执行。
 
         执行顺序（§3 执行模型）：
-        1. 在父帧上下文求值每个实参（裸路径 ``this/<名>`` 读父帧；字面量原样）。
-        2. 按目标块 ``inputs`` 声明类型 coerce；失败 → ref 断言失败。
-        3. ``enter_block`` 建子帧，cast 后形参写入子帧（``this/形参名``）。
-        4. 递归 ``tick`` 目标块树（其内部 ref 由各自的 ``_tick_ref`` 管理）。
-        5. 子块 SUCCESS → 按 ``returns`` 映射读子帧输出写父帧局部变量；
+        1. 经 resolver 按文档名加载被引文档，解析其主树与文档级声明。
+        2. 在父帧上下文求值每个实参（裸路径 ``this/<名>`` 读父帧；字面量原样）。
+        3. 按被引文档 ``inputs`` 声明类型 coerce；失败 → ref 断言失败。
+        4. ``enter_block`` 建子帧，cast 后形参写入子帧（``this/形参名``）。
+        5. 递归 ``tick`` 被引文档主树（从 Root 执行；其内部 ref 由各自 _tick_ref 管理）。
+        6. 被引树 SUCCESS → 按 ``returns`` 映射读子帧输出写父帧局部变量；
            FAILURE → 不写 returns，失败向上传播。
-        6. ``exit_block`` 退出子帧（数据保留至 run 结束）。
+        7. ``exit_block`` 退出子帧（数据保留至 run 结束）。
         """
         target = (node.ref_target or "").strip()
-        parts = [p for p in target.split("/") if p]
-        if len(parts) != 2:
-            return self._note_failure(node, f"ref 目标非法: {target!r}") or FAILURE
-        tdoc, block_name = parts
-        owner_doc = node.loc.doc_id if node.loc else ""
-        child_tree = self._find_ref_tree(tdoc, block_name, owner_doc)
-        if child_tree is None:
-            return self._note_failure(node, f"引用块未在 blocks_tree 中: {target!r}") or FAILURE
-        decl = self.ctx.schema_decl(block_name)
+        if not target or "/" in target:
+            msg = f"ref 目标非法（应为文档名单段）: {target!r}"
+            return self._note_failure(node, msg) or FAILURE
+        loaded = self._load_doc_tree(target)
+        if loaded is None:
+            return self._note_failure(node, f"引用文档不存在或无法解析: {target!r}") or FAILURE
+        child_tree, decl = loaded
         space = self.ctx.space
         parent = self.ctx.current_frame
-        # 1) 求值 args：裸路径 this/<名> → 父帧读；字面量原样
+        # 2) 求值 args：裸路径 this/<名> → 父帧读；字面量原样
         args_values: dict[str, object] = {}
         for arg_name, expr in node.args:
             val = self._eval_arg(parent, expr)
             if val is _MISSING:
                 return self._note_failure(node, f"实参 '{arg_name}' 求值失败: {expr!r}") or FAILURE
             args_values[arg_name] = val
-        # 2) coerce 到输入类型
+        # 3) coerce 到输入类型
         typed: dict[str, object] = {}
         input_types = dict(decl.inputs) if decl else {}
         for name, val in args_values.items():
             t = input_types.get(name, "")
             typed[name] = coerce(t, val) if t else val
-        # 3) 建子帧（注入 inputs/config）
+        # 4) 建子帧（注入 inputs/config）
         frame = None
         try:
-            frame = space.enter_block(block_name, decl)
+            frame = space.enter_block(target, decl)
             for name, val in typed.items():
                 space.write(
                     frame, f"this/{name}", val, input_types.get(name, "") or infer_type(val)
                 )
-            # 4) 递归执行子块树（不额外管理帧——子块内部 ref 由各自 _tick_ref 管理）
+            # 5) 递归执行被引文档主树（从 Root 执行）
             status = self.tick(child_tree)
-            # 5) SUCCESS → returns 回收写父帧
+            # 6) SUCCESS → returns 回收写父帧
             if status == SUCCESS:
                 for out_name, target_var in node.returns:
                     rel = _single_segment(target_var)
@@ -370,9 +388,38 @@ class Traverser:
                         )
         finally:
             if frame is not None:
-                # 6) 退出子帧（数据保留至 run 结束）
+                # 7) 退出子帧（数据保留至 run 结束）
                 space.exit_block()
         return status
+
+    def _load_doc_tree(self, doc_id: str) -> tuple[Node, object] | None:
+        """经 resolver 加载被引文档，解析其主树与文档级声明（供 ref 执行）。"""
+        resolver = self.ctx.resolver
+        if resolver is None:
+            return None
+        try:
+            src = resolver.resolve(doc_id)
+        except Exception:
+            return None
+        try:
+            from webops.parser.onedoc import parse_document as parse_onedoc
+
+            ores = parse_onedoc(src, resolver)
+        except Exception:
+            return None
+        if not ores.checks_ok() or ores.main_tree is None:
+            return None
+        from webops.parser.expand import ExpandContext, expand_document
+
+        ectx = ExpandContext(max_depth=64)
+        expansion = expand_document(ores.main_tree, ectx, decl_inputs=ores.decl_inputs)
+        decl = SchemaBlockDecl(
+            block_name=doc_id,
+            inputs=dict(ores.decl_inputs),
+            outputs={name: "" for name in ores.decl_outputs},
+            config=dict(ores.config),
+        )
+        return expansion.tree, decl
 
     def _find_ref_tree(self, tdoc: str, block_name: str, owner_doc: str) -> Node | None:
         """按 ``blocks_tree`` 定位目标块树（镜像静态 ``_find_block_tree`` 兜底）。

@@ -150,10 +150,13 @@ def make_run_context(
     config,
     leaf_executor=None,
     browser=None,
-    blocks=None,
+    resolver=None,
     reporter=None,
     tree_name: str = ROOT_FRAME.strip("/"),
     blocks_tree=None,
+    decl_inputs=None,
+    decl_outputs=None,
+    config_overrides=None,
 ):
     """构造 ``RunContext``：注入 mock 依赖、注入全局配置并进入根级块帧。
 
@@ -178,9 +181,12 @@ def make_run_context(
         space=space,
         reporter=reporter,
         browser=browser or MockBrowser(),
-        blocks=blocks or {},
         leaf_executor=leaf_executor,
         blocks_tree=blocks_tree or {},
+        resolver=resolver,
+        decl_inputs=decl_inputs or {},
+        decl_outputs=decl_outputs or [],
+        config_overrides=config_overrides or {},
     )
     space.enter_block(tree_name, ctx.schema_decl(tree_name))
     return ctx
@@ -196,3 +202,31 @@ def make_engine(*, browser=None, leaf_executor=None, space_factory=None, reporte
         space_factory=space_factory,
         reporter_factory=reporter_factory,
     )
+
+
+def make_doc_resolver(docs: dict):
+    """从 {文档名: 新 DSL dict} 构造跨文档引用解析器（测试用）。"""
+    from webops.parser.models import DocumentSource
+    from webops.parser.refs import MappingResolver
+
+    resolver = MappingResolver()
+    for name, raw in docs.items():
+        resolver.add(DocumentSource(id=name, data=raw))
+    return resolver
+
+
+def make_leaf_doc(doc_name: str, leaf_name: str, action_text: str | None = None) -> dict:
+    """构造单叶子被引文档（新 DSL，Root→Step）。"""
+    return {
+        "tree": doc_name,
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n2": {
+                "type": "Step",
+                "name": leaf_name,
+                "action": action_text or leaf_name,
+                "expect": "ok",
+            },
+        },
+        "root": "n1",
+    }

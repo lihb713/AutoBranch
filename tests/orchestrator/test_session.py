@@ -23,15 +23,15 @@ class TestSessionInit:
 
     def test_run_starts_fresh_context(self, config, mock_browser, stub_leaf) -> None:
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        result = engine.run(_tree(), {}, config)
+        result = engine.run(_tree(), config)
         assert result.status == "success"
         # start 每次调用都会先 stop 再新建 context（M1 冷启动语义），M7 每 run 必调
         assert len(mock_browser.starts) == 1
 
     def test_each_run_starts_new_context(self, config, mock_browser, stub_leaf) -> None:
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        engine.run(_tree(), {}, config)
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
+        engine.run(_tree(), config)
         # 两次 run = start/stop/start/stop，无运行间残留
         assert len(mock_browser.starts) == 2
         assert len(mock_browser.stops) == 2
@@ -45,7 +45,7 @@ class TestSessionInit:
             leaf_executor=StubLeaf(),
             space_factory=lambda: space,
         )
-        engine.run(_tree(), {}, RunConfig(report_dir=config.report_dir, timeout=42.0))
+        engine.run(_tree(), RunConfig(report_dir=config.report_dir, timeout=42.0))
         assert space.resolve_config(space.root, "timeout") == 42.0
 
     def test_global_config_extra_params(self, config) -> None:
@@ -55,7 +55,7 @@ class TestSessionInit:
             leaf_executor=StubLeaf(),
             space_factory=lambda: space,
         )
-        engine.run(_tree(), {}, RunConfig(report_dir=config.report_dir, global_config={"retry": 3}))
+        engine.run(_tree(), RunConfig(report_dir=config.report_dir, global_config={"retry": 3}))
         assert space.resolve_config(space.root, "retry") == 3
 
 
@@ -64,14 +64,14 @@ class TestSessionRelease:
 
     def test_browser_stopped_after_success(self, config, mock_browser, stub_leaf) -> None:
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
         assert len(mock_browser.stops) == 1
         assert mock_browser.started is False
 
     def test_browser_stopped_after_failure(self, config, mock_browser, stub_leaf) -> None:
         stub_leaf.results["动作"] = leaf_failure("动作")
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        result = engine.run(_tree(), {}, config)
+        result = engine.run(_tree(), config)
         assert result.status == "failure"
         assert len(mock_browser.stops) == 1
         assert mock_browser.started is False

@@ -81,7 +81,6 @@ class TestRunContextDI:
             space=space,
             reporter=reporter,
             browser=browser,
-            blocks={},
             leaf_executor=leaf,
         )
         assert ctx.space is space
@@ -103,26 +102,17 @@ class TestRunContextDI:
     def test_schema_decl_converts_config_overrides(self, config) -> None:
         from orchestrator_helpers import make_run_context
 
-        from webops.parser.models import BlockDecl, ConfigOverride
-
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                config_overrides=(ConfigOverride(name="timeout", value=30),),
-            ),
-        }
-        ctx = make_run_context(config, blocks=blocks)
-        decl = ctx.schema_decl("登录")
-        assert decl.block_name == "登录"
+        ctx = make_run_context(
+            config,
+            decl_inputs={"username": "str"},
+            decl_outputs=["result"],
+            config_overrides={"timeout": 30},
+        )
+        decl = ctx.schema_decl("文档B")
+        assert decl.block_name == "文档B"
         assert decl.config == {"timeout": 30}
-        assert decl.inputs == {}
-
-    def test_schema_decl_missing_block_returns_none(self, config) -> None:
-        from orchestrator_helpers import make_run_context
-
-        ctx = make_run_context(config)
-        assert ctx.schema_decl("不存在的块") is None
+        assert decl.inputs == {"username": "str"}
+        assert decl.outputs == {"result": ""}
 
     def test_current_frame_before_enter_is_none(self, config) -> None:
         ctx = RunContext(
@@ -130,7 +120,6 @@ class TestRunContextDI:
             space=SchemaSpace(),
             reporter=Reporter("run-1", config.report_dir),
             browser=MockBrowser(),
-            blocks={},
             leaf_executor=StubLeaf(),
         )
         assert ctx.current_frame is None

@@ -32,7 +32,7 @@ class TestEngineRun:
 
     def test_run_returns_run_result_with_reports(self, config, mock_browser, stub_leaf) -> None:
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        result = engine.run(_tree(), {}, config)
+        result = engine.run(_tree(), config)
         assert result.status == "success"
         assert result.failure_reason is None
         assert result.exec_report is not None
@@ -43,7 +43,7 @@ class TestEngineRun:
     def test_validation_failure_no_traversal(self, config, mock_browser, stub_leaf) -> None:
         """校验失败：返回修正信息，不启动会话/遍历/报告。"""
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        result = engine.run(None, {}, config)
+        result = engine.run(None, config)
         assert result.status == "failure"
         assert "行为树为空" in result.failure_reason
         assert result.exec_report is None
@@ -53,7 +53,7 @@ class TestEngineRun:
 
     def test_validation_missing_config(self, mock_browser, stub_leaf) -> None:
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        result = engine.run(_tree(), {}, None)
+        result = engine.run(_tree(), None)
         assert result.status == "failure"
         assert "运行配置缺失" in result.failure_reason
         assert len(mock_browser.starts) == 0
@@ -68,7 +68,7 @@ class TestEngineRun:
     def test_run_failure_reason_points_to_leaf(self, config, mock_browser, stub_leaf) -> None:
         stub_leaf.results["动作"] = leaf_failure("动作", terminator="no_progress")
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        result = engine.run(_tree(), {}, config)
+        result = engine.run(_tree(), config)
         assert result.status == "failure"
         assert result.failure_reason is not None
         assert "动作" in result.failure_reason
@@ -113,7 +113,7 @@ class TestEngineEndToEnd:
                 cond("最终状态OK"),
             ),
         )
-        result = engine.run(tree, {}, config)
+        result = engine.run(tree, config)
         assert result.status == "success"
         assert result.failure_reason is None
         final = engine.get_exec_state()
@@ -141,7 +141,7 @@ class TestEngineEndToEnd:
             name="主流程",
             root=seq(action("ok"), action("bad"), action("ok2")),
         )
-        result = engine.run(tree, {}, config)
+        result = engine.run(tree, config)
         assert result.status == "failure"
         assert "bad" in result.failure_reason
         assert result.exec_report is not None
@@ -156,7 +156,7 @@ class TestEngineEndToEnd:
             name="主流程",
             root=seq(repeat(action("总是失败"), mode="retry", max=2)),
         )
-        result = engine.run(tree, {}, config)
+        result = engine.run(tree, config)
         assert result.status == "failure"
         assert result.failure_reason is not None
 
@@ -212,7 +212,7 @@ class TestRealBrowserSmoke:
                 cond("页面已打开"),
             ),
         )
-        result = engine.run(tree, {}, RunConfig(report_dir=config.report_dir))
+        result = engine.run(tree, RunConfig(report_dir=config.report_dir))
         assert result.status == "success"
         assert captured["page"] is not None
         # 截图链路：Action 返回前经 M1 截图落盘，NodeReport 携带路径

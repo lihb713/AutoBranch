@@ -23,7 +23,7 @@ from webops.schema import SchemaSpace
 from webops.schema.errors import SchemaError
 
 if TYPE_CHECKING:
-    from webops.parser.models import BehaviorTree, BlockDecl, Node
+    from webops.parser.models import BehaviorTree, Node
 
 logger = logging.getLogger(__name__)
 
@@ -65,26 +65,31 @@ class Engine:
     def run(
         self,
         tree: BehaviorTree,
-        blocks: dict[str, BlockDecl],
         config: RunConfig,
+        resolver=None,
         blocks_tree: dict[str, Node] | None = None,
+        decl_inputs: dict[str, str] | None = None,
+        decl_outputs: list[str] | None = None,
+        config_overrides: dict[str, object] | None = None,
     ) -> RunResult:
         """执行入口（§9.8 ⓪/①/②）：会话初始化 → 遍历 → 返回运行结果。
 
-        校验失败（行为树/块声明/配置缺失或非法）直接返回修正信息，不启动任何
+        校验失败（行为树/声明/配置缺失或非法）直接返回修正信息，不启动任何
         会话、遍历与报告；成功路径每次运行创建全新浏览器 context、注入全局
         默认配置到根级 schema、遍历结束后统一释放 context。
 
-        :param blocks_tree: 每块预展开的可执行基础树（ref 节点运行期动态调用的
-          目标查找表；None/空 dict 表示无 ref 场景）。
+        :param resolver: 跨文档引用解析器（ref 按文档名加载被引文档用）。
+        :param blocks_tree: 文档名 -> 主树（一文档一树；ref 运行期经 resolver
+          加载被引文档，本表仅承载根文档主树）。
+        :param decl_inputs/outputs/config_overrides: 文档级接口与配置声明。
         """
         self._run_context = None
-        problem = self._validate_input(tree, blocks, config)
+        problem = self._validate_input(tree, config)
         if problem is not None:
             return RunResult(status="failure", failure_reason=problem)
 
         run_id = _make_run_id(tree.name)
-        total = count_nodes(tree.root, blocks_tree or {})
+        total = count_nodes(tree.root, blocks_tree or {}, resolver=resolver)
         space = self._space_factory()
         reporter = self._make_reporter(run_id, total, config)
         self._inject_global_config(space, config)
@@ -93,9 +98,12 @@ class Engine:
             space=space,
             reporter=reporter,
             browser=self._browser,
-            blocks=blocks,
             leaf_executor=self._leaf_executor or make_default_leaf_executor(config, space),
             blocks_tree=blocks_tree or {},
+            resolver=resolver,
+            decl_inputs=decl_inputs or {},
+            decl_outputs=decl_outputs or [],
+            config_overrides=config_overrides or {},
         )
         self._run_context = ctx
         traverser = Traverser(ctx)
@@ -149,13 +157,11 @@ class Engine:
     # ------------------------------------------------------------ 内部
 
     def _validate_input(
-        self, tree: Any, blocks: Any, config: Any
+        self, tree: Any, config: Any
     ) -> str | None:
         """入口校验：失败返回可修正错误信息（不启动遍历）。"""
         if tree is None or getattr(tree, "root", None) is None:
             return "行为树为空（解析产物缺失，无法执行）"
-        if blocks is None:
-            return "块声明表缺失（解析产物缺失）"
         if config is None:
             return "运行配置缺失"
         if not isinstance(config, RunConfig):

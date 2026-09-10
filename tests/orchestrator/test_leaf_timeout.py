@@ -154,48 +154,68 @@ class TestTimeoutInheritance:
     """任务 3.5：块覆盖 timeout 的叶子用覆盖值、其余用全局默认（经 ref 建帧）。"""
 
     def test_block_override_and_inheritance(self, config) -> None:
-        from webops.parser.models import BlockDecl, ConfigOverride, RefNode
+        from orchestrator_helpers import make_doc_resolver
 
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                config_overrides=(ConfigOverride(name="timeout", value=0.3),),
-            ),
-            "子块": BlockDecl(name="子块", doc_id="主流程"),
+        from webops.parser.models import RefNode
+
+        login_doc = {
+            "tree": "登录",
+            "timeout": 0.3,
+            "nodes": {
+                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+                "n2": {"type": "Sequence", "name": "登录", "slots": {"1": "n3", "2": "n4"}},
+                "n3": {"type": "Step", "name": "块叶子", "action": "块叶子", "expect": "ok"},
+                "n4": {"type": "ref", "name": "去子块", "target": "子块"},
+            },
+            "root": "n1",
         }
-        blocks_tree = {
-            "主流程": seq(action("根叶子"), RefNode(ref_target="this/登录")),
-            "登录": seq(action("块叶子"), RefNode(ref_target="this/子块")),
-            "子块": seq(action("子块叶子")),
+        sub_doc = {
+            "tree": "子块",
+            "nodes": {
+                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+                "n2": {"type": "Step", "name": "子块叶子", "action": "子块叶子", "expect": "ok"},
+            },
+            "root": "n1",
         }
-        ctx = make_run_context(config, blocks=blocks, blocks_tree=blocks_tree)
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == SUCCESS
+        resolver = make_doc_resolver({"登录": login_doc, "子块": sub_doc})
+        main_tree = seq(action("根叶子"), RefNode(ref_target="登录"))
+        ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 全局默认（根级）: config.timeout = 120
         assert ctx.leaf_executor.timeouts["根叶子"] == 120.0
-        # 块覆盖值: 登录块配置覆盖 timeout=0.3（经 ref 建帧注入）
+        # 被引文档覆盖值: 登录文档 timeout=0.3（经 ref 建帧注入）
         assert ctx.leaf_executor.timeouts["块叶子"] == 0.3
-        # 三级继承: 子块无覆盖 → 继承最近祖先（登录块）的 0.3
+        # 三级继承: 子块无覆盖 → 继承最近祖先（登录文档）的 0.3
         assert ctx.leaf_executor.timeouts["子块叶子"] == 0.3
 
     def test_block_override_used_by_blocking_leaf(self, config) -> None:
-        from webops.orchestrator import RunConfig
-        from webops.parser.models import BlockDecl, ConfigOverride, RefNode
+        from orchestrator_helpers import make_doc_resolver
 
-        blocks = {
-            "登录": BlockDecl(
-                name="登录",
-                doc_id="主流程",
-                config_overrides=(ConfigOverride(name="timeout", value=0.03),),
-            ),
+        from webops.orchestrator import RunConfig
+        from webops.parser.models import RefNode
+
+        login_doc = {
+            "tree": "登录",
+            "timeout": 0.03,
+            "nodes": {
+                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+                "n2": {
+                    "type": "Step",
+                    "name": "块内慢动作",
+                    "action": "块内慢动作",
+                    "expect": "ok",
+                },
+            },
+            "root": "n1",
         }
+        resolver = make_doc_resolver({"登录": login_doc})
         cfg = RunConfig(report_dir=config.report_dir, timeout=120.0)
-        blocks_tree = {
-            "主流程": seq(RefNode(ref_target="this/登录")),
-            "登录": seq(action("块内慢动作")),
-        }
+        main_tree = seq(RefNode(ref_target="登录"))
         ctx = make_run_context(
-            cfg, blocks=blocks, blocks_tree=blocks_tree, leaf_executor=BlockingLeaf(0.15)
+            cfg,
+            resolver=resolver,
+            blocks_tree={"主流程": main_tree},
+            leaf_executor=BlockingLeaf(0.15),
         )
-        assert Traverser(ctx).tick(blocks_tree["主流程"]) == FAILURE
+        assert Traverser(ctx).tick(main_tree) == FAILURE
         assert "执行超时" in ctx.failure_reason

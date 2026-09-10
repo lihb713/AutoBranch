@@ -32,7 +32,7 @@ class TestExecStateStructure:
 
     def test_filled_after_run(self, config) -> None:
         engine = make_engine()
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
         state = engine.get_exec_state()
         assert state.run_id
         assert state.finished is True
@@ -52,7 +52,7 @@ class TestExecStateUpdates:
             return leaf_success(node.description)
 
         engine._leaf_executor = probe
-        result = engine.run(_tree(), {}, config)
+        result = engine.run(_tree(), config)
         assert result.status == "success"
         progresses = [s.progress for s in snapshots]
         assert progresses == sorted(progresses)  # 单调非递减
@@ -64,7 +64,7 @@ class TestExecStateUpdates:
 
     def test_completed_accumulates_reports(self, config) -> None:
         engine = make_engine()
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
         state = engine.get_exec_state()
         descs = [r.node_desc for r in state.completed]
         # 叶子报告按执行顺序累积（后序：叶子在前，Sequence 在后）
@@ -73,7 +73,7 @@ class TestExecStateUpdates:
 
     def test_current_node_cleared_after_record(self, config) -> None:
         engine = make_engine()
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
         assert engine.get_exec_state().current_node is None  # 全部结束后清空
 
 
@@ -82,7 +82,7 @@ class TestExecStateSnapshot:
 
     def test_snapshot_is_copy(self, config) -> None:
         engine = make_engine()
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
         s1 = engine.get_exec_state()
         s2 = engine.get_exec_state()
         assert len(s1.completed) == len(s2.completed)
@@ -92,7 +92,7 @@ class TestExecStateSnapshot:
 
     def test_repeated_queries_consistent(self, config) -> None:
         engine = make_engine()
-        engine.run(_tree(), {}, config)
+        engine.run(_tree(), config)
         a = engine.get_exec_state()
         b = engine.get_exec_state()
         assert a.progress == b.progress
@@ -104,7 +104,7 @@ class TestExecStateFinished:
 
     def test_finished_and_full_completed(self, config) -> None:
         engine = make_engine()
-        result = engine.run(_tree(), {}, config)
+        result = engine.run(_tree(), config)
         assert result.status == "success"
         state = engine.get_exec_state()
         assert state.finished is True

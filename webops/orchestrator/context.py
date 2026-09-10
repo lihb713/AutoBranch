@@ -16,7 +16,6 @@ from webops.schema import BlockDecl as SchemaBlockDecl
 if TYPE_CHECKING:
     from webops.browser import BrowserDriver
     from webops.leaf_agent.models import LeafResult
-    from webops.parser.models import BlockDecl as ParserBlockDecl
     from webops.parser.models import Node
     from webops.reporting import Reporter
     from webops.schema import SchemaSpace
@@ -34,9 +33,12 @@ class RunContext:
     :param space: M3 schema 命名空间（帧管理 / 配置继承）。
     :param reporter: M8 报告记录器（节点报告 / 截图 / 执行状态）。
     :param browser: M1 浏览器驱动（会话生命周期）。
-    :param blocks: M2 块声明表（块名 -> ``BlockDecl``，建帧注入配置覆盖）。
-    :param blocks_tree: 每块预展开的可执行基础树映射（块名 -> ``Node``，
-      ref 节点运行期动态调用的目标查找表；空 dict 表示无 ref 场景）。
+    :param blocks_tree: 文档名 -> 主树（一文档一树；ref 运行期经 resolver
+      加载被引文档，本表仅承载根文档主树）。
+    :param resolver: 跨文档引用解析器（ref 按文档名加载被引文档用）。
+    :param decl_inputs: 文档级入参声明（名 -> 类型）。
+    :param decl_outputs: 文档级出参名列表。
+    :param config_overrides: 全局配置覆盖（timeout/retry/browser）。
     :param leaf_executor: 叶子执行器（默认包装 M6 ``execute_leaf``；测试注入 mock）。
     :param failure_reason: 首个失败节点描述（沿树传播到根时作为失败原因）。
     """
@@ -45,9 +47,12 @@ class RunContext:
     space: SchemaSpace
     reporter: Reporter
     browser: BrowserDriver
-    blocks: dict[str, ParserBlockDecl]
     leaf_executor: LeafExecutor
     blocks_tree: dict[str, Node] = field(default_factory=dict)
+    resolver: Any = None
+    decl_inputs: dict[str, str] = field(default_factory=dict)
+    decl_outputs: list[str] = field(default_factory=list)
+    config_overrides: dict[str, object] = field(default_factory=dict)
     failure_reason: str | None = None
 
     @property
@@ -56,19 +61,12 @@ class RunContext:
         return self.space._current
 
     def schema_decl(self, block_name: str) -> SchemaBlockDecl | None:
-        """把 M2 块声明转换为 M3 ``BlockDecl``（建帧注入配置覆盖用）。
-
-        声明表查无（如跨文档块不在根文档声明表中）返回 None：仅失去该块的
-        配置覆盖注入，不影响建帧与执行。
-        """
-        decl = self.blocks.get(block_name)
-        if decl is None:
-            return None
+        """把文档级声明转换为 M3 ``BlockDecl``（根帧注入接口与配置覆盖用）。"""
         return SchemaBlockDecl(
             block_name=block_name,
-            inputs={name: typ for name, typ in decl.inputs},
-            outputs={name: "" for name in decl.outputs},
-            config={override.name: override.value for override in decl.config_overrides},
+            inputs=dict(self.decl_inputs),
+            outputs={name: "" for name in self.decl_outputs},
+            config=dict(self.config_overrides),
         )
 
 
