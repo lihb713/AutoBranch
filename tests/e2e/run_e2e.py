@@ -77,9 +77,10 @@ def main() -> int:
         # ---- 解析行为树（M2）----
         flow_file = FLOWS_DIR / "订单审批.yaml"
         source = flow_file.read_text(encoding="utf-8")
+        resolver = MappingResolver({})
         result = BehaviorTreeParser().parse(
             DocumentSource(id="订单审批", data=source),
-            MappingResolver({}),
+            resolver,
         )
         if not result.checks.ok:
             print("[错误] 行为树清晰度校验失败:")
@@ -147,7 +148,15 @@ def main() -> int:
         engine = Engine(browser=browser, space_factory=lambda: schema_space)
         print(f"[3/6] 开始执行行为树（真实浏览器 + 真实 LLM: {cfg.llm.model}）...")
         started = time.time()
-        run_result = engine.run(result.tree, result.blocks, config)
+        run_result = engine.run(
+            result.tree,
+            config,
+            resolver=resolver,
+            blocks_tree=result.blocks_tree,
+            decl_inputs=result.decl_inputs,
+            decl_outputs=result.decl_outputs,
+            config_overrides=result.config,
+        )
         elapsed = time.time() - started
         print(f"[4/6] 执行完成，耗时 {elapsed:.1f}s，状态: {run_result.status}")
         if run_result.failure_reason:

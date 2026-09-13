@@ -109,7 +109,7 @@ class TestRunContextDI:
             config_overrides={"timeout": 30},
         )
         decl = ctx.schema_decl("文档B")
-        assert decl.block_name == "文档B"
+        assert decl.name == "文档B"
         assert decl.config == {"timeout": 30}
         assert decl.inputs == {"username": "str"}
         assert decl.outputs == {"result": ""}

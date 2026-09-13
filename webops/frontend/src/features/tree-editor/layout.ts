@@ -1,4 +1,4 @@
-import type { TreeNode } from "./treeModel";
+import { slotFields, type TreeNode } from "./treeModel";
 
 /** 布局常量：固定尺寸节点卡片（画布不显示字段详情）。 */
 export const NODE_W = 160;
@@ -25,13 +25,19 @@ type Subtree = {
   centerX: number;
 };
 
+function childIds(node: TreeNode): string[] {
+  return slotFields(node)
+    .map((m) => m.childId)
+    .filter((c): c is string => c !== null);
+}
+
 /** 递归计算子树包围盒（自底向上算宽、自顶向下定位）。 */
 function measure(id: string, nodes: Record<string, TreeNode>, seen: Set<string>): Subtree {
   const node = nodes[id];
   if (!node || seen.has(id)) {
     return { width: NODE_W, height: NODE_H, centerX: NODE_W / 2 };
   }
-  const children = node.slots.filter((c) => c in nodes && !seen.has(c));
+  const children = childIds(node).filter((c) => c in nodes && !seen.has(c));
   if (children.length === 0) {
     return { width: NODE_W, height: NODE_H, centerX: NODE_W / 2 };
   }
@@ -59,7 +65,7 @@ function place(
   if (!node || seen.has(id)) return;
   const sub = measure(id, nodes, new Set());
   boxes.set(id, { id, x: left + sub.centerX - NODE_W / 2, y: top });
-  const children = node.slots.filter((c) => c in nodes);
+  const children = childIds(node).filter((c) => c in nodes);
   if (children.length === 0) return;
   const subSeen = new Set(seen);
   subSeen.add(id);

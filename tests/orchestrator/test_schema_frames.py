@@ -53,7 +53,7 @@ class TestFrameLifecycle:
                 "导出": {
                     "tree": "导出",
                     "nodes": {
-                        "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+                        "n1": {"type": "Root", "name": "根", "body": "n2"},
                         "n2": {"type": "ref", "name": "去登录", "target": "登录"},
                     },
                     "root": "n1",
@@ -107,9 +107,13 @@ class TestConfigInheritance:
             "tree": "登录",
             "timeout": 5,
             "nodes": {
-                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-                "n2": {"type": "Sequence", "name": "登录", "slots": {"1": "n3", "2": "n4"}},
-                "n3": {"type": "Step", "name": "登录叶子", "action": "登录叶子", "expect": "ok"},
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {
+                    "type": "Sequence",
+                    "name": "登录",
+                    "actions": ["n3", "n4"],
+                },
+                "n3": {"type": "Action", "name": "登录叶子", "description": "登录叶子"},
                 "n4": {"type": "ref", "name": "去子块", "target": "子块"},
             },
             "root": "n1",

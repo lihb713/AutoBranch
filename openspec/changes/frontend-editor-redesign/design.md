@@ -2,9 +2,9 @@
 
 现有前端编辑器（嵌套卡片列表 + 单块编辑）无法满足"真实画布 + ref 参数编辑 + 一文档一树"的目标：ref 的 args/returns 在编辑器打开保存时静默丢失（`nodeFromYaml` 只取 ref 目标串）；块声明不可见不可编辑；附属块概念在树形呈现下冗余。详见 proposal.md（Why）。
 
-已充分讨论并固化的完整设计见 `docs/superpowers/specs/2026-09-10-frontend-editor-redesign-design.md`（§1-14）。本设计文档记录关键技术决策与理由。
+已充分讨论并固化的完整设计见 `docs/superpowers/specs/2026-09-10-frontend-editor-redesign-design.md`（§1-14）与 **`docs/superpowers/specs/2026-09-11-unified-slot-model-design.md`（统一槽位模型 v2，经用户确认）**。本设计文档记录关键技术决策与理由。
 
-当前代码约束：M2 parser 为"多块 + 树形 DSL"；M7 执行器为动态调用（`_tick_ref`）；server 用空 `MappingResolver({})`（跨文档引用生产不可用）；前端 `CanvasTree` 为嵌套卡片。
+当前代码约束：M2 parser 为"一文档一树 + 仅 Root/Sequence 用 slots、其余字段型"；本变更将其升级为**统一槽位模型**（全部动作走槽位 + Action 叶子 + Condition 概念）；M7 执行器为动态调用（`_tick_ref`）；server 已用 DB-backed resolver；前端 `CanvasTree` 为嵌套卡片。
 
 ## Goals / Non-Goals
 
@@ -27,10 +27,10 @@
 **理由**：树形呈现下"子树 = 节点下加节点"，附属块冗余；`ref: 文档名` 是唯一引用形式，语义统一。
 **备选**：保留多块（方案 2）——被弃，树形前端下无必要。
 
-### 2. 节点对象池 + 槽位引用（方案 B：平铺 + slots 引用 id）
-**决策**：节点在 `nodes:` 平铺定义，父子关系 = 容器 `slots: {1: <id>}`。
-**理由**：忠实于画布模型（节点独立、游离判定、删除语义）；支持导入保留 id。
-**备选**：children 内嵌树形——无法表达游离树/对象池。
+### 2. 节点对象池 + 统一槽位模型（方案 B：平铺 + 语义命名字段引用 id）
+**决策**：节点在 `nodes:` 平铺定义；节点间一切动作关联经**语义命名槽位字段**引用子树根节点 id（Root.body / Sequence.actions / Step.action / IfThenElse.then+else / Branch.action+branches[].action / Retry.body / LoopUntil.action）。新增 **Action 叶子节点**（`description`）作为真正叶子；**Condition 为概念性节点**，内嵌为自有字段（Step.expect / IfThenElse.if / Branch.branches[].when / LoopUntil.until）。
+**理由**：节点只保留核心语义、动作一律走槽位（用户准则）；直观且统一；前端画布经统一「挂载点」抽象消费（布局/游离判定/删除语义）。
+**备选**：① 统一 `slots: {1:id}` 数组——失去语义命名（then/else 无法区分）；② 字段型目标字符串（then/else/body）——旧设计残迹，与"动作一律走槽位"矛盾，被弃。
 
 ### 3. 槽位只能选"游离根"
 **决策**：容器槽位下拉只展示未被任何槽位引用的节点（游离根）；节点被引用后从游离区移除。

@@ -3,7 +3,7 @@
 在中间表示之上执行：
 
 - 复合节点展开（§4.3 精确语义，规则集中于 ``EXPANSION_RULES`` 单一映射表）
-- 块引用解析（``this/块名``、``文档名/块名`` 跨文档整树）与循环引用检测、
+- 引用解析（``ref: 文档名`` 跨文档整树）与循环引用检测、
   展开深度防护（静态，跨 ``blocks_tree`` 的 ref 图走查）
 - 每块独立预展开为基础树：``blocks_tree[块名]``（ref 保留为 ``RefNode``，
   运行期动态调用，不再内联展开）
@@ -197,13 +197,12 @@ def _check_get_defined(
 
 
 def _collect_output_assignment_names_ir(node: Node) -> set[str]:
-    """基础树内赋值点变量名集合（Action 的 set 目标 + RefNode 的 returns 目标）。"""
+    """基础树内赋值点变量名集合（Action 的 set 目标 + RefNode 的 returns 接收名）。"""
     names: set[str] = set()
     if isinstance(node, RefNode):
-        for _out, target in node.returns:
-            rel = target.rsplit("/", 1)[-1]
-            if rel:
-                names.add(rel)
+        for recv, _typ in node.returns:
+            if recv:
+                names.add(recv)
         return names
     if isinstance(node, ActionNode):
         return _set_decl_names(node.description or "")
@@ -242,10 +241,9 @@ def _collect_output_assignment_names(node: IRNode | None) -> set[str]:
         return set()
     names: set[str] = set()
     if node.kind == "ref":
-        for _out_name, target_var in node.returns:
-            segs = _schema_segments(target_var)
-            if segs is not None and len(segs) == 1:
-                names.add(segs[0])
+        for recv, _typ in node.returns:
+            if recv:
+                names.add(recv)
         return names
     if node.kind == "Action":
         return _set_decl_names(node.description or "")

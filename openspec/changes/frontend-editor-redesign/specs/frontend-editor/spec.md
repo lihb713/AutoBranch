@@ -20,17 +20,25 @@
 - **WHEN** 用户打开一份无任何节点（或仅有根节点）的行为树文档
 - **THEN** 画布显示根节点占位（无游离树时游离区不渲染），不报错
 
-### Requirement: 节点对象池与槽位引用
+### Requirement: 节点对象池与槽位引用（统一槽位模型）
 
-系统 SHALL 以"节点对象池 + 槽位引用"建模行为树：全部节点独立定义，父子关系通过容器节点的槽位（下拉选择）引用子节点 id 建立，槽位有序（执行顺序 = 槽位顺序）。容器节点（IfThenElse 固定 2 槽、Sequence 可变槽可增删）在属性面板编辑槽位。
+系统 SHALL 以"节点对象池 + 槽位引用"建模行为树：全部节点独立定义，节点间一切动作关联经**语义命名槽位字段**（下拉选择）引用子树根节点 id 建立。槽位字段按类型：`Root.body`（1 槽）、`Sequence.actions`（可变槽可增删）、`Step.action`（1 槽）、`IfThenElse.then/else`（2 槽）、`Branch.action`（前置操作槽）+ `branches[].action`（每分支 1 槽）、`Retry.body`（1 槽）、`LoopUntil.action`（1 槽）；叶子 `Action`（`description` 字段）与 `ref` 无槽位。条件（`Step.expect`/`IfThenElse.if`/`Branch.branches[].when`/`LoopUntil.until`）为节点自有字段，不通过槽位。
 
-#### Scenario: 容器槽位选择子节点
+#### Scenario: 槽位选择子节点
 - **WHEN** 用户编辑某容器节点的槽位下拉
-- **THEN** 下拉只展示各棵游离树的根（含主树未接入的游离根，及游离树最上层节点；单节点游离树展示其自身），选中后该棵游离树整体挂到该槽位并从游离区移除；已挂载节点与树内非根节点不展示
+- **THEN** 下拉只展示各棵游离树的根（游离树最上层节点；单节点游离树展示其自身），选中后该棵游离树整体挂到该槽位并从游离区移除；已挂载节点与树内非根节点不展示
 
 #### Scenario: 增加/删除槽位
-- **WHEN** 用户在可变槽容器（如 Sequence）点「增加槽位」/删除某槽位
-- **THEN** 槽位数量变化；删除槽位时该槽位原指向的子树回游离区独立成树
+- **WHEN** 用户在 Sequence 点「增加槽位」/删除某槽位
+- **THEN** `actions` 数量变化；删除槽位时该槽位原指向的子树回游离区独立成树
+
+#### Scenario: 创建 Step 自动附带 Action
+- **WHEN** 用户创建 Step 节点
+- **THEN** 系统自动创建一个 Action 子节点挂入其 `action` 槽位（操作部分走槽位）
+
+#### Scenario: 叶子 Action
+- **WHEN** 用户查看 Action 节点
+- **THEN** 其为画布叶子卡片（`description` 字段编辑），无槽位挂载点
 
 ### Requirement: 主树区与游离区
 

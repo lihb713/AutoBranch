@@ -5,24 +5,19 @@
 由 ``onedoc.py`` 解析，本模块提供各节点类型的单节点解析（Step/Sequence/
 ref/...）。ref 目标为**文档名单段**（引用另一文档整棵树）。
 
-**文档格式（本模块明确定义）**：
+**文档格式（一文档一树，见 ``onedoc.py``）**：
 
 ::
 
-    # 写法 A/B：顶层为「block <块名>:」定义（可多个）
-    block 主流程:            # 根块 = 名字匹配文档名的块，无匹配取第一个
-      inputs: ...
-      outputs: ...
-      Sequence: ...
-    block 登录:              # 附加命名块，供 ref: this/登录 复用
-      ...
+    tree: 主流程                # 顶层键：树名（=文档名）
+    inputs: {...}              # 可选：文档级入参
+    outputs: [...]             # 可选：文档级出参
+    nodes:                     # 节点对象池（平铺定义）
+      n1: {type: Root, name: 根, slots: {1: n2}}
+      n2: {type: Step, name: 登录, action: ..., expect: ...}
+    root: n1                   # 树根引用
 
-    # 写法 C（极简）：整个 dict 即根块行为树（根块名 = 文档名）
-    Sequence:
-      - Step: ...
-
-块体 = 接口声明（输入/输出）+ 配置参数覆盖（timeout/retry/browser 标量）+
-恰好一个行为树节点键。
+节点类型：Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ref。
 """
 
 from __future__ import annotations
@@ -90,7 +85,7 @@ class IRNode:
     mode: str | None = None
     ref_target: str | None = None
     bindings: tuple[tuple[str, str], ...] = ()
-    args: tuple[tuple[str, str], ...] = ()
+    args: tuple[str, ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
     raw: object = None
 

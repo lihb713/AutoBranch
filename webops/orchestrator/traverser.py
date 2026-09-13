@@ -31,7 +31,7 @@ from webops.parser.models import (
     SequenceNode,
 )
 from webops.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
-from webops.schema import BlockDecl as SchemaBlockDecl
+from webops.schema import FrameDecl
 from webops.schema.errors import SchemaError
 from webops.schema.path import resolve_target
 from webops.schema.types import coerce, infer_type
@@ -127,23 +127,6 @@ def _load_doc_tree_for_count(resolver, doc_id: str):
         return expand_document(ores.main_tree, ectx, decl_inputs=ores.decl_inputs).tree
     except Exception:
         return None
-
-
-def _resolve_ref_tree(
-    blocks_tree: dict[str, Node], tdoc: str, block_name: str, owner_doc: str
-) -> Node | None:
-    """按 ``blocks_tree`` 定位目标块树（镜像静态 ``_find_block_tree`` 兜底）。
-
-    ``this/<块>`` 同文档引用：先试 ``<所属文档>/<块>`` 键（跨文档同名块收纳），
-    再兜底纯块名。``文档/<块>`` 跨文档：先试 ``文档/块`` 键再兜底纯块名。
-    """
-    if tdoc == "this":
-        if owner_doc:
-            qualified = blocks_tree.get(f"{owner_doc}/{block_name}")
-            if qualified is not None:
-                return qualified
-        return blocks_tree.get(block_name)
-    return blocks_tree.get(f"{tdoc}/{block_name}") or blocks_tree.get(block_name)
 
 
 def _now_iso() -> str:
@@ -326,13 +309,13 @@ class Traverser:
 
         执行顺序（§3 执行模型）：
         1. 经 resolver 按文档名加载被引文档，解析其主树与文档级声明。
-        2. 在父帧上下文求值每个实参（裸路径 ``this/<名>`` 读父帧；字面量原样）。
-        3. 按被引文档 ``inputs`` 声明类型 coerce；失败 → ref 断言失败。
-        4. ``enter_block`` 建子帧，cast 后形参写入子帧（``this/形参名``）。
-        5. 递归 ``tick`` 被引文档主树（从 Root 执行；其内部 ref 由各自 _tick_ref 管理）。
-        6. 被引树 SUCCESS → 按 ``returns`` 映射读子帧输出写父帧局部变量；
-           FAILURE → 不写 returns，失败向上传播。
-        7. ``exit_block`` 退出子帧（数据保留至 run 结束）。
+        2. 求值每个实参（``this/<名>``/裸变量名读父帧；非变量按字面量），
+           按序对应被引文档 ``inputs``；coerce 到声明类型。
+        3. ``enter_frame`` 建子帧，cast 后形参写入子帧（``this/形参名``）。
+        4. 递归 ``tick`` 被引文档主树（从 Root 执行；其内部 ref 由各自 _tick_ref 管理）。
+        5. 被引树 SUCCESS → 按 ``returns``（按序对应 ``outputs``）读子帧输出
+           写父帧局部变量；FAILURE → 不写 returns，失败向上传播。
+        6. ``exit_frame`` 退出子帧（数据保留至 run 结束）。
         """
         target = (node.ref_target or "").strip()
         if not target or "/" in target:
@@ -344,52 +327,66 @@ class Traverser:
         child_tree, decl = loaded
         space = self.ctx.space
         parent = self.ctx.current_frame
-        # 2) 求值 args：裸路径 this/<名> → 父帧读；字面量原样
+        input_types = dict(decl.inputs) if decl else {}
+        input_names = list(input_types)
+        # 2) 求值 args（按序对应 inputs）：变量读父帧；非变量按字面量
         args_values: dict[str, object] = {}
-        for arg_name, expr in node.args:
+        if len(node.args) != len(input_names):
+            return (
+                self._note_failure(
+                    node,
+                    f"实参数量 {len(node.args)} 与被引文档 '{target}' "
+                    f"入参数量 {len(input_names)} 不符",
+                )
+                or FAILURE
+            )
+        for i, expr in enumerate(node.args):
+            name = input_names[i]
             val = self._eval_arg(parent, expr)
             if val is _MISSING:
-                return self._note_failure(node, f"实参 '{arg_name}' 求值失败: {expr!r}") or FAILURE
-            args_values[arg_name] = val
-        # 3) coerce 到输入类型
+                return (
+                    self._note_failure(node, f"实参 '{expr!r}' 求值失败（变量未定义）")
+                    or FAILURE
+                )
+            args_values[name] = val
+        # coerce 到输入类型
         typed: dict[str, object] = {}
-        input_types = dict(decl.inputs) if decl else {}
         for name, val in args_values.items():
             t = input_types.get(name, "")
             typed[name] = coerce(t, val) if t else val
-        # 4) 建子帧（注入 inputs/config）
+        # 3) 建子帧（注入 inputs/config）
         frame = None
         try:
-            frame = space.enter_block(target, decl)
+            frame = space.enter_frame(target, decl)
             for name, val in typed.items():
                 space.write(
                     frame, f"this/{name}", val, input_types.get(name, "") or infer_type(val)
                 )
-            # 5) 递归执行被引文档主树（从 Root 执行）
+            # 4) 递归执行被引文档主树（从 Root 执行）
             status = self.tick(child_tree)
-            # 6) SUCCESS → returns 回收写父帧
+            # 5) SUCCESS → returns 回收写父帧（按序对应 outputs）
             if status == SUCCESS:
-                for out_name, target_var in node.returns:
-                    rel = _single_segment(target_var)
-                    if rel is None:
+                out_names = list(decl.outputs) if decl else []
+                for i, (recv_name, _typ) in enumerate(node.returns):
+                    if i >= len(out_names):
                         continue
-                    value = space.read(frame, f"this/{out_name}")  # 子帧读输出
+                    value = space.read(frame, f"this/{out_names[i]}")  # 子帧读输出
                     if value is not None:
                         declared = (
-                            parent.declared.get(rel)
-                            or parent.outputs.get(rel)
-                            or parent.inputs.get(rel)
+                            parent.declared.get(recv_name)
+                            or parent.outputs.get(recv_name)
+                            or parent.inputs.get(recv_name)
                         )
                         space.write(
                             parent,
-                            f"this/{rel}",
+                            f"this/{recv_name}",
                             value,
-                            declared or infer_type(value),
+                            declared or _typ or infer_type(value),
                         )
         finally:
             if frame is not None:
-                # 7) 退出子帧（数据保留至 run 结束）
-                space.exit_block()
+                # 6) 退出子帧（数据保留至 run 结束）
+                space.exit_frame()
         return status
 
     def _load_doc_tree(self, doc_id: str) -> tuple[Node, object] | None:
@@ -413,35 +410,29 @@ class Traverser:
 
         ectx = ExpandContext(max_depth=64)
         expansion = expand_document(ores.main_tree, ectx, decl_inputs=ores.decl_inputs)
-        decl = SchemaBlockDecl(
-            block_name=doc_id,
+        decl = FrameDecl(
+            name=doc_id,
             inputs=dict(ores.decl_inputs),
             outputs={name: "" for name in ores.decl_outputs},
             config=dict(ores.config),
         )
         return expansion.tree, decl
 
-    def _find_ref_tree(self, tdoc: str, block_name: str, owner_doc: str) -> Node | None:
-        """按 ``blocks_tree`` 定位目标块树（镜像静态 ``_find_block_tree`` 兜底）。
-
-        ``owner_doc`` 为 ref 节点所属文档（``node.loc.doc_id``）：``this/<块>``
-        先试 ``<所属文档>/<块>`` 键（跨文档同名块收纳、命中所属文档），再兜底
-        纯块名；``文档/<块>`` 先试 ``文档/块`` 键再兜底纯块名。
-        """
-        return _resolve_ref_tree(self.ctx.blocks_tree, tdoc, block_name, owner_doc)
-
     def _eval_arg(self, frame, expr: str):
-        """求值实参表达式：裸路径 ``this/<名>`` → 父帧读；否则视为字面量。
+        """求值实参表达式：``this/<名>`` 或裸名（父帧已有变量）→ 读父帧；
+        否则视为字面量。
 
         未定义（父帧从未写入该变量）返回 ``_MISSING`` 哨兵，由调用方判失败；
         已定义（即便值为 None）返回存储值原样。``space.read`` 对未定义与
-        已存 None 均返回 None，故先经 ``resolve_target`` 判定存在性。
+        已存 None 均返回 None，故先经 ``resolve_target``/storage 判定存在性。
         """
         if _single_segment(expr) is not None:
             target, var = resolve_target(frame, expr)
             if var not in target.storage:
                 return _MISSING
             return self.ctx.space.read(frame, expr)
+        if expr in frame.storage:
+            return self.ctx.space.read(frame, f"this/{expr}")
         return _parse_literal(expr)
 
     # ------------------------------------------------------------ 报告与状态

@@ -44,7 +44,7 @@ def resolve_target(frame: SchemaFrame, path: str) -> tuple[SchemaFrame, str]:
     """
     segments = split_segments(path)
     first = segments[0]
-    if not (_is_self(first) or first == frame.block_name):
+    if not (_is_self(first) or first == frame.name):
         raise SchemaScopeError(f"越权访问: 目标帧 {first!r} 不是自身")
     rest = segments[1:]
     if len(rest) != 1:

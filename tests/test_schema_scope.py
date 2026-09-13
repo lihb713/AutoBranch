@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.schema import BlockDecl, SchemaScopeError, SchemaSpace
+from webops.schema import FrameDecl, SchemaScopeError, SchemaSpace
 
 
 @pytest.fixture
@@ -14,26 +14,26 @@ def space() -> SchemaSpace:
 
 def _build_tree(space: SchemaSpace):
     """T → (登录 → 输入框) 与 T → 导出。"""
-    t = space.enter_block("T")
-    login = space.enter_block("登录", BlockDecl(block_name="登录"))
-    ib = space.enter_block("输入框", BlockDecl(block_name="输入框"))
-    space.exit_block(ib)
-    space.exit_block(login)
-    export = space.enter_block("导出", BlockDecl(block_name="导出"))
-    space.exit_block(export)
+    t = space.enter_frame("T")
+    login = space.enter_frame("登录", FrameDecl(name="登录"))
+    ib = space.enter_frame("输入框", FrameDecl(name="输入框"))
+    space.exit_frame(ib)
+    space.exit_frame(login)
+    export = space.enter_frame("导出", FrameDecl(name="导出"))
+    space.exit_frame(export)
     return t, login, ib, export
 
 
 def test_frame_isolation_same_name():
     """2.1 两次引用同名块，同名变量互不冲突。"""
     space = SchemaSpace()
-    space.enter_block("T")
-    a1 = space.enter_block("登录")
+    space.enter_frame("T")
+    a1 = space.enter_frame("登录")
     space.write(a1, "$this/username", "alice", "str")
     assert space.read(a1, "$this/username") == "alice"
-    space.exit_block(a1)
+    space.exit_frame(a1)
 
-    a2 = space.enter_block("登录")
+    a2 = space.enter_frame("登录")
     space.write(a2, "$this/username", "bob", "str")
     assert space.read(a2, "$this/username") == "bob"
     assert space.read(a1, "$this/username") == "alice"
@@ -42,9 +42,9 @@ def test_frame_isolation_same_name():
 def test_nested_frame_paths():
     """2.1 嵌套调用形成层级帧路径 T/ → T/登录/ → T/登录/输入框/。"""
     space = SchemaSpace()
-    t = space.enter_block("T")
-    login = space.enter_block("登录")
-    ib = space.enter_block("输入框")
+    t = space.enter_frame("T")
+    login = space.enter_frame("登录")
+    ib = space.enter_frame("输入框")
     assert t.path == "T/"
     assert login.path == "T/登录/"
     assert ib.path == "T/登录/输入框/"

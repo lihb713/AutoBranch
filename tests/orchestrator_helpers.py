@@ -188,7 +188,7 @@ def make_run_context(
         decl_outputs=decl_outputs or [],
         config_overrides=config_overrides or {},
     )
-    space.enter_block(tree_name, ctx.schema_decl(tree_name))
+    space.enter_frame(tree_name, ctx.schema_decl(tree_name))
     return ctx
 
 
@@ -216,16 +216,15 @@ def make_doc_resolver(docs: dict):
 
 
 def make_leaf_doc(doc_name: str, leaf_name: str, action_text: str | None = None) -> dict:
-    """构造单叶子被引文档（新 DSL，Root→Step）。"""
+    """构造单 Action 叶子被引文档（统一槽位 DSL，Root.body → Action）。"""
     return {
         "tree": doc_name,
         "nodes": {
-            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
             "n2": {
-                "type": "Step",
+                "type": "Action",
                 "name": leaf_name,
-                "action": action_text or leaf_name,
-                "expect": "ok",
+                "description": action_text or leaf_name,
             },
         },
         "root": "n1",

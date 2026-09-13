@@ -2,10 +2,10 @@
 
 - 基础节点模型：``ActionNode`` / ``ConditionNode`` / ``SequenceNode`` /
   ``SelectorNode`` / ``RepeatNode`` / ``FinishNode`` —— 展开后的最终形态，
-  复合节点对引擎不可见（§4.3）；``RefNode`` 为块引用调用节点（保留为
+  复合节点对引擎不可见（§4.3）；``RefNode`` 为文档引用调用节点（保留为
   运行期动态调用，不再内联展开）。
-- 输出契约：``ParseResult``（tree / blocks / blocks_tree / checks）、
-  ``BlockDecl``（块声明）、``CheckReport``（校验报告）。
+- 输出契约：``ParseResult``（tree / blocks_tree / decl_inputs / decl_outputs
+  / config / checks）、``CheckReport``（校验报告）。
 - 输入契约：``DocumentSource``。
 
 所有模型均为 ``frozen`` dataclass，保证确定性输出（同输入两次解析结构一致）。
@@ -39,7 +39,7 @@ class Loc:
     """文档位置（路径式定位，yaml/dict 输入均适用）。
 
     :param doc_id: 所属文档标识。
-    :param path: 文档内路径，如 ``block 登录/Sequence/0/Step``。
+    :param path: 文档内路径，如 ``nodes/n2``。
     :param line: yaml 行号（可选项，当前子集解析器不填充）。
     """
 
@@ -77,15 +77,17 @@ class Node:
 
 @dataclass(frozen=True)
 class RefNode(Node):
-    """块引用调用节点：运行期动态调用被引用块。
+    """文档引用调用节点：运行期经 resolver 加载被引文档并从其 Root 执行。
 
-    :param ref_target: 如 ``this/登录`` / ``文档名/登录``。
-    :param args: ``(形参名, 实参表达式)``；实参 = 父帧裸路径 ``this/<名>`` 或字面量。
-    :param returns: ``(输出名, 父帧目标变量)``；子块 SUCCESS 后回收写入父帧。
+    :param ref_target: 被引文档名（单段，一文档一树）。
+    :param args: 实参表达式列表（按序对应被引文档 inputs）；元素为本文档
+        变量名（``this/<名>`` 或裸名）或字面量。
+    :param returns: ``(本树接收名, 类型)`` 列表（按序对应被引文档 outputs）；
+        被引文档 SUCCESS 后回收写入父帧。
     """
 
     ref_target: str = ""
-    args: tuple[tuple[str, str], ...] = ()
+    args: tuple[str, ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
 
 
@@ -175,39 +177,6 @@ class BehaviorTree:
 
 
 @dataclass(frozen=True)
-class ConfigOverride:
-    """块内配置参数覆盖（§4.2/§5.7.5）。
-
-    :param name: 配置参数名（timeout/retry/browser，工具定义固定）。
-    :param value: 覆盖值。
-    :param loc: 声明位置。
-    """
-
-    name: str
-    value: int | str | bool
-    loc: Loc | None = None
-
-
-@dataclass(frozen=True)
-class BlockDecl:
-    """命名块声明（块接口 + 配置参数覆盖，供 M3 建立 schema 命名空间）。
-
-    :param name: 块名。
-    :param doc_id: 所属文档标识。
-    :param inputs: 输入参数 ``(变量名, 类型 token)``（调用方需注入，全部必填）。
-    :param outputs: 输出参数名（调用方可读取）。
-    :param config_overrides: 配置参数覆盖（仅当前块及其子树生效）。
-    """
-
-    name: str
-    doc_id: str
-    inputs: tuple[tuple[str, str], ...] = ()
-    outputs: tuple[str, ...] = ()
-    config_overrides: tuple[ConfigOverride, ...] = ()
-    loc: Loc | None = None
-
-
-@dataclass(frozen=True)
 class CheckIssue:
     """清晰度校验错误项（可读、可定位、指明违反规则）。
 
@@ -260,7 +229,6 @@ class ParseResult:
 
     tree: BehaviorTree
     checks: CheckReport
-    blocks: dict[str, BlockDecl] = field(default_factory=dict)
     blocks_tree: dict[str, Node] = field(default_factory=dict)
     decl_inputs: dict[str, str] = field(default_factory=dict)
     decl_outputs: list[str] = field(default_factory=list)

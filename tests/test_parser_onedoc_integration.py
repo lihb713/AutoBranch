@@ -1,8 +1,8 @@
-"""一文档一树解析 → BehaviorTreeParser 全链路集成测试。"""
+"""一文档一树统一槽位解析 → BehaviorTreeParser 全链路集成测试。"""
 
 from __future__ import annotations
 
-from webops.parser.models import DocumentSource
+from webops.parser.models import ActionNode, DocumentSource
 from webops.parser.parser import BehaviorTreeParser
 from webops.parser.refs import MappingResolver
 
@@ -15,15 +15,21 @@ def _parse(raw: dict, doc_id: str = "主流程", resolver=None):
 
 
 def test_parse_full_chain():
-    """新 DSL → 基础树（Root→Sequence→Step/ref）+ 校验通过。"""
+    """统一槽位 DSL → 基础树（Root→Sequence→Step(Action 子树)/ref）+ 校验通过。"""
     raw = {
         "tree": "主流程",
         "inputs": {"起始订单": "str"},
         "outputs": ["处理结果"],
         "nodes": {
-            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-            "n2": {"type": "Sequence", "name": "主流程", "slots": {"1": "n3", "2": "n4"}},
-            "n3": {"type": "Step", "name": "登录", "action": "点登录", "expect": "出现工作台"},
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
+            "n2": {"type": "Sequence", "name": "主流程", "actions": ["n3", "n4"]},
+            "n3": {
+                "type": "Step",
+                "name": "登录",
+                "action": "n5",
+                "expect": "出现工作台",
+            },
+            "n5": {"type": "Action", "name": "点登录", "description": "点击登录"},
             "n4": {
                 "type": "ref",
                 "name": "处理B",
@@ -39,8 +45,14 @@ def test_parse_full_chain():
         "inputs": {"起始订单": "str"},
         "outputs": ["处理结果"],
         "nodes": {
-            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-            "n2": {"type": "Step", "name": "s", "action": "a", "expect": "b"},
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
+            "n2": {
+                "type": "Step",
+                "name": "s",
+                "action": "n3",
+                "expect": "b",
+            },
+            "n3": {"type": "Action", "name": "a", "description": "操作"},
         },
         "root": "n1",
     }
@@ -51,6 +63,9 @@ def test_parse_full_chain():
     assert result.decl_inputs == {"起始订单": "str"}
     assert result.decl_outputs == ["处理结果"]
     assert result.tree.name == "主流程"
+    # Step 展开为 Sequence(ActionNode, ConditionNode)；action 槽位子树含 Action
+    seq = result.tree.root
+    assert seq.children[0].children[0].children[0].__class__ is ActionNode
 
 
 def test_parse_with_undeclared_get_fails():
@@ -58,12 +73,12 @@ def test_parse_with_undeclared_get_fails():
     raw = {
         "tree": "主流程",
         "nodes": {
-            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-            "n2": {
-                "type": "Step",
-                "name": "x",
-                "action": "填 [[get:this/未定义]]",
-                "expect": "ok",
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
+            "n2": {"type": "Step", "name": "x", "action": "n3", "expect": "ok"},
+            "n3": {
+                "type": "Action",
+                "name": "a",
+                "description": "填 [[get:this/未定义]]",
             },
         },
         "root": "n1",

@@ -46,7 +46,6 @@ class BehaviorTreeParser:
         tree = BehaviorTree(name=doc.id, root=expansion.tree)
         return ParseResult(
             tree=tree,
-            blocks={},
             blocks_tree={doc.id: expansion.tree},
             decl_inputs=ores.decl_inputs,
             decl_outputs=ores.decl_outputs,

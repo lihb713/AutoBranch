@@ -20,6 +20,7 @@ from orchestrator_helpers import (
 from webops.orchestrator import FAILURE, SUCCESS
 from webops.orchestrator.traverser import Traverser
 from webops.parser.models import DocumentSource, RefNode
+from webops.parser.parser import BehaviorTreeParser
 from webops.parser.refs import MappingResolver
 from webops.schema.models import PageRef
 
@@ -68,15 +69,15 @@ def _space_leaf(space, extra=None):
 
 
 def _login_doc(inputs=None, outputs=None, body=None) -> dict:
-    """构造「登录」被引文档（新 DSL，Root→Sequence→body）。"""
+    """构造「登录」被引文档（统一槽位 DSL，Root→Sequence→Action 叶子）。"""
     doc = {
         "tree": "登录",
         "nodes": {
-            "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
             "n2": {
                 "type": "Sequence",
                 "name": "主流程",
-                "slots": {str(i + 1): f"n{i + 3}" for i in range(len(body or []))},
+                "actions": [f"n{i + 3}" for i in range(len(body or []))],
             },
         },
         "root": "n1",
@@ -86,8 +87,112 @@ def _login_doc(inputs=None, outputs=None, body=None) -> dict:
     if outputs:
         doc["outputs"] = outputs
     for i, leaf in enumerate(body or []):
-        doc["nodes"][f"n{i + 3}"] = {"type": "Step", "name": leaf, "action": leaf, "expect": "ok"}
+        doc["nodes"][f"n{i + 3}"] = {"type": "Action", "name": leaf, "description": leaf}
     return doc
+
+
+class TestRefCallFromDsl:
+    """新 DSL 端到端：args 列表（本树变量名/字面量）按序对应被引树 inputs，
+    returns 字典（本树接收名:类型）按序对应被引树 outputs。"""
+
+    def test_dsl_ref_args_and_returns_end_to_end(self, config) -> None:
+        login = _login_doc(
+            inputs={"username": "str"},
+            outputs=["result"],
+            body=["读参数 [[get:this/username]]", "输出 [[set:str:this/result]]"],
+        )
+        main = {
+            "tree": "主流程",
+            "nodes": {
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {
+                    "type": "Sequence",
+                    "name": "主流程",
+                    "actions": ["n3", "n4"],
+                },
+                "n3": {"type": "Action", "name": "填账号", "description": "填账号"},
+                "n4": {
+                    "type": "ref",
+                    "name": "去登录",
+                    "target": "登录",
+                    "args": ["账号"],
+                    "returns": {"结果": "str"},
+                },
+            },
+            "root": "n1",
+        }
+        resolver = _doc_resolver({"登录": login, "主流程": main})
+        result = BehaviorTreeParser().parse(DocumentSource(id="主流程", data=main), resolver)
+        assert result.checks.ok
+        main_tree = result.tree.root
+
+        def fill_account(frame):
+            ctx.space.write(frame, "this/账号", "admin", "str")
+            return None
+
+        def check_param(frame):
+            if ctx.space.read(frame, "this/username") != "admin":
+                return "形参未注入"
+            return None
+
+        ctx = make_run_context(
+            config, resolver=resolver, blocks_tree={"主流程": main_tree}
+        )
+        space = ctx.space
+        ctx.leaf_executor = _space_leaf(
+            space,
+            extra={"填账号": fill_account, "读参数 [[get:this/username]]": check_param},
+        )
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
+        root = space._current
+        assert root.storage["结果"] == "成功输出"
+        child = root.children["登录"]
+        assert child.storage["username"] == "admin"
+        assert child.storage["result"] == "成功输出"
+
+    def test_dsl_ref_literal_arg(self, config) -> None:
+        """args 元素非本树变量名 → 按字面量传入（校验与 inputs 类型匹配）。"""
+        login = _login_doc(
+            inputs={"username": "str"},
+            body=["读参数 [[get:this/username]]"],
+        )
+        main = {
+            "tree": "主流程",
+            "nodes": {
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {
+                    "type": "Sequence",
+                    "name": "主流程",
+                    "actions": ["n3"],
+                },
+                "n3": {
+                    "type": "ref",
+                    "name": "去登录",
+                    "target": "登录",
+                    "args": ["admin"],
+                },
+            },
+            "root": "n1",
+        }
+        resolver = _doc_resolver({"登录": login, "主流程": main})
+        result = BehaviorTreeParser().parse(DocumentSource(id="主流程", data=main), resolver)
+        assert result.checks.ok
+        main_tree = result.tree.root
+
+        def check_param(frame):
+            if ctx.space.read(frame, "this/username") != "admin":
+                return "字面量未注入"
+            return None
+
+        ctx = make_run_context(
+            config, resolver=resolver, blocks_tree={"主流程": main_tree}
+        )
+        space = ctx.space
+        ctx.leaf_executor = _space_leaf(
+            space, extra={"读参数 [[get:this/username]]": check_param}
+        )
+        assert Traverser(ctx).tick(main_tree) == SUCCESS
+        assert space._current.children["登录"].storage["username"] == "admin"
 
 
 class TestRefCall:
@@ -104,8 +209,8 @@ class TestRefCall:
             action("填账号"),
             RefNode(
                 ref_target="登录",
-                args=(("username", "this/账号"),),
-                returns=(("result", "this/结果"),),
+                args=("this/账号",),
+                returns=(("结果", "str"),),
             ),
         )
 
@@ -151,13 +256,13 @@ class TestRefCall:
         main_tree = seq(
             RefNode(
                 ref_target="登录",
-                args=(("username", "this/账号1"),),
-                returns=(("result", "this/结果1"),),
+                args=("this/账号1",),
+                returns=(("结果1", "str"),),
             ),
             RefNode(
                 ref_target="登录",
-                args=(("username", "this/账号2"),),
-                returns=(("result", "this/结果2"),),
+                args=("this/账号2",),
+                returns=(("结果2", "str"),),
             ),
         )
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
@@ -181,13 +286,17 @@ class TestRefCall:
         assert root.storage["结果2"] == "成功输出"
 
     def test_child_failure_propagates_and_skips_returns(self, config) -> None:
-        login = _login_doc(body=["块内失败"])
+        login = _login_doc(
+            inputs={"username": "str"},
+            outputs=["result"],
+            body=["块内失败"],
+        )
         resolver = _doc_resolver({"登录": login})
         main_tree = seq(
             RefNode(
                 ref_target="登录",
-                args=(("username", "this/账号"),),
-                returns=(("result", "this/结果"),),
+                args=("this/账号",),
+                returns=(("结果", "str"),),
             ),
             action("后续"),
         )
@@ -200,7 +309,7 @@ class TestRefCall:
         assert "结果" not in ctx.space._current.storage
         assert len(ctx.leaf_executor.calls) == 1
         # 激活帧恢复父帧
-        assert ctx.space._current.block_name == "主流程"
+        assert ctx.space._current.name == "主流程"
 
     def test_config_inheritance_through_ref_frames(self, config) -> None:
         login = _login_doc(body=["块叶子"])
@@ -222,7 +331,7 @@ class TestRefCall:
                 return "页面变量未激活"
             return None
 
-        main_tree = seq(RefNode(ref_target="登录", args=(("page", "this/页"),)))
+        main_tree = seq(RefNode(ref_target="登录", args=("this/页",)))
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
         space.write(space._current, "this/页", PageRef(page_id="p1", url="https://x"), "page_ref")
@@ -238,7 +347,7 @@ class TestRefCall:
         login = _login_doc(inputs={"username": "str"}, body=["块内动作"])
         resolver = _doc_resolver({"登录": login})
         main_tree = seq(
-            RefNode(ref_target="登录", args=(("username", "this/未定义账号"),)),
+            RefNode(ref_target="登录", args=("this/未定义账号",)),
         )
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
@@ -249,7 +358,7 @@ class TestRefCall:
         # 未建子帧（不进入目标块），无 "None" 注入
         assert "登录" not in space._current.children
         # 激活帧恢复父帧
-        assert space._current.block_name == "主流程"
+        assert space._current.name == "主流程"
 
     def test_ref_progress_not_premature(self, config) -> None:
         """ref 树的进度：count_nodes 计入被引用块子树，进度不提前饱和 1.0。
@@ -265,10 +374,10 @@ class TestRefCall:
         export = {
             "tree": "导出",
             "nodes": {
-                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-                "n2": {"type": "Sequence", "name": "导出", "slots": {"1": "n3", "2": "n4"}},
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {"type": "Sequence", "name": "导出", "actions": ["n3", "n4"]},
                 "n3": {"type": "ref", "name": "去登录", "target": "登录"},
-                "n4": {"type": "Step", "name": "导出叶", "action": "导出叶", "expect": "ok"},
+                "n4": {"type": "Action", "name": "导出叶", "description": "导出叶"},
             },
             "root": "n1",
         }

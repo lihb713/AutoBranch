@@ -47,6 +47,7 @@ class LLMConfig:
     base_url: str          # OpenAI 兼容接口地址（必填，缺失抛 ValueError）
     api_key: str           # 接口鉴权密钥（必填；不进入日志/报告）
     model: str             # 模型名（必填）
+    session_id: str | None = None   # 可选：稳定会话标识（x-opencode-session 请求头）
 ```
 
 ### 5.2 会话接口
@@ -57,7 +58,8 @@ class LLMSession:
                  transport: Transport | None = None,
                  protocol: Literal["chat", "responses"] = "chat",
                  budget_limit: int | None = None,
-                 timeout: float = 60.0): ...
+                 timeout: float = 60.0,
+                 session_id: str | None = None): ...   # session_id 覆盖 config.session_id
     def add_user_message(self, content: str) -> None: ...
     def add_tool_result(self, call_id: str, result: ToolResult | str) -> None: ...
     def request(self, tools: list[ToolSpec] | None = None, stream: bool = False) -> LLMResponse: ...
@@ -69,6 +71,9 @@ class LLMSession:
 **request() 行为**：携带会话内全量消息序列（system + 用户 + 助手 + 工具结果，全量累积）；
 解析响应后自动将助手回复（含 tool_calls）追加为上下文（OpenAI 要求 tool 消息紧跟
 对应 assistant tool_calls 消息）；请求后读取 usage 累计 token，超预算抛异常。
+**会话标识**：每个会话生成一个稳定的 `x-opencode-session` 请求头（`session_id` 显式值、
+否则 `config.session_id`、否则自动 UUID）；同一会话内多轮请求共用同一 ID，供网关
+路由与提示缓存优化（OpenCode Go 网关缺失该头返回 400 `MissingSessionID`）。
 
 ### 5.3 响应结构
 
@@ -107,6 +112,9 @@ class UrllibTransport(Transport):     # 默认实现：标准库 urllib，带 Us
 
 # 协议适配（设计 D3）：Chat Completions（/chat/completions）与 Responses（/responses）
 # 映射到同一内部 Message 序列与同一 LLMResponse 结构，差异收敛在适配层。
+
+# 请求头：User-Agent 为自定义（webops-llm-client/0.1，非 urllib 默认）；
+# x-opencode-session 由 LLMSession 按会话注入（见 §5.2），传输层透传调用方 headers。
 ```
 
 ### 5.6 token 统计
@@ -123,6 +131,7 @@ class UrllibTransport(Transport):     # 默认实现：标准库 urllib，带 Us
 ## 6. 验收标准
 
 - [x] 配置任意 OpenAI 兼容 base_url + api_key + 模型名可发起请求
+- [x] 每个会话发送稳定的 `x-opencode-session` 请求头（同一会话多轮一致；配置可显式指定）
 - [x] 支持 Chat Completions 与 Responses 两种协议形态（Mock 测试均覆盖）
 - [x] 多轮工具调用：助手请求工具 → 回填结果 → 再次请求，循环可用
 - [x] 上下文正确累积，工具结果不丢失（request 自动追加助手消息）

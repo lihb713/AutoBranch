@@ -1,7 +1,7 @@
 """M3 schema 命名空间：SchemaSpace 门面（契约 §5.1）。
 
-``SchemaSpace`` 管理每次块引用的帧生命周期（``enter_block``/
-``exit_block``）、变量读写（``write``/``read``，严格作用域）、配置参数
+``SchemaSpace`` 管理每次文档引用的帧生命周期（``enter_frame``/
+``exit_frame``）、变量读写（``write``/``read``，严格作用域）、配置参数
 继承（``resolve_config``：自身 → 最近祖先 → 根级全局默认）、类型契约
 校验与页面变量解析（``current_page``）。纯内存结构，无外部依赖。
 """
@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from webops.schema.errors import SchemaError, SchemaPathError
-from webops.schema.models import BlockDecl, PageRef, SchemaFrame, Value
+from webops.schema.models import FrameDecl, PageRef, SchemaFrame, Value
 from webops.schema.path import THIS_TOKEN, resolve_target
 from webops.schema.types import check_type, infer_type, validate_type_name
 
@@ -32,14 +32,12 @@ class SchemaSpace:
         self._current: SchemaFrame | None = None
         self._inject_config(self.root, global_config or {}, global_config_types or {})
 
-    def _new_frame(
-        self, block_name: str, parent: SchemaFrame | None
-    ) -> SchemaFrame:
+    def _new_frame(self, name: str, parent: SchemaFrame | None) -> SchemaFrame:
         frame = SchemaFrame(
             id=self._next_id,
-            block_name=block_name,
+            name=name,
             parent=parent,
-            path_segments=parent.path_segments + (block_name,) if parent else (),
+            path_segments=parent.path_segments + (name,) if parent else (),
         )
         self._next_id += 1
         return frame
@@ -58,22 +56,22 @@ class SchemaSpace:
 
     # ---- 帧生命周期 -------------------------------------------------
 
-    def enter_block(
-        self, block_name: str, decl: BlockDecl | None = None
+    def enter_frame(
+        self, name: str, decl: FrameDecl | None = None
     ) -> SchemaFrame:
-        """进入一次块引用，创建独立帧并挂接为当前帧的直接子帧。
+        """进入一次文档引用，创建独立帧并挂接为当前帧的直接子帧。
 
         帧按调用链形成层级路径（如 ``T/登录/``）；同名变量在不同帧互不
-        冲突。块的配置参数声明（``decl.config``）进入帧时注入，构成
-        「块自身配置优先」的覆盖源。
+        冲突。文档的配置参数声明（``decl.config``）进入帧时注入，构成
+        「文档自身配置优先」的覆盖源。
         """
         parent = self._current if self._current is not None else self.root
-        if not block_name or "/" in block_name or block_name == THIS_TOKEN:
-            raise SchemaPathError(f"非法块名: {block_name!r}")
-        if block_name == parent.block_name:
-            raise SchemaPathError(f"子块名不能与父块名相同: {block_name!r}")
-        frame = self._new_frame(block_name, parent)
-        parent.children[block_name] = frame
+        if not name or "/" in name or name == THIS_TOKEN:
+            raise SchemaPathError(f"非法文档名: {name!r}")
+        if name == parent.name:
+            raise SchemaPathError(f"子文档名不能与父文档名相同: {name!r}")
+        frame = self._new_frame(name, parent)
+        parent.children[name] = frame
         if decl is not None:
             frame.inputs = dict(decl.inputs)
             frame.outputs = dict(decl.outputs)
@@ -81,7 +79,7 @@ class SchemaSpace:
         self._current = frame
         return frame
 
-    def exit_block(self, frame: SchemaFrame | None = None) -> None:
+    def exit_frame(self, frame: SchemaFrame | None = None) -> None:
         """退出当前帧并恢复父帧为当前帧。
 
         帧数据**保留至整个行为树执行结束**（供黑板上报各调用帧变量）；
@@ -92,7 +90,7 @@ class SchemaSpace:
         """
         current = frame if frame is not None else self._current
         if current is None or (frame is not None and current is not frame):
-            raise SchemaError("exit_block 与当前激活帧不匹配")
+            raise SchemaError("exit_frame 与当前激活帧不匹配")
         self._current = current.parent
 
     # ---- 业务变量读写（严格作用域） -----------------------------------

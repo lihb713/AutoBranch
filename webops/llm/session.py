@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 from webops.llm.config import LLMConfig
 from webops.llm.errors import LLMAuthError, LLMProtocolError
@@ -34,6 +35,9 @@ class LLMSession:
     :param protocol: 协议形态（``chat`` / ``responses``）。
     :param budget_limit: token 预算上限（None 表示不检测）。
     :param timeout: 单次请求超时秒数。
+    :param session_id: 可选，覆盖会话标识（``x-opencode-session``）；缺省用
+        ``config.session_id``，仍未提供则自动生成 UUID。同一会话内多次请求
+        共用同一 ID（供网关路由与提示缓存优化）。
     """
 
     def __init__(
@@ -44,6 +48,7 @@ class LLMSession:
         protocol: ProtocolName = "chat",
         budget_limit: int | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        session_id: str | None = None,
     ) -> None:
         self.config = config
         self.system_prompt = system_prompt
@@ -53,6 +58,7 @@ class LLMSession:
         self._timeout = timeout
         self._budget = TokenBudget(budget_limit)
         self._messages: list[Message] = []
+        self._session_id = session_id or config.session_id or f"webops-{uuid.uuid4()}"
         self._url = self._build_url()
 
     def _build_url(self) -> str:
@@ -95,6 +101,7 @@ class LLMSession:
         headers = {
             "Content-Type": "application/json",
             "Authorization": self.config.auth_header_value(),
+            "x-opencode-session": self._session_id,
         }
         resp = self.transport.request(self._url, headers, encode_json(payload), self._timeout)
         self._check_http_status(resp)
@@ -129,6 +136,7 @@ class LLMSession:
         headers = {
             "Content-Type": "application/json",
             "Authorization": self.config.auth_header_value(),
+            "x-opencode-session": self._session_id,
         }
         resp = self.transport.request(self._url, headers, encode_json(payload), self._timeout)
         self._check_http_status(resp)

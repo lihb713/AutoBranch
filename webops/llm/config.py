@@ -12,14 +12,17 @@ class LLMConfig:
     :param base_url: OpenAI 兼容接口地址（如 ``https://api.deepseek.com``）。
     :param api_key: 接口鉴权密钥。
     :param model: 模型名。
+    :param session_id: 可选，稳定的会话标识（``x-opencode-session`` 请求头）。
+        缺省由 ``LLMSession`` 自动生成 UUID（每个会话一次）。
 
-    三个字段均为必填，缺失任一字段构造时报参数校验错误（ValueError）。
+    三个必填字段缺失任一构造时报参数校验错误（ValueError）。
     ``api_key`` 不应进入日志或报告。
     """
 
     base_url: str
     api_key: str
     model: str
+    session_id: str | None = None
 
     def __post_init__(self) -> None:
         missing = [

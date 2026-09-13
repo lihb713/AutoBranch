@@ -7,6 +7,9 @@ export const treesApi = {
 
   getTree: (id: number) => request<TreeDetailOut>(`/trees/${id}`),
 
+  getTreeByName: (name: string) =>
+    request<TreeDetailOut>(`/trees/by-name/${encodeURIComponent(name)}`),
+
   createTree: (payload: TreeCreate) =>
     request<TreeOut>("/trees", { method: "POST", body: JSON.stringify(payload) }),
 

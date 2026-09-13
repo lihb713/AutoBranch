@@ -6,7 +6,7 @@ import pytest
 
 from webops.schema import (
     TYPE_REGISTRY,
-    BlockDecl,
+    FrameDecl,
     PageRef,
     SchemaFrame,
     SchemaPathError,
@@ -20,12 +20,12 @@ from webops.schema import (
 from webops.schema.path import resolve_target, split_segments
 
 
-def make_frame(block_name: str = "T") -> SchemaFrame:
+def make_frame(name: str = "T") -> SchemaFrame:
     return SchemaFrame(
         id=1,
-        block_name=block_name,
+        name=name,
         parent=None,
-        path_segments=(block_name,),
+        path_segments=(name,),
     )
 
 
@@ -39,7 +39,7 @@ def test_value_alias_scalars():
 def test_frame_is_pure_memory():
     """1.1 SchemaFrame 为纯内存结构：字段齐全、无 I/O。"""
     frame = make_frame()
-    assert frame.block_name == "T"
+    assert frame.name == "T"
     assert frame.parent is None
     assert frame.path_segments == ("T",)
     assert frame.path == "T/"
@@ -53,7 +53,7 @@ def test_frame_children_and_path():
     """1.1 直接子帧挂接与层级路径。"""
     t = make_frame("T")
     login = SchemaFrame(
-        id=2, block_name="登录", parent=t, path_segments=t.path_segments + ("登录",)
+        id=2, name="登录", parent=t, path_segments=t.path_segments + ("登录",)
     )
     t.children["登录"] = login
     assert login.parent is t
@@ -61,8 +61,8 @@ def test_frame_children_and_path():
 
 
 def test_block_decl_defaults():
-    """1.1 BlockDecl 默认字段为空 dict。"""
-    decl = BlockDecl(block_name="登录")
+    """1.1 FrameDecl 默认字段为空 dict。"""
+    decl = FrameDecl(name="登录")
     assert decl.inputs == {}
     assert decl.outputs == {}
     assert decl.config == {}

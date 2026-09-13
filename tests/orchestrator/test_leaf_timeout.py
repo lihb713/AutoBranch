@@ -162,9 +162,13 @@ class TestTimeoutInheritance:
             "tree": "登录",
             "timeout": 0.3,
             "nodes": {
-                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-                "n2": {"type": "Sequence", "name": "登录", "slots": {"1": "n3", "2": "n4"}},
-                "n3": {"type": "Step", "name": "块叶子", "action": "块叶子", "expect": "ok"},
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {
+                    "type": "Sequence",
+                    "name": "登录",
+                    "actions": ["n3", "n4"],
+                },
+                "n3": {"type": "Action", "name": "块叶子", "description": "块叶子"},
                 "n4": {"type": "ref", "name": "去子块", "target": "子块"},
             },
             "root": "n1",
@@ -172,8 +176,8 @@ class TestTimeoutInheritance:
         sub_doc = {
             "tree": "子块",
             "nodes": {
-                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-                "n2": {"type": "Step", "name": "子块叶子", "action": "子块叶子", "expect": "ok"},
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {"type": "Action", "name": "子块叶子", "description": "子块叶子"},
             },
             "root": "n1",
         }
@@ -198,13 +202,8 @@ class TestTimeoutInheritance:
             "tree": "登录",
             "timeout": 0.03,
             "nodes": {
-                "n1": {"type": "Root", "name": "根", "slots": {"1": "n2"}},
-                "n2": {
-                    "type": "Step",
-                    "name": "块内慢动作",
-                    "action": "块内慢动作",
-                    "expect": "ok",
-                },
+                "n1": {"type": "Root", "name": "根", "body": "n2"},
+                "n2": {"type": "Action", "name": "块内慢动作", "description": "块内慢动作"},
             },
             "root": "n1",
         }

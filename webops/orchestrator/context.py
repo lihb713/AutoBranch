@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from webops.orchestrator.models import OrchestratorError, RunConfig
-from webops.schema import BlockDecl as SchemaBlockDecl
+from webops.schema import FrameDecl
 
 if TYPE_CHECKING:
     from webops.browser import BrowserDriver
@@ -60,10 +60,10 @@ class RunContext:
         """当前激活的 schema 帧（M3 无公开读取器，访问其内部当前帧指针）。"""
         return self.space._current
 
-    def schema_decl(self, block_name: str) -> SchemaBlockDecl | None:
-        """把文档级声明转换为 M3 ``BlockDecl``（根帧注入接口与配置覆盖用）。"""
-        return SchemaBlockDecl(
-            block_name=block_name,
+    def schema_decl(self, doc_name: str) -> FrameDecl | None:
+        """把文档级声明转换为 M3 ``FrameDecl``（根帧注入接口与配置覆盖用）。"""
+        return FrameDecl(
+            name=doc_name,
             inputs=dict(self.decl_inputs),
             outputs={name: "" for name in self.decl_outputs},
             config=dict(self.config_overrides),

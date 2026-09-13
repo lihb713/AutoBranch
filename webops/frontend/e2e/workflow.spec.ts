@@ -16,11 +16,23 @@ import { expect, test, request as apiRequest } from "@playwright/test";
  */
 
 const TREE_NAME = `e2e执行${Date.now()}`;
-// 行为树：打开本地测试页并断言页面出现「登录」（确定性执行目标）
-const TREE_YAML = `block ${TREE_NAME}:
-  Step:
-    action: 打开页面 "http://127.0.0.1:8123/index.html"
+// 行为树（一文档一树，统一槽位）：打开本地测试页并断言页面出现「登录」
+const TREE_YAML = `tree: ${TREE_NAME}
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Step
+    name: 打开登录页
+    action: n3
     expect: 页面出现"登录"
+  n3:
+    type: Action
+    name: 打开页面
+    description: 打开页面 "http://127.0.0.1:8123/index.html"
+root: n1
 `;
 
 test.beforeAll(async () => {
@@ -51,10 +63,12 @@ test("前端执行行为树并查看执行结果", async ({ page }) => {
   const panel = page.getByTestId("report-panel");
   await expect(panel).toBeVisible({ timeout: 120_000 });
 
-  // 5. 查看「完整执行报告」
+  // 5. 查看「完整执行报告」：验证执行真正成功（SUCCESS、无 FAILURE）
   await page.getByRole("button", { name: "完整执行报告" }).click();
   await expect(panel.locator("pre")).toContainText("执行情况报告");
   await expect(panel.locator("pre")).toContainText("打开页面");
+  await expect(panel.locator("pre")).toContainText("SUCCESS");
+  await expect(panel.locator("pre")).not.toContainText("FAILURE");
 
   // 6. 切换查看「回溯报告」（含 LLM 推理过程）
   await page.getByRole("button", { name: "回溯报告" }).click();

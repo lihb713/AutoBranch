@@ -44,7 +44,7 @@ WebOps 的一切设计围绕一条最高原则：
 ├────────────────────────────────────────────┤
 │  ② 信息流层（确定性）                          │
 │     变量定义 / 提取 / 引用 / 断言             │
-│     跨块信息传递，规则引擎保证可校验           │
+│     跨文档/帧信息传递，规则引擎保证可校验        │
 ├────────────────────────────────────────────┤
 │  ③ 单节点执行层（LLM 有界代理）                 │
 │     观察理解页面 / 定位目标 / 执行动作 / 验证     │
@@ -120,71 +120,83 @@ WebOps 分两个阶段运行：
 
 ### 4.1 文档结构总览
 
-**文档顶层有两种合法形式**（解析器均支持）：
+**一份行为树文档 = 一棵行为树（一文档一树，统一槽位模型）。** 文档顶层键：
 
 ```
-形式A（block 定义）:
-行为树文档
-├── block 定义（命名块集合, 可复用/可共享）
-│     ├── 块名: <本块的 inputs/outputs 声明 + 行为树>
-│     ├── 块名: ...
-│     └── ...
-└── 根流程（主入口, 组织块引用）
-      └── 行为树 (基础节点 + 复合节点)
-
-形式B（裸树）:
-行为树文档 = 单个 dict, 整个即根块的行为树（根块名 = 文档名）
+tree: <名>                 # 树名（必须 = 文档名）
+inputs: {名: 类型}          # 可选：文档级入参声明（类型 token: str/int/float/bool/page_ref）
+outputs: [名]              # 可选：文档级出参名列表
+timeout / retry / browser  # 可选：全局配置覆盖（保留名，见 §4.2）
+nodes:                     # 节点对象池（平铺定义全部节点）
+  n1: {type: Root, name: 根, body: n2}
+  n2: {type: Sequence, name: 主流程, actions: [n3, n4]}
+  n3: {type: Step, name: 登录, action: n5, expect: 出现"工作台"}
+  n5: {type: Action, name: 点登录, description: 点击"登录"按钮}
+root: n1                   # 主树根引用（必须指向 type: Root 节点）
 ```
 
-**一个行为树文档本身就是一个命名块**（块名 = 文档名），因此：
+- **`tree` 名必须等于文档名**（否则 `structure.name_mismatch`）；缺失 `tree`/`nodes`/`root` 均报结构错误。
+- **节点对象池 + 统一槽位**：全部节点在 `nodes` 下按 `id` 平铺定义；**节点间一切动作关联经语义命名槽位字段引用子树根节点 id**。节点类型见下表。
+- **纯树结构**：一个节点不可被多个槽位引用（否则 `structure.duplicate_reference`）；主树与各游离树均须无环（`structure.cycle`）。
+- **游离树**：未被任何槽位字段引用的节点即游离树根，允许存在（支持草稿保存）；编辑器在游离区展示，不与主树联通。
+- **根节点**：每份文档恰有一个 `type: Root` 节点（真实节点类型，固定 1 槽 `body`），`root` 指向它；执行即执行根节点的子节点。
+- **复用 = 跨文档引用**：把公共流程写成另一份文档，用 `ref: <文档名>` 引入（见 §5.7.3）；同文档内不存在可复用子树（复用一律跨文档）。
+
+**节点类型（统一槽位模型）**：
+
+| 节点 | 核心语义 | 槽位字段（值=子树根 id） | 自有字段 |
+|---|---|---|---|
+| Action | 叶子：执行一个操作 | — | `description` |
+| Step | 操作 + 验证（Action+Condition） | `action` | `expect`（条件） |
+| Root | 树的根，执行其主体 | `body` | — |
+| Sequence | 顺序执行 | `actions`（列表） | — |
+| IfThenElse | 判 `if` 分流 | `then`、`else` | `if`（条件） |
+| Branch | 先操作再按条件分流 | `action`、`branches[].action` | `branches`（[{when,action}\|{otherwise,action}]） |
+| Retry | 反复执行直到成功 | `body` | `max` |
+| LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
+| ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
+
+**Condition 是概念性节点**（用户不可感知独立类型），内嵌为自有字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。
+
+### 4.2 配置参数（工具定义名称语义, 用户可覆盖）
+
+**超时 / 重试 / 浏览器 等配置参数的名称与语义由工具固定**（保留名 `timeout` / `retry` / `browser`），全局默认来自**工具配置文件**，初始化行为树时自动注入根级 schema。
+
+**用户可在文档顶层（与 `tree` 同级）书写这三个保留键覆盖默认值**，作用于本文档及其 ref 子树；未写则按 §5.7.5 向上/全局默认：
 
 ```
-block 登录:                ← 根块 = 文档名, 整个文档就是"登录"这个块
-  inputs: ...
-  outputs: ...
-  Sequence: ...
+tree: 登录
+timeout: 30        # 覆盖本文档及 ref 子树的超时（秒）
+retry: 3
+browser: chromium
+
+用户不写时:
+  该文档帧未定义 → 向上查找祖先 → 全局默认
 ```
 
-**顶层键语义（形式A）**：顶层 `block <块名>:` 键可多个；名字匹配文档名的块为**主块**（根流程，行为树执行即执行它），其余为**附属块**（可被 `ref:` 引用，供 `this/附属块` 同文档复用或 `文档/附属块` 跨文档引用）。极简裸树（整个 dict 即根块行为树）也合法。
-
-**文档与块关系（方案 2）**：每个行为树文档可定义 1 个主块 + N 个附属块；主块可 `ref` 同文档附属块（`this/块名`）或其他文档的块（`文档名/块名`）。**主块名必须等于行为树名（文档名）**——创建/保存/改名时主块名同步，校验不匹配报错（`structure.missing_main_block`）。编辑器以块列表展示主块（标「主」）与全部附属块，可切换编辑、新建/删除附属块（主块不可删），保存保留全部块。
-
-### 4.2 配置参数（工具提供, 非用户书写）
-
-**超时 / 重试 / 浏览器 等配置参数不是用户配置, 而是工具定义的**——名称与语义固定（timeout/retry/...），全局默认来自**工具配置文件**，初始化行为树时自动注入根级 schema。**用户不在文档中书写配置参数。**
-
-```
-用户不写:
-  树配置: 超时 20s ...        ← 不存在这种写法
-
-用户需要覆盖时 (按 §5.7.5 配置参数继承规则):
-  在自己的块 schema 下定义同名配置参数即可覆盖
-  → 覆盖值只在当前块及以下生效
-  → 未定义则向上查找祖先, 最终用全局默认
-```
-
-**为什么不由用户写配置**：配置参数是工具的运行语义（timeout/retry 的具体行为由引擎定义），写进文档会让文档耦合引擎实现，且不同作者写的块对同一配置理解不一致。引用他人块时，应尊重该块自己的配置（作者最了解自己的流程）。
+**为什么名称语义由工具固定**：配置参数是工具的运行语义（timeout/retry 的具体行为由引擎定义），故只有这三个保留键被识别为配置覆盖；这样既保留作者对本文档流程的配置权，又避免同一参数被不同作者理解成不同含义。引用他人文档时，应尊重该文档自己的配置（作者最了解自己的流程）。
 
 ### 4.3 复合节点（用户书写的主要单元）
 
-用户直接书写行为树时，以**复合节点**（常用操作组合的语法糖）为主，减少书写负担：
+用户直接书写行为树时，以**复合节点**（常用操作组合）为主。**统一槽位模型下，复合节点的"动作"部分一律经槽位挂子树根节点**（可为 Action 叶子、Step、Sequence 或任何类型），节点自身只保留核心语义：
 
 ```
-Step        单步操作 + 验证（Sequence(Action + Condition)）
-Branch      操作后多条件分支（Action + Selector 多路分流）
-LoopUntil   循环直到条件成立（Repeat 带 until + 上限）
-IfThenElse  直接按页面状态分支（不先操作）
-Retry       失败后重试（限次）
+Action     叶子：执行单个操作（description）
+Step       操作 + 验证（其 action 槽位挂操作子树，expect 为验证条件）
+Branch     操作后多条件分支（其 action 槽位挂前置操作子树，branches[].action 挂各分支子树）
+LoopUntil  循环直到条件成立（其 action 槽位挂每轮循环体）
+IfThenElse 直接按页面状态分支（then/else 槽位挂分支子树）
+Retry      失败后重试（body 槽位挂重试体）
 ```
 
 **复合节点是用户书写视图，不是引擎节点**——解析行为树文档时，复合节点被展开为基础节点组合，**引擎生成的行为树对象只含基础节点，复合节点无感知**：
 
 ```
-Step       = Sequence(Action + Condition)    单步操作 + 验证
-Branch     = Action + Selector               操作后按顺序分流
-LoopUntil  = Repeat 循环                      直到页面条件满足
-IfThenElse = Selector                        直接按页面状态分流
-Retry      = Repeat 循环                      直到 body 执行成功
+Step       = Sequence(Action + Condition)    单步操作 + 验证（Action 为其 action 槽位子树）
+Branch     = Action + Selector               操作后按顺序分流（action 槽位子树 + branches 分流）
+LoopUntil  = Repeat 循环                      直到页面条件满足（action 槽位子树为循环体）
+IfThenElse = Selector                        直接按页面状态分流（then/else 槽位子树）
+Retry      = Repeat 循环                      直到 body 槽位子树执行成功
 
 展开时机: 行为树文档解析层 (程序化, 确定性)
   → 引擎遍历/LLM 执行时, 看到的都是基础节点
@@ -237,38 +249,45 @@ IfThenElse: 直接按页面状态分支 (不先操作)
 
 ```
 Step:
-  action: 点击"登录"按钮            ← 自然语言描述, LLM 归约 + 定位
+  action: n5                        ← action 槽位挂操作子树（此处为 Action 叶子）
+  expect: 出现"工作台"              ← 验证条件 (Condition，内嵌字段)
+
+Action:
+  description: 点击"登录"按钮        ← 自然语言描述, LLM 归约 + 定位
     CSS: button[type=submit]
-  expect: 出现"工作台"              ← 验证条件 (Condition)
 ```
 
 #### 4.3.2 Branch：操作后多条件分支
 
 ```
 Branch:
-  action: 点击"登录"
-  branches:
-    - when: 出现"工作台"      → 导出报表      ← 分支目标 = 块引用
-    - when: 出现"密码错误"    → 重试登录
-    - otherwise:              → 终止流程
+  action: n2                        ← action 槽位挂前置操作子树
+  branches:                         ← 各分支 action 槽位挂分支子树根 id
+    - when: 出现"工作台"
+      action: n3
+    - when: 出现"密码错误"
+      action: n4
+    - otherwise:
+      action: n5
 ```
+> 分支子树可为任意类型（Action / Step / ref / ...）；跨文档复用由 ref 子树承担（§5.7.3），不再有"分支目标 = 裸文档名"写法。
 
 #### 4.3.3 LoopUntil：循环直到
 
 ```
 LoopUntil:
-  action: 点击"批准"按钮
-  until: 无"批准"按钮存在
-  max: 50                     ← 循环上界 (安全闸)
+  action: n6                        ← action 槽位挂循环体子树
+  until: 无"批准"按钮存在            ← 终止条件 (Condition，内嵌字段)
+  max: 50                           ← 循环上界 (安全闸)
 ```
 
 #### 4.3.4 IfThenElse：按页面状态分支
 
 ```
 IfThenElse:
-  if: 存在"下载成功"提示
-  then: → 完成流程
-  else: → 重试下载
+  if: 存在"下载成功"提示             ← 判断条件 (Condition，内嵌字段)
+  then: n7                          ← then 槽位挂成立分支子树根 id
+  else: n8                          ← else 槽位挂否则分支子树根 id
 ```
 
 #### 4.3.5 Retry：失败重试
@@ -276,10 +295,12 @@ IfThenElse:
 ```
 Retry:
   max: 3
-  body:
-    Step:
-      action: 点击"下载"
-      expect: 出现"下载成功"
+  body: n9                          ← body 槽位挂重试体子树根 id
+
+n9:
+  type: Step
+  action: n10
+  expect: 出现"下载成功"
 ```
 
 ### 4.4 清晰度校验标准（行为树文档是否合格）
@@ -288,10 +309,10 @@ Retry:
 
 - 行为树结构**合法**（节点类型正确、嵌套关系有效）
 - 复合节点**展开后合法**（展开为基础节点后可被遍历）
-- 所有块引用**存在**（`ref:` 指向的块/文档可解析）
+- 所有文档引用**存在**（`ref:` 指向的文档可经解析器加载）
 - 循环有**上界**（`max` 或 `最大循环轮数`）
 - 变量契约**一致**（引用的变量在其可见作用域内，见 §5.7.4）
-- 引用带输入声明的块时**输入全部绑定**且绑定目标均为声明输入（§5.7.3 绑定契约）
+- 引用带输入声明的文档时 **args 数量/类型与被引 inputs 对齐**（§5.7.3 绑定契约）
 - 每条动作目标**可定位**（有 CSS 或有 LLM 可映射的自然语言）
 - 每步**有验证条件**（Step/Branch 等的 expect/判断，否则该步成败无法判定）
 - 所有条件谓词**结构可校验**（判断由 LLM 结合语义图完成，见 §5.6）
@@ -305,21 +326,25 @@ Retry:
 ```
 ┌── 书写层（用户可见, 结构化行为树文档）──────────────┐
 │  用户直接写行为树文档 (yaml/dict):                  │
-│    block 登录:                                    │
-│      inputs: ...                                  │
-│      Sequence:                                    │
-│        - Step(action: 填账号, expect: ...)        │
-│        - Step(action: 填密码, expect: ...)        │
+│    tree: 登录                                     │
+│    inputs: {username: str, password: str}         │
+│    nodes:                                         │
+│      n1: {type: Root, body: n2}                   │
+│      n2: {type: Sequence, actions: [n3, n4]}      │
+│      n3: {type: Step, action: n5, expect: ...}    │
+│      n5: {type: Action, description: 填账号}       │
+│      n4: {type: Step, action: n6, expect: ...}    │
+│      n6: {type: Action, description: 填密码}       │
+│    root: n1                                       │
 │    （结构=用户确定, 叶子内容=自然语言, LLM 填充）     │
 └──────────────────────────────────────────────┘
               │ 程序解析 (无 LLM 转换结构)
               ▼
 ┌── 执行层 / 行为树对象（引擎执行, 确定性）───────────┐
 │  内部行为树:                                      │
-│    Block(登录):                                  │
-│      Sequence:                                   │
-│        - Action(type, 定位意图)                  │
-│        - Condition(出现"工作台")                  │
+│    Sequence:                                     │
+│      - Action(type, 定位意图)                    │
+│      - Condition(出现"工作台")                    │
 │    （统一节点, 引擎遍历执行, 叶子由 LLM 驱动）        │
 └──────────────────────────────────────────────┘
 ```
@@ -356,30 +381,30 @@ Retry:
 
 ### 5.2 流程层：结构化（流转 / 变量 / 断言）
 
-**"流程怎么走"必须精确，模糊不得** —— 这是确定性的来源。**流转由用户书写的树结构（复合节点 + 块引用）完全确定**，变量按 schema 命名空间显式管理（§5.3/§5.7.4），断言由用户显式书写（§5.5）。LLM 不决定任何流转，只在叶子节点填充理解。
+**"流程怎么走"必须精确，模糊不得** —— 这是确定性的来源。**流转由用户书写的树结构（复合节点 + 文档引用）完全确定**，变量按 schema 命名空间显式管理（§5.3/§5.7.4），断言由用户显式书写（§5.5）。LLM 不决定任何流转，只在叶子节点填充理解。
 
 ### 5.3 变量：schema 命名空间机制
 
-变量通过**带层次结构的 schema（命名空间）**管理。每次块引用产生一个独立的 schema（类似函数调用栈帧），参数写在各自的命名空间里，**同名不冲突**。
+变量通过**带层次结构的 schema（命名空间）**管理。每次文档引用产生一个独立的执行帧（schema，类似函数调用栈帧），参数写在各自的命名空间里，**同名不冲突**。
 
 **变量引用统一为前后有界的引用符号（与自然语言明确区分）**：
 
 ```
-变量引用统一为带 schema 的路径形式 (this = 当前块的 schema):
+变量引用统一为带 schema 的路径形式 (this = 当前文档执行帧):
   读取:  [[get:this/amount]]            （叶子执行前程序确定性替换为真实值）
   写入声明: [[set:类型:this/amount]]     （声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref）
-  传参:   ref 处的 args: {...}          （传实参给被引用块）
-  取返回: ref 处的 returns: {...}       （接收被引用块的输出）
+  传参:   ref 处的 args: [值...]         （传实参给被引用文档）
+  取返回: ref 处的 returns: {名: 类型}    （接收被引用文档的输出）
 ```
 
 **机制**：
 - **读取（get）确定性**：`[[get:this/xxx]]` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
   读取失败（变量未定义 / 越出可见作用域）→ 该叶子直接 FAILURE（程序错误）。
-- **get 变量静态校验**：`[[get:this/x]]` 读取的变量必须是**本块 inputs 声明**（其他块
-  传入参数）、**本块内 `[[set:...:this/x]]` 声明**或 **ref 的 returns 目标变量**；
+- **get 变量静态校验**：`[[get:this/x]]` 读取的变量必须是**本文档 inputs 声明**（调用方
+  经 ref args 传入）、**本文档内 `[[set:...:this/x]]` 声明**或 **ref 的 returns 目标变量**；
   未定义即读取 → 清晰度校验报 `scope.get_undeclared`（解析期拦截）。output 声明不构成
-  get 源（输出是本块返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
+  get 源（输出是本文档返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
   也须配 `[[set:...]]` 标注才能被 get。
 - **写入（set）声明**：`[[set:类型:this/xxx]]` 声明本动作的可写变量集。LLM 决定何时调用
   extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**（未声明路径拒绝）。
@@ -400,50 +425,52 @@ T 不可读写: T/登录/xxx、T/登录/输入框/xxx   ← 跨帧一律不可�
 #### 5.3.2 可见性规则（严格、对称）
 
 ```
-每个块实例只能:
-  写入 → 自己的 schema（this/<名> 单段）
-  读取 → 自己的 schema（this/<名> 单段）
-  不可见 → 直接子块 / 祖先 / 兄弟 / 孙子 的 schema
+每个文档执行帧只能:
+  写入 → 自己的帧（this/<名> 单段）
+  读取 → 自己的帧（this/<名> 单段）
+  不可见 → 直接子文档 / 祖先 / 兄弟 / 孙文档 的帧
 ```
 
-**推论：传参是"逐层"的。** T 要给"输入框"传参，必须先传给登录，由登录内部转发：
+**推论：传参是"逐层"的。** T 要给"输入框"文档传参，必须先传给登录文档，由登录文档内部转发：
 
 ```
-ref 登录: args: {username: this/username}   ← T 给直接子传参
-登录内:   ref 输入框: args: {值: this/值}    ← 登录负责给它自己的直接子传参
+ref 登录: args: [this/username]       ← T 给直接子文档传参
+登录内:   ref 输入框: args: [this/值]   ← 登录文档负责给它自己的直接子文档传参
 ```
 
 **取返回值 = ref returns 回收（对称）：**
 ```
-导出块 B 完成后，把结果写到自己的帧 this/result
-T 经 returns 回收: ref 导出: returns: {result: this/result}   ← 获取子块返回值的唯一途径
+导出文档 B 完成后，把结果写到自己的帧 this/result
+T 经 returns 回收: ref 导出: returns: {结果: str}   ← 本树新建接收变量"结果"（按序对应 B 的 outputs）
 ```
 
-#### 5.3.3 块接口（输入输出声明）
+#### 5.3.3 文档接口（输入输出声明）
 
-每个命名块声明自己的接口，调用方按契约写入：
+每份文档声明自己的接口（写在文档顶层），调用方按契约传入/接收：
 
 ```
-block 登录:
-  inputs: {username: str, password: str}   ← 块需要什么 (调用方经 ref args 注入)
-  outputs: login_success                    ← 块产出什么 (调用方经 ref returns 接收)
-  Sequence: ...
+tree: 登录
+inputs: {username: str, password: str}   ← 本文档需要什么（调用方经 ref args 按序注入）
+outputs: [login_success]                  ← 本文档产出什么（调用方经 ref returns 按序接收）
+nodes: ...
+root: n1
 ```
 
-**契约校验**：调用方引用块时，块声明的输入必须在 ref 处用 `args` 绑定；块声明的输出由调用方用 `returns` 按需接收。块声明的每个输出须在**本块体内有赋值点**（叶子 `[[set:...:this/<名>]]` 或 ref `returns` 目标），否则 `ref.output_not_set`。不一致 → 清晰度校验报错。
+**契约校验**：调用方引用文档时，被引文档声明的 `inputs` 必须由 ref 的 `args` 按数量/顺序/类型对应；`outputs` 由 ref 的 `returns` 按序接收（键为本树新建接收名）。不一致 → 清晰度校验报错（`ref.args_mismatch` / `ref.returns_mismatch` / `ref.name_conflict`）。
 
 #### 5.3.4 配置参数：向上查找（与业务变量的区别）
 
 ```
 业务变量 (用户定义, 命名不固定):
-  严格作用域 —— 只能读/写自己的 schema（this/<名> 单段，跨帧经 ref args/returns）
-  不向上查找 —— 用户必须显式写明"存到哪个 schema / 从哪个 schema 取"
+  严格作用域 —— 只能读/写自己的帧（this/<名> 单段，跨帧经 ref args/returns）
+  不向上查找 —— 用户必须显式写明"存到哪个变量 / 从哪个变量取"
   理由: 业务变量是用户定义的, 向上查找会破坏确定性
 
-配置参数 (工具定义, 名称语义固定: timeout/retry/...):
-  向上查找 —— 自己的 schema 没定义, 找最近一层祖先
+配置参数 (工具定义, 名称语义固定: timeout/retry/browser):
+  用户可在文档顶层写保留键覆盖（作用于本文档及 ref 子树）
+  向上查找 —— 自己的帧没定义, 找最近一层祖先
   理由: 配置参数名称语义是确定的, 可复用上层
-  全局默认: 工具配置文件里定义 (不写在文档里), 每次初始化时注入根级 schema
+  全局默认: 工具配置文件里定义, 每次初始化时注入根级 schema
 ```
 
 #### 5.3.5 类型契约
@@ -465,9 +492,8 @@ TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRe
 
 ```
 示例:
-  Step:
-    action: 提取"订单金额" [[set:float:this/amount]]
-    expect: [[get:this/amount]] 是数字 且 在 0~100000 之间
+  n3: {type: Step, action: n4, expect: [[get:this/amount]] 是数字 且 在 0~100000 之间}
+  n4: {type: Action, description: 提取"订单金额" [[set:float:this/amount]]}
 
 页面引用类型 (见 §5.10):
   open("https://.../login", save_to="this/登录页")   ← 类型: page_ref
@@ -476,14 +502,14 @@ TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRe
 
 ### 5.4 控制流（流转）
 
-控制流完全确定性，**由用户书写的树结构表达**（§4.3 复合节点 + §5.7.3 块引用），不依赖 LLM 识别：
+控制流完全确定性，**由用户书写的树结构表达**（§4.3 复合节点 + §5.7.3 文档引用），不依赖 LLM 识别：
 
 ```
 顺序    → Sequence / Step 串联
 分支    → Branch / IfThenElse（按条件分流）
 循环    → LoopUntil（带上限）
 重试    → Retry（限次）
-引用    → ref: 块引用（复用/跨文档）
+引用    → ref: 文档引用（复用/跨文档）
 ```
 
 **用户不写任何跳转/goto**——流转完全由树的结构化嵌套决定，这是行为树相比 goto 的核心优势。
@@ -522,7 +548,7 @@ Condition 执行 (与 Action 相同的实现方式, 见 §5.7.2):
 - **确定性**：树结构强制结构化，消除 goto 的悬空跳转/死循环问题
 - **归一化**：执行节点和控制节点本质上都是节点，统一由引擎遍历
 - **用户可控**：结构由用户书写，失败时用户修正文档，不依赖 LLM 猜结构
-- **可扩展**：公共流程写成命名块，跨文档引用复用
+- **可扩展**：公共流程写成独立文档，用 `ref` 跨文档引用复用
 
 #### 5.7.2 基础节点集（最小化）
 
@@ -538,7 +564,7 @@ Finish      完成/终止（报告）                          叶子（终点�
 ```
 
 **内部节点模型字段**（解析器产物，供 M6 执行与 M8 报告）：
-- `Node` 基类：`loc`（文档位置）、`frame`（所属 schema 帧标识）
+- `Node` 基类：`loc`（文档位置）；运行期帧由 ref 动态调用维护，节点不携带静态帧标识
 - `ActionNode`：`description`（自然语言动作）、`css_hint`（可选 CSS 提示）
 - `ConditionNode`：`description`（自然语言条件）+ 可选结构化字段 `target`（谓词指向对象）、`predicate`（比较谓词），供谓词结构校验
 - `BranchSpec`：`condition`（为 None 表示 otherwise 兜底分支）+ `child`
@@ -643,124 +669,117 @@ Sequence:
   └── Condition: "工作台"可见  ← LLM 介入 (agent 式判断)
 ```
 
-#### 5.7.3 块引用机制（ref）
+#### 5.7.3 文档引用机制（ref）
 
-**一切皆块**——匿名块（内联）、命名块（复用）、跨文档块（SubTree）统一为"块引用"：
+**一文档一树下的复用 = 跨文档引用**：把公共流程写成一份独立文档，在需要处用 `ref` 引入；同文档内不存在可复用子树。
 
-```
-块 (Block) = 一个命名或匿名的行为树子树
-匿名块 (内联):  直接在父节点下写        ← 选项b (默认写法)
-命名块 (定义):  定义一次, 名字引用      ← 选项c (复用)
-跨文档引用:     引用其他文档的命名块     ← SubTree
-```
-
-**引用语法（统一）**：
+**引用语法**：
 
 ```
-ref: <文档标识>/<块名>
-
-this/块名        当前文档内的命名块
-文档名/块名      跨文档引用某块
-文档名/文档名    引用整个行为树 (因为根块名 = 文档名)
+ref 节点:
+  type: ref
+  target: <文档名>              # 单段，总是跨文档
+  args: [值...]                 # 列表，按序对应被引文档 inputs；元素为本树变量名（this/<名>）或字面量
+  returns: {本树接收名: 类型}    # 字典，按序对应被引文档 outputs
 ```
 
 ```
-流程:                          ← 根流程
-  Sequence:
-    - ref: this/登录          ← 当前文档的登录块
-    - ref: 登录/登录          ← 登录文档的整棵树
-    - ref: 导出/导出          ← 导出文档的整棵树
+nodes:
+  n3: {type: ref, name: 去登录, target: 登录, args: [this/账号], returns: {登录结果: bool}}
 ```
 
-**参数绑定**（沿用 §5.3 schema 机制）：调用块时，在 ref 处用 `args: {...}` 绑定块声明的输入参数（传实参）；块输出经 `returns: {...}` 接收，写入调用方自己的 schema。**变量名严格对应块接口声明**。
+**参数绑定**（沿用 §5.3 schema 机制）：
+- `args` 按序对应被引文档 `inputs`；每个元素优先匹配本树已有变量名（`this/<名>`，命中即变量引用），未命中则作为字面量（str/int/float/bool）传入。
+- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量名**，值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `[[get:this/<接收名>]]` 引用。
 
 **绑定契约（严格执行）**：
-- 引用带输入声明的块时，**必须在 ref 处用 `args` 绑定全部声明输入**，否则清晰度校验失败（`ref.input_not_bound`）
-- 绑定的目标**必须是该块声明的输入名**，绑定未声明项校验失败（`binding_not_input`）
-- `Branch` / `Selector` 分支目标为**裸字符串时 = `ref: this/块名` 的简写**
+- `args` 数量 ≠ 被引文档 inputs 数量 → `ref.args_mismatch`；`returns` 数量 ≠ outputs 数量 → `ref.returns_mismatch`；接收名与本树 inputs 重名 → `ref.name_conflict`。
+- 引用目标文档不存在 → `ref.missing_doc`；跨文档引用环（A→B→A 直接/间接）→ `ref.cross_doc_cycle`。
 
-**分支目标简写（§4.3 相关）**：`when: ... → 导出报表` 中的裸字符串分支目标等价于 `ref: this/导出报表`。
-
-**执行语义**：ref 在解析期**保留为调用节点**（`RefNode`，不再内联展开），运行期由 M7 动态调用被引用块——建立独立子帧、注入 args 实参、递归执行、经 returns 回收输出；帧保留至行为树运行结束（供黑板上报）。
+**执行语义**：ref 在解析期**保留为调用节点**（`RefNode`，不内联展开），运行期由 M7 `_tick_ref` 动态调用——经 resolver 按文档名加载被引文档，从其 `Root` 执行：求值 args → coerce 到输入类型 → `enter_frame` 建子帧并注入形参 → 递归 tick → SUCCESS 时按 returns 回写父帧 → `exit_frame` 退出子帧（帧数据保留至运行结束，供黑板上报）。
 
 #### 5.7.4 schema 参数机制（帧模型）
 
 ```
-每次块引用产生一个独立的 schema (命名空间, 类似函数调用栈帧):
+每次文档引用产生一个独立的执行帧 (schema, 命名空间, 类似函数调用栈帧):
   主流程 T:  schema T/
     ├── ref 登录 → schema T/登录/
     └── ref 导出 → schema T/导出/
 
 可见性 (严格, 用户层单段寻址):
-  每块只读写: 自己的 schema（this/<名> 单段）
-  不访问:     直接子块 / 祖先 / 兄弟 / 孙子 的 schema（跨帧传参经 ref args/returns）
+  每帧只读写: 自己的帧（this/<名> 单段）
+  不访问:     直接子文档 / 祖先 / 兄弟 / 孙文档 的帧（跨帧传参经 ref args/returns）
 
-传参逐层传递:  T → 登录 → 登录的子块 ... (每层只处理直接子, 经 ref args/returns)
-同名不冲突:    不同块的 username 在不同 schema, 互不干扰
+传参逐层传递:  T → 登录 → 登录的子文档 ... (每层只处理直接子, 经 ref args/returns)
+同名不冲突:    不同文档的 username 在不同帧, 互不干扰
 ```
 
-> **注（用户 DSL）**：用户层已废除"直接写/读子帧"的语法（`this/子块/变量` 三段路径、`写入:` 绑定）。传参/取返回一律经 ref 的 `args`/`returns` 显式声明；ref 为**运行期动态调用**（M7 `_tick_ref`：建子帧 → 注入实参 → 递归执行 → returns 回收 → 退出子帧），帧保留至行为树运行结束（供黑板上报），激活帧控制访问权限。
+> **注（用户 DSL）**：用户层已废除"直接写/读子帧"的语法（`this/子文档/变量` 多段路径、`写入:` 绑定）。传参/取返回一律经 ref 的 `args`/`returns` 显式声明；ref 为**运行期动态调用**（M7 `_tick_ref`：经 resolver 按文档名加载被引文档 → 建子帧 → 注入实参 → 从其 Root 递归执行 → returns 回收 → 退出子帧），帧保留至行为树运行结束（供黑板上报），激活帧控制访问权限。
 
 #### 5.7.5 配置参数继承
 
 ```
-配置参数 (timeout/retry/浏览器...):
-  查找规则: 自己的 schema → 向上找最近祖先 → 全局默认
-  全局默认: 来自工具配置文件, 初始化时注入根级, 不写在文档里
+配置参数 (timeout/retry/browser):
+  覆盖: 文档顶层写保留键（作用于本文档及 ref 子树）
+  查找规则: 自己的帧 → 向上找最近祖先 → 全局默认
+  全局默认: 来自工具配置文件, 初始化时注入根级
   理由: 配置参数名称语义固定, 可复用上层
-  注意: 引用子块时, 子块自己的配置优先 (尊重流程作者设置)
+  注意: 引用子文档时, 子文档自己的配置优先 (尊重流程作者设置)
 ```
 
 #### 5.7.6 完整示例
 
 ```
-登录.md:
-block 登录:
-  inputs: {username: str, password: str}
-  outputs: login_success
-  Sequence:
-    - Step:
-        action: 填 [[get:this/username]]
-        expect: 输入成功
-    - Step:
-        action: 填 [[get:this/password]]
-        expect: 输入成功
-    - Step:
-        action: 点"登录"
-        expect: 出现"工作台"
-    - Step:
-        action: 提取登录状态 [[set:bool:this/login_success]]   ← 声明可写变量
-        expect: 非空
+登录.yaml:
+tree: 登录
+inputs: {username: str, password: str}
+outputs: [login_success]
+nodes:
+  n1: {type: Root, name: 根, body: n2}
+  n2: {type: Sequence, name: 登录, actions: [n3, n4, n5, n6]}
+  n3: {type: Step, name: 填账号, action: n3a, expect: 输入成功}
+  n3a: {type: Action, name: 填账号, description: 填 [[get:this/username]]}
+  n4: {type: Step, name: 填密码, action: n4a, expect: 输入成功}
+  n4a: {type: Action, name: 填密码, description: 填 [[get:this/password]]}
+  n5: {type: Step, name: 点登录, action: n5a, expect: 出现"工作台"}
+  n5a: {type: Action, name: 点登录, description: 点"登录"}
+  n6: {type: Step, name: 记录状态, action: n6a, expect: 非空}
+  n6a: {type: Action, name: 记录状态, description: 提取登录状态 [[set:bool:this/login_success]]}
+root: n1
 
-导出.md:
-block 导出:
-  inputs: {username: str, password: str}     ← 由调用方注入
-  outputs: 登录结果
-  Sequence:
-    - ref: 登录/登录                           ← 引入登录块
-      args: {username: [[get:this/username]], password: [[get:this/password]]}
-      returns: {login_success: this/登录结果}   ← 接收登录块输出
-    - Condition: [[get:this/登录结果]]          ← 读 returns 接收到的输出
-    - Step:
-        action: 点"导出"
-        expect: 出现"下载成功"
+导出.yaml:
+tree: 导出
+inputs: {username: str, password: str}     ← 由调用方经 args 注入
+outputs: [登录结果]
+nodes:
+  n1: {type: Root, name: 根, body: n2}
+  n2: {type: Sequence, name: 导出, actions: [n3, n4]}
+  n3: {type: ref, name: 去登录, target: 登录,
+       args: [this/username, this/password], returns: {登录结果: bool}}   ← 引入登录文档
+  n4: {type: Step, name: 导出, action: n4a, expect: 出现"下载成功"}
+  n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 [[get:this/登录结果]]）}
+root: n1
 
-主流程.md:
-block 主流程:
-  Sequence:
-    - ref: 导出/导出                           ← 引入导出块
-      args: {username: [[get:this/账号]], password: [[get:this/密]]}
+主流程.yaml:
+tree: 主流程
+inputs: {账号: str, 密码: str}
+nodes:
+  n1: {type: Root, name: 根, body: n2}
+  n2: {type: Sequence, name: 主流程, actions: [n3]}
+  n3: {type: ref, name: 去导出, target: 导出,
+       args: [this/账号, this/密码], returns: {导出结果: str}}
+root: n1
 ```
-> 注：ref 块引用用 `args: {...}` 传实参、`returns: {...}` 接收输出；叶子内变量读写用 `[[get:this/...]]` / `[[set:类型:this/...]]`。
+> 注：ref 用 `args: [...]` 按序传实参、`returns: {本树接收名: 类型}` 按序接收输出；叶子内变量读写用 `[[get:this/...]]` / `[[set:类型:this/...]]`。
 
 **Schema 流转路径追踪（主流程引用导出，导出引用登录）：**
 
 ```
-主流程 schema: T/
-  导出块 schema: T/导出/     ← 主流程经 args 传 T/导出/username, T/导出/password
-    登录块 schema: T/导出/登录/   ← 导出块经 args 传 T/导出/登录/username (逐层转发)
-    登录输出:     T/导出/登录/login_success
-    导出块经 returns 收:  T/导出/登录结果  ← 写入导出块自己的 schema
+主流程 帧: T/
+  导出 帧: T/导出/        ← 主流程经 args 传 T/导出/username, T/导出/password
+    登录 帧: T/导出/登录/   ← 导出经 args 传 T/导出/登录/username (逐层转发)
+    登录输出: T/导出/登录/login_success
+    导出经 returns 收: T/导出/登录结果   ← 写入导出自己的帧
 ```
 
 #### 5.7.7 行为树遍历器语义（tick）
@@ -789,8 +808,8 @@ Repeat    循环执行子节点, 带上限
           → 到达上限 → 整体 FAILURE (防死循环)
           → 条件满足 → 整体 SUCCESS
           循环条件检查时机 (对应复合节点语义, §4.3):
-          → LoopUntil: 每轮【先判】until (页面条件), 不满足才执行
-          → Retry:    每轮【后判】body 执行结果, 成功即退
+          → LoopUntil: 每轮【先判】until (页面条件), 不满足才执行 action 槽位子树
+          → Retry:    每轮【后判】body 槽位子树执行结果, 成功即退
 ```
 
 **M7 落地细节（编排器已实现，含两点语义明确化）：**
@@ -802,12 +821,15 @@ Selector 明确化 (不承载兜底的落地):
 LoopUntil 明确化:
   循环体 (action) 失败 → 整体 FAILURE 立即传播, 不吞失败继续循环
 
-Engine.run(tree, blocks, config) -> RunResult:
+Engine.run(tree, config, *, resolver, blocks_tree, decl_inputs/decl_outputs, config_overrides) -> RunResult:
   RunResult.status = success/failure; failure_reason; exec_report/trace_report
   入口校验失败路径下 exec_report/trace_report 为 None (不产出报告)
+  resolver: 跨文档引用解析器（ref 按文档名加载被引文档）
+  blocks_tree: 文档名 -> 主树（一文档一树；根文档主树）
+  decl_inputs/decl_outputs/config_overrides: 文档级接口声明与配置覆盖
 
 叶子执行器注入形态: (node, timeout); M0/M5 由调用方经 RunConfig 接线
-超时: 按 resolve_config('timeout') 继承, 块覆盖对该块及子树叶子生效
+超时: 按 resolve_config('timeout') 继承, 文档配置覆盖对本文档及 ref 子树叶子生效
 ExecState: 复用 M8 (未新增模型)
 真实执行需要 llm_config + engine (M5) 注入 (M7 不构造 M0/M5)
 ```
@@ -1016,7 +1038,7 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 ```
 每次 run:
   全新浏览器 context (无历史 cookie/登录态)
-  全流程共享这一个 context (不按块分)
+  全流程共享这一个 context (不按文档分)
   不持久化 cookie (跨运行不复用)
 
 理由 (可复现性优先):
@@ -1036,7 +1058,7 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 ```
 页面 = 一类变量值 (页面引用 P1/P2/...)
   打开: open(url) → 返回页面引用, 写入变量
-  传递: 和普通参数一样 (父块写子块 schema)
+  传递: 和普通参数一样 (经 ref args 传入子文档帧)
   切换: 变量指定, 由文档结构决定, LLM 无决策
   生命周期: 整个行为树执行结束才释放
 ```
@@ -1048,10 +1070,10 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
   open("https://.../login", save_to="this/登录页")
   open("https://.../orders", save_to="this/订单页")    ← 一个 schema 多个页面变量
 
-  ref: 登录块 A:
-    args: {页面: [[get:this/登录页]]}         ← 传页面变量 (同普通参数)
-  ref: 导出块 B:
-    args: {页面: [[get:this/订单页]]}
+  ref: 登录文档 A:
+    args: [this/登录页]         ← 传页面变量 (同普通参数)
+  ref: 导出文档 B:
+    args: [this/订单页]
 ```
 
 **页面变量机制规则：**
@@ -1062,12 +1084,12 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 2. 切回已存页签: activate(page_var) — 把已存页面变量指向的页签设为当前活动页
    （只切焦点，不新建）；描述如"切回/使用已打开的 X 页"时调用
 3. 取 URL 字符串: get_url(save_to) — 存当前活动页 url 为文本（[[set:str:...]]）
-4. 传递: 父块经 ref args 传子块 schema, 和普通参数传递完全一致
-   → 子块要用某页面, 调用方在 ref 处用 args 传入对应页面变量 (无 LLM 推断)
+4. 传递: 父文档经 ref args 传子文档, 和普通参数传递完全一致
+   → 子文档要用某页面, 调用方在 ref 处用 args 传入对应页面变量 (无 LLM 推断)
 5. 操作绑定: 引擎函数作用于"当前活动页"
    → "当前活动页"实现约定: 最近 activate 的页签变量；无 activate 时最近 open 的页
 6. 生命周期: 页面与变量同生灭, 行为树执行结束才释放
-   → 可能被子块引用 / 作为返回值传给父块, 故无法确定何时不再使用
+   → 可能被子文档引用 / 作为返回值传给父文档, 故无法确定何时不再使用
 ```
 
 **类型化 set 语法**：`[[set:page_ref:变量]]` = 存页签引用（blackboard 存 PageRef）；
@@ -1996,7 +2018,7 @@ LOD-3 (全量):  全部展开
 ### 9.8 执行模型总结
 
 ```
-用户直接书写行为树文档 (yaml/dict, 复合节点 + 块引用 + schema 变量)
+用户直接书写行为树文档 (yaml/dict, 复合节点 + 文档引用 + schema 变量)
       │
       ▼
 ⓪ 初始化 (§5.9): 创建全新浏览器 context (从 0 开始, 无持久化)
@@ -2050,7 +2072,7 @@ LOD-3 (全量):  全部展开
 3. **语义图生成接口的实现**：§8 两阶段（程序化 + LLM 填充）落地——候选元素筛选规则（§8.4：可交互+携带文本必进、语义容器作层级骨架、纯结构归属性）、DOM 爬取/bounds/程序化值 + LLM 填充 purpose/related-to 打分；LOD 控制（深度=语义容器嵌套层数）；token 预算
 4. **引擎函数集的实现**：§5.8 落地——open()/操作类函数（Playwright 封装）、semantic_graph 接口、HTTP 函数（页面上下文/独立请求两形态）、extract
 5. **叶子节点 agent 式执行的提示词设计**：如何让 LLM 结合节点描述 + 语义图可靠决策（选函数/定位/判断），见 §5.7.2
-6. **行为树文档解析器**：§4 行为树文档格式的落地——yaml/dict 解析、复合节点展开为基础节点、块引用解析、schema 变量绑定、清晰度校验、确定性遍历器
+6. **行为树文档解析器**：§4 行为树文档格式的落地——yaml/dict 解析、复合节点展开为基础节点、文档引用解析、schema 变量绑定、清晰度校验、确定性遍历器
 7. **复合节点的字段 schema 细化**：§4.3 复合节点（Step/Branch/LoopUntil/IfThenElse/Retry）的精确语义已定（§4.3），需细化 yaml 字段 schema（when/until/max/body 等具体写法）
 8. **报告机制实现**：§5.8.3——所有节点退出前记录执行情况、Action/Condition 返回前截图、生成两份报告（执行报告含截图 / 回溯报告含 LLM 推理）
 9. **行为树遍历器实现**：§5.7.7——阻塞式执行、SUCCESS/FAILURE 聚合、组合节点短路、失败传播、超时
@@ -2119,7 +2141,7 @@ M9b 行为树管理系统后端    M2+M7+M8 (内嵌引擎)
 功能:
   yaml/dict 解析 (§4)
   复合节点展开为基础节点 (§4.3)
-  块引用解析 (ref: this/文档名/块名, §5.7.3)
+  文档引用解析 (ref: 文档名, §5.7.3)
   schema 变量绑定声明提取 (§5.3)
   清晰度校验 (§4.4)
 依赖: 无 (纯逻辑)
@@ -2129,7 +2151,7 @@ M9b 行为树管理系统后端    M2+M7+M8 (内嵌引擎)
 #### M3 schema 命名空间
 ```
 功能:
-  帧模型: 块实例的独立命名空间 (§5.7.4)，ref 运行期动态调用建帧
+  帧模型: 文档执行帧的独立命名空间 (§5.7.4)，ref 运行期动态调用建帧
   严格作用域: 读/写自己（this/<名> 单段，跨帧经 ref args/returns）(§5.3.2)
   配置参数继承: 向上查找 (§5.3.4)
   页面变量机制 (§5.10)
@@ -2198,9 +2220,10 @@ M9b 行为树管理系统后端    M2+M7+M8 (内嵌引擎)
 #### M9a 前端 UI
 ```
 功能:
-  行为树编辑器: 拖拽节点 + 填写信息 → 生成含复合节点的行为树文档
-    多块文档编辑: 块列表面板（主块标「主」+ 附属块），切换/新建/删除块（主块不可删），
-    裸树（无 block 前缀）兼容（整文档即主块），保存保留全部块与各块声明
+  行为树编辑器: 真实画布节点（节点对象池 + 槽位引用）编辑行为树文档
+    主树区 + 游离区自动布局（根在上、向下生长、兄弟水平均布）；容器槽位下拉只列游离树根；
+    ref 节点下拉选目标文档、自动加载其 inputs/outputs 生成 args/returns 表单；ref 展开（只读预览）/收缩；
+    删除语义（删槽位=解引用回游离区；删单节点=各槽位子节点各自成游离树；删子树=连带后代）
   行为树管理: 列表/查看/修改/删除 (CRUD)
   执行报告页: 轮询执行状态, 实时渲染节点进度 + 截图
 依赖: M9b (纯前端)
@@ -2269,8 +2292,8 @@ run_id 语义: POST /run 返回的 run_id 为 runs 表自增 id（非引擎内�
 
 启动恢复: 服务启动时 running 与 pending 记录均置 failure（failure_reason="interrupted"）
 
-doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制主块名=树名（不一致 → 422 拒绝），
-帧 doc_id 取解析出的根块名
+doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树名=文档名（`tree` 键 ≠ 文档 name → 422 拒绝），
+  帧 doc_id 取解析出的树名
 ```
 
 ### 12.5 前端行为树的复合节点视图

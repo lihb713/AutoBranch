@@ -8,18 +8,47 @@ import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
 import { TextField } from "../../components/TextField";
 import type { CheckIssue } from "../../types/check";
-import { CanvasTree } from "./CanvasTree";
 import { NodePalette } from "./NodePalette";
-import { BlockListPanel } from "./BlockListPanel";
-import { findNodeById, makeNode, parseDocument, parseTree, serializeDocument, serializeTree } from "./model";
-import { useBehaviorTree } from "./useBehaviorTree";
-import type { BlockDoc } from "./model";
+import { PropertyPanel } from "./PropertyPanel";
+import { TreeCanvas } from "./TreeCanvas";
+import {
+  createStepWithAction,
+  deleteSubtree,
+  makeNode,
+  nextNodeId,
+  parseDoc,
+  removeNode,
+  serializeDoc,
+  type NodeType,
+  type TreeDoc,
+} from "./treeModel";
+import { validateDoc, type RefMeta } from "./validation";
+
+function newEmptyDoc(name: string): TreeDoc {
+  return {
+    tree: name,
+    inputs: {},
+    outputs: [],
+    config: {},
+    nodes: { n1: { id: "n1", type: "Root", name: "根", fields: {} } },
+    root: "n1",
+  };
+}
+
+function collectRefTargets(doc: TreeDoc): string[] {
+  const targets: string[] = [];
+  for (const n of Object.values(doc.nodes)) {
+    if (n.type === "ref" && n.target && n.target.trim()) targets.push(n.target.trim());
+  }
+  return targets;
+}
 
 export function TreeEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const treeId = id ? Number(id) : null;
 
+  const [doc, setDoc] = useState<TreeDoc | null>(null);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -27,21 +56,32 @@ export function TreeEditorPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // 方案 2 多块文档：全部块 + 当前编辑块名
-  const [blocks, setBlocks] = useState<BlockDoc[]>([]);
-  const [activeBlock, setActiveBlock] = useState("");
+  const [docNames, setDocNames] = useState<string[]>([]);
+  const [refMeta, setRefMeta] = useState<Record<string, RefMeta>>({});
+  const [docRefs, setDocRefs] = useState<Record<string, string[]>>({});
+  const [expandedRefs, setExpandedRefs] = useState<Set<string>>(new Set());
+  const [refPreviews, setRefPreviews] = useState<Record<string, TreeDoc>>({});
 
-  const { root, loadTree, createAndAddNode, updateNode, setField, removeNode, moveNode } =
-    useBehaviorTree();
+  // 加载全部文档名（ref 目标下拉）
+  useEffect(() => {
+    treesApi
+      .listTrees()
+      .then((list) => setDocNames(list.map((t) => t.name)))
+      .catch(() => setDocNames([]));
+  }, []);
 
+  // 加载当前文档
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setLoadError(null);
     setCheckIssues(null);
     setName("");
+    setSelectedId(null);
+    setRefMeta({});
+    setDocRefs({});
     if (treeId === null) {
-      loadTree(null);
+      setDoc(newEmptyDoc(""));
       setLoading(false);
       return;
     }
@@ -50,19 +90,7 @@ export function TreeEditorPage() {
       .then((tree) => {
         if (cancelled) return;
         setName(tree.name);
-        // 方案 2：多块文档——全部块入编辑器，默认编辑主块；裸树（无 block 前缀）整文档即主块
-        const doc = parseDocument(tree.content);
-        const loaded = doc.blocks.length > 0 ? doc.blocks : [];
-        setBlocks(loaded);
-        const mainName = doc.mainBlock || tree.name;
-        setActiveBlock(mainName);
-        const mainDoc = loaded.find((b) => b.name === mainName);
-        if (mainDoc) {
-          loadTree(mainDoc.tree);
-        } else {
-          // 裸树：整文档即主块行为树
-          loadTree(parseTree(tree.content));
-        }
+        setDoc(parseDoc(tree.content));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -74,54 +102,138 @@ export function TreeEditorPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [treeId]);
 
-  const isBranchRowTarget = useCallback(
-    (parentId: string) => {
-      const parent = findNodeById(root, parentId);
-      return parent?.type === "Branch";
+  const loadRefMeta = useCallback((target: string) => {
+    if (refMeta[target]) return;
+    treesApi
+      .getTreeByName(target)
+      .then((tree) => {
+        try {
+          const targetDoc = parseDoc(tree.content);
+          setRefMeta((prev) => ({
+            ...prev,
+            [target]: {
+              inputs: targetDoc.inputs,
+              outputs: targetDoc.outputs,
+            },
+          }));
+          setDocRefs((prev) => ({ ...prev, [target]: collectRefTargets(targetDoc) }));
+        } catch {
+          // 被引文档解析失败不阻断编辑（保存时后端兜底）
+        }
+      })
+      .catch(() => {
+        // 目标不存在：校验层已报 missing_doc
+      });
+  }, [refMeta]);
+
+  const refTargetsOf = useCallback(
+    (docName: string) => {
+      if (docName === (doc?.tree ?? "")) return collectRefTargets(doc ?? newEmptyDoc(""));
+      return docRefs[docName] ?? [];
     },
-    [root],
+    [doc, docRefs],
   );
 
-  const handleAddChild = useCallback(
-    (parentId: string) => {
-      if (isBranchRowTarget(parentId)) {
-        createAndAddNode(parentId, "branch");
-      } else {
-        createAndAddNode(parentId, "Step");
+  const toggleRef = useCallback(
+    (refId: string) => {
+      if (!doc) return;
+      if (expandedRefs.has(refId)) {
+        const next = new Set(expandedRefs);
+        next.delete(refId);
+        setExpandedRefs(next);
+        return;
       }
+      const refNode = doc.nodes[refId];
+      if (!refNode || refNode.type !== "ref" || !refNode.target) return;
+      loadRefMeta(refNode.target);
+      treesApi
+        .getTreeByName(refNode.target)
+        .then((tree) => {
+          try {
+            setRefPreviews((prev) => ({ ...prev, [refId]: parseDoc(tree.content) }));
+            setExpandedRefs((prev) => new Set(prev).add(refId));
+          } catch {
+            // 被引文档解析失败：保持收缩
+          }
+        })
+        .catch(() => {
+          // 目标不存在：保持收缩
+        });
     },
-    [createAndAddNode, isBranchRowTarget],
+    [doc, expandedRefs, loadRefMeta],
   );
 
-  const setFields = useCallback(
-    (id: string, fields: { key: string; value: string }[]) => {
-      updateNode(id, { fields });
+  // 即时校验
+  const { issues, issueByNode } = useMemo(() => {
+    if (!doc) return { issues: [], issueByNode: new Map<string, Set<string>>() };
+    const found = validateDoc(doc, { docNames, refMeta, refTargetsOf });
+    const byNode = new Map<string, Set<string>>();
+    for (const issue of found) {
+      if (!issue.nodeId) continue;
+      const set = byNode.get(issue.nodeId) ?? new Set<string>();
+      if (issue.field) set.add(issue.field);
+      byNode.set(issue.nodeId, set);
+    }
+    return { issues: found, issueByNode: byNode };
+  }, [doc, docNames, refMeta, refTargetsOf]);
+
+  const handleAddNode = useCallback(
+    (type: NodeType) => {
+      if (!doc) return;
+      if (type === "Step") {
+        const { doc: next, stepId } = createStepWithAction(doc);
+        setDoc(next);
+        setSelectedId(stepId);
+        return;
+      }
+      const next = { ...doc };
+      const id = nextNodeId(next.nodes);
+      next.nodes = { ...next.nodes, [id]: makeNode(type, id, next.nodes) };
+      setDoc(next);
+      setSelectedId(id);
     },
-    [updateNode],
+    [doc],
+  );
+
+  const handleDeleteNode = useCallback(
+    (nodeId: string, subtree: boolean) => {
+      if (!doc) return;
+      const next = subtree ? deleteSubtree(doc, nodeId) : removeNode(doc, nodeId);
+      if (next === null) {
+        setActionError("根节点不可删除");
+        return;
+      }
+      setDoc(next);
+      if (selectedId === nodeId) setSelectedId(null);
+    },
+    [doc, selectedId],
   );
 
   const handleSave = useCallback(async () => {
     setActionError(null);
     setCheckIssues(null);
-    if (!root) {
-      setActionError("画布为空：请先从左侧面板拖拽节点构建行为树");
+    if (!doc) return;
+    const finalDoc: TreeDoc = { ...doc, tree: name.trim() };
+    // 前端汇总校验（阻塞保存）
+    const local = validateDoc(finalDoc, { docNames, refMeta, refTargetsOf });
+    if (local.length > 0) {
+      setCheckIssues(
+        local.map((issue) => ({
+          code: issue.code,
+          message: issue.message,
+          rule: "",
+          loc: null,
+        })),
+      );
       return;
     }
     if (!name.trim()) {
       setActionError("请填写行为树名称");
       return;
     }
-    // 把当前编辑块树写回 blocks，再整体序列化（含附属块与各块声明）
-    const synced: BlockDoc[] = blocks.map((b) =>
-      b.name === activeBlock ? { ...b, tree: root } : b,
-    );
-    const content =
-      synced.length > 0
-        ? serializeDocument(synced)
-        : serializeTree(root);
+    const content = serializeDoc(finalDoc);
     setSaving(true);
     try {
       if (treeId !== null) {
@@ -148,8 +260,7 @@ export function TreeEditorPage() {
     } finally {
       setSaving(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root, name, treeId, navigate]);
+  }, [doc, name, treeId, navigate, docNames, refMeta, refTargetsOf]);
 
   const handleRun = useCallback(async () => {
     if (treeId === null) return;
@@ -160,65 +271,7 @@ export function TreeEditorPage() {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "触发执行失败");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [treeId, navigate]);
-
-  // 把当前编辑树写回 activeBlock（切换/保存前调用）
-  const syncActiveTree = useCallback(() => {
-    if (!activeBlock || root === null) return;
-    setBlocks((prev) => prev.map((b) => (b.name === activeBlock ? { ...b, tree: root } : b)));
-  }, [activeBlock, root]);
-
-  const handleSelectBlock = useCallback(
-    (blockName: string) => {
-      if (blockName === activeBlock) return;
-      syncActiveTree();
-      setSelectedId(null);
-      setActiveBlock(blockName);
-      const target = blocks.find((b) => b.name === blockName);
-      loadTree(target ? target.tree : null);
-    },
-    [activeBlock, blocks, loadTree, syncActiveTree],
-  );
-
-  const handleCreateBlock = useCallback(() => {
-    const existing = new Set(blocks.map((b) => b.name));
-    let newName = prompt("新块名称（将作为附属块，可被 this/<块名> 引用）");
-    if (!newName) return;
-    newName = newName.trim();
-    if (!newName || existing.has(newName)) {
-      setActionError(`块名无效或已存在: ${newName}`);
-      return;
-    }
-    syncActiveTree();
-    setSelectedId(null);
-    setBlocks((prev) => [...prev, { name: newName, decl: {}, tree: makeNode("Sequence", [], []) }]);
-    setActiveBlock(newName);
-    loadTree(makeNode("Sequence", [], []));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blocks, loadTree, syncActiveTree]);
-
-  const handleDeleteBlock = useCallback(
-    (blockName: string) => {
-      if (blockName === name.trim()) {
-        setActionError("主块（行为树名）不可删除");
-        return;
-      }
-      if (blockName === activeBlock) {
-        syncActiveTree();
-        const next = blocks.filter((b) => b.name !== blockName);
-        setBlocks(next);
-        const main = next.find((b) => b.name === name.trim());
-        setActiveBlock(main ? main.name : "");
-        loadTree(main ? main.tree : null);
-      } else {
-        setBlocks((prev) => prev.filter((b) => b.name !== blockName));
-      }
-    },
-    [activeBlock, blocks, loadTree, name, syncActiveTree],
-  );
-
-  const treeName = useMemo(() => name.trim() || "未命名行为树", [name]);
 
   if (loading) {
     return <div className="page-loading">加载中…</div>;
@@ -235,10 +288,12 @@ export function TreeEditorPage() {
     );
   }
 
+  const selectedNode = doc && selectedId ? (doc.nodes[selectedId] ?? null) : null;
+
   return (
     <section className="editor-page">
       <header className="page-header">
-        <h1 className="page-title">{treeId === null ? "新建行为树" : `编辑：${treeName}`}</h1>
+        <h1 className="page-title">{treeId === null ? "新建行为树" : `编辑：${name || "未命名行为树"}`}</h1>
         <div className="page-actions">
           <Button variant="ghost" onClick={() => navigate("/")}>
             返回列表
@@ -246,13 +301,25 @@ export function TreeEditorPage() {
           <Button variant="ghost" onClick={handleRun} disabled={treeId === null || saving}>
             执行
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving || !doc}>
             {saving ? "保存中…" : "保存"}
           </Button>
         </div>
       </header>
 
       {actionError ? <ErrorMessage message={actionError} /> : null}
+      {issues.length > 0 ? (
+        <div className="error-message" role="alert" data-testid="local-issues">
+          <p>即时校验（{issues.length} 项）：</p>
+          <ul>
+            {issues.slice(0, 8).map((issue, i) => (
+              <li key={i} data-testid={`local-issue-${i}`}>
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {checkIssues && checkIssues.length > 0 ? (
         <div className="error-message" role="alert" data-testid="check-issues">
           <p>清晰度校验未通过，请修正后重新保存：</p>
@@ -266,46 +333,44 @@ export function TreeEditorPage() {
         </div>
       ) : null}
 
-      <div className="editor">
-        <BlockListPanel
-          blocks={blocks}
-          mainBlock={name.trim() || blocks[0]?.name || ""}
-          activeBlock={activeBlock}
-          onSelect={handleSelectBlock}
-          onCreate={handleCreateBlock}
-          onDelete={handleDeleteBlock}
-        />
-        <NodePalette />
-        <div className="editor__main">
-          <div className="editor__toolbar">
-            <TextField
-              label="行为树名称"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="如：登录流程"
+      {doc ? (
+        <div className="editor">
+          <NodePalette onAdd={handleAddNode} />
+          <div className="editor__main">
+            <div className="editor__toolbar">
+              <TextField
+                label="行为树名称"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="如：登录流程"
+              />
+              <span className="canvas__drop-hint">节点间动作关联一律经槽位挂载；保存前即时校验</span>
+            </div>
+            <TreeCanvas
+              doc={doc}
+              selectedId={selectedId}
+              issueByNode={issueByNode}
+              refPreviews={refPreviews}
+              onToggleRef={toggleRef}
+              onSelect={setSelectedId}
+              onDeleteNode={handleDeleteNode}
             />
-            {treeId !== null ? (
-              <span className="canvas__drop-hint">保存前将先执行清晰度校验（/check）</span>
-            ) : (
-              <span className="canvas__drop-hint">新建保存时由后端校验文档清晰度</span>
-            )}
+            {Object.keys(doc.nodes).length <= 1 ? (
+              <EmptyState title="还没有节点" hint="点击左侧面板的节点类型添加" />
+            ) : null}
           </div>
-          <CanvasTree
-            root={root}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onSetField={setField}
-            onSetFields={setFields}
-            onRemove={removeNode}
-            onMove={moveNode}
-            onDropNode={createAndAddNode}
-            onAddChild={handleAddChild}
+          <PropertyPanel
+            doc={doc}
+            node={selectedNode}
+            docNames={docNames}
+            refMeta={refMeta}
+            refTargetsOf={refTargetsOf}
+            onUpdate={setDoc}
+            onLoadRefMeta={loadRefMeta}
+            onDeleteNode={handleDeleteNode}
           />
-          {root === null ? (
-            <EmptyState title="还没有节点" hint="拖拽左侧面板的节点到画布开始构建" />
-          ) : null}
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

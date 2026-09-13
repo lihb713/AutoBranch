@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from webops.schema import (
-    BlockDecl,
+    FrameDecl,
     PageRef,
     SchemaScopeError,
     SchemaSpace,
@@ -20,18 +20,18 @@ from webops.schema import (
 def test_end_to_end_login_export_flow():
     """登录块收到 T 传参 → 转发输入框 → 产出 login_success → T 读取（各帧局部单段）。"""
     space = SchemaSpace(global_config={"timeout": 30})
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
 
-    login = space.enter_block(
+    login = space.enter_frame(
         "登录",
-        BlockDecl(
-            block_name="登录",
+        FrameDecl(
+            name="登录",
             inputs={"username": "str", "password": "str"},
             outputs={"login_success": "bool"},
         ),
     )
-    ib = space.enter_block("输入框", BlockDecl(block_name="输入框"))
-    space.exit_block(ib)
+    ib = space.enter_frame("输入框", FrameDecl(name="输入框"))
+    space.exit_frame(ib)
 
     space.write(t, "this/username", "alice", "str")
     space.write(t, "this/password", "p@ss", "str")
@@ -42,7 +42,7 @@ def test_end_to_end_login_export_flow():
     assert space.read(ib, "this/值") == "alice"
 
     space.write(login, "this/login_success", True, "bool")
-    space.exit_block(login)
+    space.exit_frame(login)
 
     assert space.read(login, "this/login_success") is True
     assert space.resolve_config(t, "timeout") == 30
@@ -51,9 +51,9 @@ def test_end_to_end_login_export_flow():
 def test_end_to_end_config_and_page_binding():
     """配置覆盖 + 页面变量绑定 → 操作作用于当前页面变量所指页。"""
     space = SchemaSpace(global_config={"timeout": 30})
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
     space.set_config(t, "timeout", 120, "int")
-    login = space.enter_block("登录")
+    login = space.enter_frame("登录")
     assert space.resolve_config(login, "timeout") == 120
 
     login_page = PageRef("p1", "https://example.com/login")
@@ -66,8 +66,8 @@ def test_end_to_end_config_and_page_binding():
 def test_end_to_end_assertion_failure_propagates():
     """类型断言失败沿调用链传播，M7 捕获即终止。"""
     space = SchemaSpace()
-    t = space.enter_block("T")
-    login = space.enter_block("登录")
+    t = space.enter_frame("T")
+    login = space.enter_frame("登录")
     with pytest.raises(SchemaTypeError):
         space.write(login, "$this/amount", "不是数字", "float")
     with pytest.raises(SchemaScopeError):
@@ -77,8 +77,8 @@ def test_end_to_end_assertion_failure_propagates():
 def test_end_to_end_grandchild_invisible():
     """严格作用域贯穿链路：T 不可见孙子帧，越权即抛错。"""
     space = SchemaSpace()
-    t = space.enter_block("T")
-    space.enter_block("登录")
-    space.enter_block("输入框")
+    t = space.enter_frame("T")
+    space.enter_frame("登录")
+    space.enter_frame("输入框")
     with pytest.raises(SchemaScopeError):
         space.read(t, "$this/登录/输入框/值")

@@ -37,6 +37,15 @@ describe("treesApi 请求方法与路径", () => {
     expect((init as RequestInit).method ?? "GET").toBe("GET");
   });
 
+  it("getTreeByName → GET /api/trees/by-name/登录（url 编码）", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ id: 5, name: "登录", content: "x" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await treesApi.getTreeByName("登录");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/api/trees/by-name/%E7%99%BB%E5%BD%95");
+    expect((init as RequestInit).method ?? "GET").toBe("GET");
+  });
+
   it("createTree → POST /api/trees 带 body", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ id: 1, name: "登录" }, 201));
     vi.stubGlobal("fetch", fetchMock);

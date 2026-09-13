@@ -22,11 +22,15 @@ nodes:
   n1:
     type: Root
     name: 根
-    slots: {1: n2}
+    body: n2
   n2:
     type: Step
     name: 登录
-    action: 点"登录"
+    action: n3
+  n3:
+    type: Action
+    name: 点登录
+    description: 点击"登录"按钮
 root: n1
 """.strip()
 

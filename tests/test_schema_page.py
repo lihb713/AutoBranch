@@ -14,7 +14,7 @@ def space() -> SchemaSpace:
 
 def test_open_result_written_as_page_ref(space):
     """5.1 open 返回值写入页面引用变量，可被后续读取。"""
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
     page = PageRef("p1", "https://example.com/login")
     space.write(t, "$this/登录页", page, "page_ref")
     assert space.read(t, "$this/登录页") == page
@@ -22,7 +22,7 @@ def test_open_result_written_as_page_ref(space):
 
 def test_multiple_page_vars_in_one_frame(space):
     """5.2 一个帧可持有多个页面变量且互不覆盖。"""
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
     login_page = PageRef("p1", "https://example.com/login")
     order_page = PageRef("p2", "https://example.com/orders")
     space.write(t, "$this/登录页", login_page, "page_ref")
@@ -35,9 +35,9 @@ def test_multiple_page_vars_in_one_frame(space):
 
 def test_page_ref_passed_as_ordinary_param(space):
     """5.3 页面变量按普通参数传参（各帧局部单段写入）。"""
-    t = space.enter_block("T")
-    login = space.enter_block("登录")
-    space.exit_block(login)
+    t = space.enter_frame("T")
+    login = space.enter_frame("登录")
+    space.exit_frame(login)
     login_page = PageRef("p1", "https://example.com/login")
     space.write(t, "$this/登录页", login_page, "page_ref")
     space.write(login, "$this/页面", space.read(t, "$this/登录页"), "page_ref")
@@ -46,7 +46,7 @@ def test_page_ref_passed_as_ordinary_param(space):
 
 def test_current_page_resolves_latest(space):
     """5.4 当前页面变量解析：返回最近写入的页面引用。"""
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
     login_page = PageRef("p1")
     order_page = PageRef("p2")
     space.write(t, "$this/登录页", login_page, "page_ref")
@@ -59,16 +59,16 @@ def test_current_page_resolves_latest(space):
 
 def test_current_page_none_without_page_var(space):
     """5.4 无页面变量时返回 None。"""
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
     space.write(t, "$this/amount", 100.0, "float")
     assert space.current_page(t) is None
-    leaf = space.enter_block("叶子")
+    leaf = space.enter_frame("叶子")
     assert space.current_page(leaf) is None
 
 
 def test_current_page_ignores_ordinary_writes(space):
     """5.4 普通变量写入不影响当前页面变量解析。"""
-    t = space.enter_block("T")
+    t = space.enter_frame("T")
     page = PageRef("p1")
     space.write(t, "$this/登录页", page, "page_ref")
     space.write(t, "$this/amount", 100.0, "float")

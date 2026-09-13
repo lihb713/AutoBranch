@@ -119,7 +119,7 @@ def test_end_to_end_execution_failure_flow(tmp_path):
         content=(
             "tree: 坏文档\n"
             "nodes:\n"
-            "  n1:\n    type: Root\n    name: 根\n    slots: {1: n2}\n"
+            "  n1:\n    type: Root\n    name: 根\n    body: n2\n"
             "  n2:\n    type: ref\n    name: x\n    target: 不存在的文档\n"
             "root: n1\n"
         ),
@@ -140,11 +140,11 @@ def test_end_to_end_execution_failure_flow(tmp_path):
 
 
 def _ref_doc(name: str, target: str) -> str:
-    """生成「ref 另一文档」的新 DSL 文档文本。"""
+    """生成「ref 另一文档」的统一槽位 DSL 文档文本。"""
     return (
         f"tree: {name}\n"
         "nodes:\n"
-        "  n1:\n    type: Root\n    name: 根\n    slots: {1: n2}\n"
+        "  n1:\n    type: Root\n    name: 根\n    body: n2\n"
         f"  n2:\n    type: ref\n    name: 引用{target}\n    target: {target}\n"
         "root: n1\n"
     )

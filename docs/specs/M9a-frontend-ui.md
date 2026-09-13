@@ -1,7 +1,7 @@
 # M9a · 前端 UI Spec
 
 > 依据契约 `docs/contract.md` §12.3（引擎内嵌形态）、§12.4（前端执行报告实时展示）、§12.5（前端行为树复合节点视图）、§4.3（复合节点）、§5.8.3（报告）。
-> **实现状态：已全部落地并通过前后端实机联调**（OpenSpec change `m9a-frontend-ui`）。
+> **实现状态**：行为树管理/执行报告链路已落地并通过前后端实机联调（OpenSpec change `m9a-frontend-ui`）；编辑器按 `frontend-editor-redesign`（节点画布 + 槽位引用 + 一文档一树）重设计，见 §5.3.1。
 
 ## 1. 概述
 
@@ -42,6 +42,7 @@ WebOps 的用户交互界面：行为树编辑器（拖拽节点 → 生成含�
 ```
 GET    /api/trees              # 列表
 POST   /api/trees              # 创建
+GET    /api/trees/by-name/{name}  # 按文档名查（ref 展开/参数加载）
 GET    /api/trees/{id}         # 查看
 PUT    /api/trees/{id}         # 修改
 DELETE /api/trees/{id}         # 删除
@@ -58,27 +59,32 @@ GET    /api/runs/{run_id}/trace   # 回溯报告
 GET    /api/reports/{path}     # 截图/报告文件
 ```
 
-### 5.3 编辑器节点模型（复合节点，§4.3）
+### 5.3 编辑器节点模型（一文档一树，§4.1）
 
-支持节点：Step / Branch / LoopUntil / IfThenElse / Retry / Sequence / ref 块引用。用户填写自然语言叶子内容（action/expect/when/until...）。
+支持节点：`Action / Root / Step / Sequence / IfThenElse / Branch / Retry / LoopUntil / ref`（ref = 文档引用）。`Action` 为真正叶子（`fields.description` = 自然语言操作描述）；`Step` 经 `action` 槽位挂操作子树、`expect` 为验证条件字段；用户填写自然语言叶子内容（description/expect/when/until...）。
 
-### 5.3.1 多块文档编辑器（方案 2，契约 §4.1）
+### 5.3.1 节点画布编辑器（一文档一树）
 
-编辑器按"块 = 声明 + 行为树"模型编辑文档：
+编辑器以"真实画布节点 + 节点对象池 + 槽位引用"编辑一份一文档一树文档：
 
-- **块列表面板**（`BlockListPanel`）：列出主块（标「主」）+ 全部附属块；点击切换当前编辑块；「新建块」按钮创建附属块（prompt 输入块名）；附属块可删除（主块不可删）。
-- **块模型**（`BlockDoc = { name, decl, tree }`）：`decl` 保存块声明（inputs/outputs/config，`BLOCK_DECL_KEYS = {inputs, outputs, timeout, retry, browser}`），`tree` 为可编辑的行为树（EditorNode）。
-- **解析/序列化**：`parseDocument(yamlText)` → `{ mainBlock, blocks: BlockDoc[] }`（每块提取声明键与唯一行为树键）；`serializeDocument(blocks)` 重建多块文档（主块 + 附属块，保留各块声明）。`parseTree(yamlText, docName?)` 兼容：多块取主块（文档名匹配，无匹配取第一个）。
-- **裸树兼容**：无 `block` 前缀的文档（整文档即根块）按主块加载/保存，保持原样。
-- **保存**：当前编辑块树写回 `activeBlock`，整体 `serializeDocument` 输出（保留全部块与声明）。
+- **画布呈现**：每个节点为固定尺寸卡片，类型用颜色/形状/图标区分，显示用户自定义 `name`；树从根节点在上、向下生长，兄弟水平排布，父子以连线绘制；节点位置自适应布局，不需手动摆放。画布分**主树区**（`root` 沿槽位引用递归可达）与**游离区**（与 Root 不联通的游离树，顶部带根 name + 「游离」标记）。
+- **节点对象池 + 统一槽位**：全部节点独立定义在 `nodes` 下，节点间一切动作关联经**语义命名字段**引用子树根 id：`Root.body`、`Sequence.actions`（有序列表）、`Step.action`、`IfThenElse.then`/`else`、`Branch.action` + `branches[].action`（每分支一行）、`Retry.body`、`LoopUntil.action`；槽位下拉只展示各棵游离树的根（已挂载节点/树内非根节点不展示）。`Sequence.actions` 可增删；`IfThenElse` 的 `then`/`else` 各 1 个槽；`Branch` 可增删分支行。条件（`expect`/`if`/`when`/`until`）与 `description`/`max` 等为标量字段（存于 `fields`），不占槽位。
+- **根节点**：每文档恰一个 `type: Root`（固定 1 槽 `body`），不可删除/替换；`root` 顶层键引用它。
+- **Action 叶子**：真正叶子节点，无槽位，仅 `fields.description`（自然语言操作描述），可被任意槽位挂载；创建 Step 时自动附带一个 Action 子节点挂入其 `action` 槽位（`createStepWithAction`）。
+- **ref 参数编辑**：ref 节点下拉选目标文档 → 自动加载其 `inputs`/`outputs` 生成参数表单；入参 `args` 为列表（按序对应 inputs，值优先匹配本树已有变量名，未命中作字面量）；出参 `returns` 为字典（键=本树新建接收名，值=类型，按序对应 outputs）；编辑时即时校验对齐/命名冲突/类型，并即时检测跨文档引用环。
+- **ref 展开/收缩**：收缩态为单节点占位（显示目标文档名）；展开态显示被引文档完整子树（只读预览），逐层懒加载；收缩连同已展开子引用一并收起。
+- **删除/修改语义**：删槽位=解引用（子节点回游离区）；删单节点=各槽位子节点各自成游离树；删子树=连带后代；改槽位=旧节点回游离区、新节点入主树；删 ref 仅解除引用，被引用文档不受影响。
+- **即时校验**：节点必填字段（Action `description`、Step `action` 槽位+`expect`、IfThenElse `if`+`then`+`else`、Branch `action`+至少一分支、LoopUntil `until`+`action`+`max`、Retry `body`+`max`、ref `target`）红框标记；保存时汇总校验（单根、主树与各游离树无环、槽位引用存在且无重复引用、ref 目标存在）并经后端 `/check` 权威兜底。
+- **节点标识**：`id` 文档内唯一（自动生成 n1/n2...、**文档导入保留原 id**，仅 `[A-Za-z0-9_-]`、≤64）；`name` 用户自定义画布显示名（≤64，不强制唯一，空则显示类型名）。
 
 **实现说明（已落地）**：
 
 - 工程位置 `webops/frontend/`（Vite + React 18 + TS），目录按 `frontend-style.md`：`src/api|components|features|hooks|types`。
 - 路由（react-router-dom）：`/` 列表、`/editor/:id?` 编辑器、`/runs/:runId` 报告页。
-- 状态：`useState`（表单）+ `useReducer`（编辑器节点树 add/update/remove/move）+ `usePolling` hook（1 秒轮询，卸载清理）。
-- 编辑器：内部维护复合节点树模型，`js-yaml` 双向转换（**不展开复合节点**，§12.5）；保存前先 `POST /check`，校验失败渲染错误清单阻止保存。
-- **序列化格式（对齐契约 §4.1 顶层映射）**：`serializeTree` 统一以「节点键映射」输出——单节点 → `{Step: {...}}`，Sequence 根 → `{Sequence: [...]}`。**不直接 dump 数组**（顶层序列会被后端 M2 以「必须是 yaml 顶层映射」拒绝）。
+- **节点模型**（`features/tree-editor/treeModel.ts`）：`TreeNode = {id, type, name, fields, body?, actions?, action?, then?, else?, branches?, target?, args?, returns?}`（`fields` 存 `description`/`expect`/`if`/`when`/`until`/`max` 等标量字段；槽位字段按类型出现：`body`/`actions`/`action`/`then`/`else`/`branches`；`target`/`args`/`returns` 仅 `ref`）、`TreeDoc = {tree, inputs, outputs, config, nodes, root}`；`parseDoc`/`serializeDoc` 与一文档一树 DSL 无损往返（含 ref args/returns）；`nextNodeId`/`freeRoots`/`referencedIds` 支撑 id 生成、游离判定与重复引用校验。
+- **布局引擎**（`features/tree-editor/layout.ts`）：固定尺寸卡片，自底向上算宽、自顶向下定位（根在上、向下生长、兄弟水平均布）；`layoutDocument` 主树在左上、游离树依次排布其下。
+- 状态：`useState`（表单）+ `useReducer`（编辑器节点树）+ `usePolling` hook（1 秒轮询，卸载清理）。
+- 保存前先 `POST /check`，校验失败渲染错误清单阻止保存；`js-yaml` 双向转换（**不展开复合节点**，§12.5）。
 - API 客户端集中于 `src/api/`（`request.ts` 封装，`/api` 前缀，snake_case 类型对齐后端 Pydantic）。
 - 报告页：`usePolling` 轮询 `/api/runs/{run_id}/state`（shouldStop=finished），渲染进度条/当前节点/SUCCESS/FAILURE 着色 + 截图（经 `/api/reports/{path}`）。
 
@@ -86,11 +92,15 @@ GET    /api/reports/{path}     # 截图/报告文件
 
 ## 6. 验收标准
 
-- [x] 编辑器可拖拽节点、填写信息，生成合法行为树文档（含复合节点）
-- [x] 行为树 CRUD 完整可用
-- [x] 保存时触发校验，校验失败友好提示修正
-- [x] 点击执行 → 触发 run → 1 秒轮询状态 → 实时渲染节点成功/失败 + 截图
-- [x] 执行完毕后展示完整执行报告与回溯报告
+> 编辑器画布重写（节点对象池/槽位/主树区+游离区/ref 展开）按 OpenSpec change `frontend-editor-redesign` 推进；节点模型（`treeModel.ts`）与布局引擎（`layout.ts`）已落地，画布交互项待完成。
+
+- [ ] 画布自动布局：根在上、向下生长、兄弟水平均布；主树区 + 游离区独立呈现（游离树带标记）
+- [ ] 节点对象池 + 统一槽位：语义命名字段（body/actions/action/then/else/branches）槽位下拉只列游离树根，Sequence.actions/Branch.branches 增删、挂载/剥离迁移正确；Action 叶子可被任意槽位挂载
+- [ ] 每文档恰一 Root 节点且不可删除；游离树可保存（草稿）
+- [ ] ref 参数编辑（选目标文档自动加载 inputs/outputs、args/returns 表单）与展开/收缩（只读预览）
+- [ ] 删除/修改语义明确：删槽位=解引用回游离区；删单节点=子节点各自成游离树；删子树=连带后代
+- [x] 行为树 CRUD 完整可用；保存时触发校验，校验失败友好提示修正
+- [x] 点击执行 → 触发 run → 1 秒轮询状态 → 实时渲染节点成功/失败 + 截图；执行完毕展示完整执行报告与回溯报告
 - [x] 用户始终看到复合节点视图（引擎基础节点对用户不可见）
 
 ## 7. 测试策略
@@ -98,7 +108,7 @@ GET    /api/reports/{path}     # 截图/报告文件
 - **组件测试**：编辑器拖拽/表单、节点树渲染（`src/**/*.test.tsx`）——编辑器拖拽等复杂 UI 操作由组件测试覆盖
 - **API mock 测试**：mock `src/api/`（vi.mock），覆盖列表/编辑/校验/轮询流程与 404 错误路径
 - **轮询渲染测试**：fake timers 模拟执行状态序列，验证进度与截图实时更新
-- **Playwright E2E**（`e2e/workflow.spec.ts` + `e2e/ref-call.spec.ts`，`npm run test:e2e`）：**前端执行行为树 + 前端查看执行结果**——列表页点「执行」→ 报告页轮询 → 切换查看完整执行报告/回溯报告。`ref-call.spec.ts` 覆盖**嵌套 ref 动态调用**（主块 ref 附属块、args 传参/returns 回收），验证块引用执行链路。E2E 用 API 预置行为树（不模拟编辑器拖拽），聚焦执行/轮询/报告渲染链路
+- **Playwright E2E**（`e2e/workflow.spec.ts` + `e2e/ref-call.spec.ts`，`npm run test:e2e`）：**前端执行行为树 + 前端查看执行结果**——列表页点「执行」→ 报告页轮询 → 切换查看完整执行报告/回溯报告。`ref-call.spec.ts` 覆盖**跨文档 ref 动态调用**（文档 A `ref` 文档 B，args 传参/returns 回收），验证文档引用执行链路。E2E 用 API 预置行为树（不模拟编辑器拖拽），聚焦执行/轮询/报告渲染链路
 - **实机联调**（已通过）：vite dev(5174) → uvicorn(8001) 代理链路，list/create/check/get/run/轮询/report/trace 全通
 
-**测试结果**：`npm run lint` ✓、`npm run typecheck` ✓、`npm test` **74 passed**（13 文件）、`npm run test:e2e` **2 passed**（workflow + ref-call，Playwright，前端执行+报告查看链路）、`npm run build` ✓。
+**测试结果**：`npm run lint` ✓、`npm run typecheck` ✓、`npm test` ✓、`npm run test:e2e` ✓（workflow + ref-call，Playwright，前端执行+报告查看链路）、`npm run build` ✓。

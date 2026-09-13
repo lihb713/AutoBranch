@@ -112,7 +112,7 @@ class Engine:
         try:
             self._browser.start(config.browser_config)
             started = True
-            space.enter_block(tree.name, ctx.schema_decl(tree.name))
+            space.enter_frame(tree.name, ctx.schema_decl(tree.name))
             status = traverser.tick(tree.root)
         except FatalBrowserError as exc:
             ctx.failure_reason = ctx.failure_reason or f"程序侧致命错误: {exc}"

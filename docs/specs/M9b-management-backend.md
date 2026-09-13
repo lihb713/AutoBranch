@@ -39,7 +39,7 @@ WebOps 的后端服务：行为树文档 CRUD API、清晰度校验（复用 M2�
   - M7（编排器/引擎）— 执行触发、状态查询
   - M8（报告机制）— 报告/截图提供
 - **被依赖**：
-  - M9a（前端 UI）— 全部 API 消费（尚未实施）
+  - M9a（前端 UI）— 全部 API 消费
 
 ## 5. 接口契约（全部已实现）
 
@@ -47,9 +47,10 @@ WebOps 的后端服务：行为树文档 CRUD API、清晰度校验（复用 M2�
 
 ```
 GET    /api/trees              # 列表（200，元数据数组）
-POST   /api/trees              # 创建（201，元数据；保存时校验 422 拒绝，含主块名=树名强制）
+POST   /api/trees              # 创建（201，元数据；保存时校验 422 拒绝，含树名=文档名强制）
+GET    /api/trees/by-name/{name}  # 按文档名查（200，含 content；ref 展开/参数加载/文档库）
 GET    /api/trees/{id}         # 查看（200，含 content）
-PUT    /api/trees/{id}         # 修改（200；至少提交 name/content 之一，校验 422 拒绝，含主块名=树名强制）
+PUT    /api/trees/{id}         # 修改（200；至少提交 name/content 之一，校验 422 拒绝，含树名=文档名强制）
 DELETE /api/trees/{id}         # 删除（204；级联删除执行记录并清理报告文件）
 POST   /api/trees/{id}/check   # 清晰度校验（200，CheckReport：ok + issues 错误清单，不落库）
 ```
@@ -67,7 +68,7 @@ GET    /api/runs/{run_id}/trace       # 回溯报告（同上）
 GET    /api/reports/{path}            # 截图/报告文件（白名单防目录穿越）
 ```
 
-- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id。以树名（name）作为主块名 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的根块名。
+- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`；文档 `tree` 键须 = 树名），帧 doc_id 取解析出的树名。
 - 并发去重：同一 tree 存在 pending/running 的 run 时返回 409。
 - `GET /api/reports/{path}`：`resolve()` 做 `is_relative_to(REPORT_ROOT)` 白名单，越界 400、不存在 404；`.md`→`text/markdown`、`.png`→`image/png`。
 
@@ -82,6 +83,7 @@ GET    /api/reports/{path}            # 截图/报告文件（白名单防目录
 
 - **进程重启恢复**：应用启动时扫描 running/pending 记录置 failure（`failure_reason="interrupted"`），终态仍可查询。
 - **执行配置**：`WebOpsConfig.load()` 统一加载（§6.3），经 `to_run_config()` 构建 `RunConfig`（report_dir 指向 `data/reports/` 绝对路径）；真实引擎按 e2e 装配注入 M5 `EngineFunctions`（MockFiller 语义图）+ 可选 M0 `LLMConfig`（api_key 可直接写入配置文件 `llm.api_key`，或经 `WEB_OPS_LLM_API_KEY` 注入，环境变量优先）。
+- **文档库（跨文档引用）**：`services/doclib.py::DbResolver` 按文档名从 DB 加载 `Tree.content` → `DocumentSource`，实现 M2 `RefResolver`；校验/执行装配经它解析 `ref`（替换旧空 `MappingResolver`，保证生产环境跨文档引用可解析）。
 
 ### 5.4 数据契约
 

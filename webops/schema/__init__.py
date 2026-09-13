@@ -1,13 +1,13 @@
 """WebOps schema 命名空间（M3）。
 
-行为树变量命名空间机制：每次块引用创建独立 schema 帧（``SchemaFrame``），
+行为树变量命名空间机制：每次文档引用创建独立 schema 帧（``SchemaFrame``），
 管理变量读写（严格作用域）、传参返回值、配置参数继承与类型校验、
 页面变量。纯逻辑、无外部依赖，可独立测试。
 
 对外公开的接口：
-- ``SchemaSpace``（``enter_block`` / ``exit_block`` / ``write`` / ``read`` /
+- ``SchemaSpace``（``enter_frame`` / ``exit_frame`` / ``write`` / ``read`` /
   ``set_config`` / ``resolve_config`` / ``current_page`` / ``page_refs``）
-- ``SchemaFrame`` / ``BlockDecl`` / ``PageRef`` / ``Value``
+- ``SchemaFrame`` / ``FrameDecl`` / ``PageRef`` / ``Value``
 - ``TYPE_REGISTRY`` / ``check_type`` / ``coerce`` / ``infer_type`` /
   ``validate_type_name``
 - 可分类异常：``SchemaError`` / ``SchemaPathError`` / ``SchemaScopeError`` /
@@ -20,7 +20,7 @@ from webops.schema.errors import (
     SchemaScopeError,
     SchemaTypeError,
 )
-from webops.schema.models import BlockDecl, PageRef, SchemaFrame, Value
+from webops.schema.models import FrameDecl, PageRef, SchemaFrame, Value
 from webops.schema.space import SchemaSpace
 from webops.schema.types import (
     TYPE_REGISTRY,
@@ -33,7 +33,7 @@ from webops.schema.types import (
 __all__ = [
     "SchemaSpace",
     "SchemaFrame",
-    "BlockDecl",
+    "FrameDecl",
     "PageRef",
     "Value",
     "TYPE_REGISTRY",

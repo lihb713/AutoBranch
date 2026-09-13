@@ -6,7 +6,7 @@
 
 ## 1. 概述
 
-确定性编排器：遍历内部行为树（M2 产出），纯程序执行组合节点，触发叶子节点执行（M6），维护 schema 帧（M3）与记录报告（M8）。提供 `engine.run(行为树)` 入口并维护**可查询的执行状态**供 M9b 轮询。**依赖 M2 + M3 + M6 + M8，是引擎的整合中枢。**
+确定性编排器：遍历内部行为树（M2 产出），纯程序执行组合节点，触发叶子节点执行（M6），维护 schema 帧（M3）与记录报告（M8）。提供 `engine.run(树, 文档声明, 配置, resolver)` 入口并维护**可查询的执行状态**供 M9b 轮询。**依赖 M2 + M3 + M6 + M8，是引擎的整合中枢。**
 
 ## 2. 功能范围
 
@@ -24,8 +24,8 @@
 ## 3. 数据依赖
 
 ### 3.1 输入
-- **内部行为树对象 + 块声明**（来自 M2）：`BehaviorTree` / `ActionNode` / `ConditionNode` / `SequenceNode` / `SelectorNode` / `RepeatNode` / `FinishNode` / `RefNode`（ref 保留为调用节点）/ `BlockDecl`；另接收 `blocks_tree`（块名 → 每块预展开可执行基础树，供 `_tick_ref` 运行期动态调用）
-- **schema 命名空间**（来自 M3）：帧管理（`enter_block`/`exit_block`）、配置继承（`resolve_config`）、页面变量（`current_page`）
+- **内部行为树对象 + 文档声明**（来自 M2）：`BehaviorTree` / `ActionNode` / `ConditionNode` / `SequenceNode` / `SelectorNode` / `RepeatNode` / `FinishNode` / `RefNode`（ref 保留为调用节点）；文档级 `decl_inputs`/`decl_outputs`/`config` 与 `blocks_tree`（文档名 → 该文档主树）
+- **schema 命名空间**（来自 M3）：帧管理（`enter_frame`/`exit_frame`）、配置继承（`resolve_config`）、页面变量（`current_page`）
 - **叶子执行**（来自 M6）：`execute_leaf(node, ctx)` → `LeafResult`（经 `RunConfig` 注入 M0/M5 依赖或注入 mock）
 - **报告**（来自 M8）：`Reporter.start_node/record_node/capture_screenshot/exec_state/finalize`
 
@@ -50,9 +50,13 @@
 
 ```python
 class Engine:
-    def run(self, tree: BehaviorTree, blocks: dict[str, BlockDecl],
-            config: RunConfig, blocks_tree: dict[str, Node] | None = None) -> RunResult: ...
-    # blocks_tree：块名 → 每块预展开可执行基础树（RefNode 运行期动态调用查找表）
+    def run(self, tree: BehaviorTree, config: RunConfig, *,
+            resolver=None, blocks_tree: dict[str, Node] | None = None,
+            decl_inputs: dict[str, str] | None = None,
+            decl_outputs: list[str] | None = None,
+            config_overrides: dict[str, object] | None = None) -> RunResult: ...
+    # resolver：跨文档引用解析器（ref 按文档名加载被引文档）
+    # blocks_tree：文档名 → 该文档主树；decl_inputs/outputs/config_overrides：文档级声明与配置
     def get_exec_state(self) -> ExecState: ...   # 供 M9b 轮询
 
 @dataclass(frozen=True)
@@ -99,7 +103,7 @@ class RunConfig:
 与 `config.engine`（M0+M5）同时注入，否则抛出 `OrchestratorError`。测试全部注入
 mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 真实实现。
 
-**入口校验**（§5.1 场景「校验失败不启动遍历」）：行为树/块声明/配置缺失或配置类型
+**入口校验**（§5.1 场景「校验失败不启动遍历」）：行为树/文档声明/配置缺失或配置类型
 非法 → 直接返回 `RunResult(status="failure", failure_reason=...)`，不创建会话、
 不遍历、不产出报告（`exec_report`/`trace_report` 为 None）。
 
@@ -117,25 +121,32 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 ### 5.3 遍历器语义（§5.7.7，已实现）
 
 - **阻塞式**：一个节点执行完才执行下一个；节点状态只有 SUCCESS/FAILURE，无 RUNNING
+- **用户复合节点 → 基础节点（M2 展开，统一槽位模型）**：用户书写的复合节点的动作/分支体一律经语义槽位子树表达，解析期展开为本节基础节点，遍历器只执行基础节点：
+  - **Step** → `Sequence(action 槽位子树 + Condition(expect))`：先执行 `action` 槽位子树，再验证 `expect`
+  - **Branch** → `Sequence(action 槽位子树 + Selector(branches 各 action 子树))`：先执行 `action` 槽位子树，再按 `branches` 的 `when` 分流
+  - **IfThenElse** → `Selector(if 条件→then 槽位子树, else→else 槽位子树)`
+  - **Retry** → `Repeat(mode=retry, body=body 槽位子树)`
+  - **LoopUntil** → `Repeat(mode=loop_until, until 条件, body=action 槽位子树)`
+  - **Action** 为真正叶子（`description`），由 M6 agent 执行；`ref` 为调用节点（见 §5.4/§8-6）
 - **Sequence**：依次执行，第一个 FAILURE 短路 → 整体 FAILURE；全 SUCCESS → SUCCESS
 - **Selector**：按条件分流，分支条件先判（FAILURE 试下一分支），命中分支的子节点
   结果即 Selector 结果并短路；全分支条件 FAILURE → FAILURE（不承载兜底，命中后
   子节点失败不回落下一分支）
 - **Repeat**：循环带上限（`max`），到达上限 → 整体 FAILURE
-  - **LoopUntil**：每轮先判 until（页面条件），满足即退；不满足才执行 body；
-    body 失败 → 整体 FAILURE（失败沿树传播，不吞掉继续循环）
-  - **Retry**：每轮直接执行 body，成功即退；失败重试至上限
+  - **LoopUntil**：每轮先判 until（页面条件），满足即退；不满足才执行 action 槽位子树
+    （RepeatNode.body）；body 失败 → 整体 FAILURE（失败沿树传播，不吞掉继续循环）
+  - **Retry**：每轮直接执行 body（body 槽位子树），成功即退；失败重试至上限
 - **失败传播**：叶子 FAILURE 沿树向上由组合节点聚合，根统一终止 + 报告
 - **超时**：全局 timeout 在节点层面生效（§5.7.2.1 终止条件③）——生效值经
-  `resolve_config('timeout')`（自身 → 祖先 → 全局默认）取块覆盖/全局默认，
+  `resolve_config('timeout')`（自身 → 祖先 → 全局默认）取文档覆盖/全局默认，
   折算为 deadline 传入叶子执行器，返回后 wall-clock 兜底判定超时置 FAILURE
 
 ### 5.4 运行初始化（§9.8 ⓪/①，已实现）
 
-1. 入口校验（树/块/配置）
+1. 入口校验（树/文档声明/配置）
 2. 创建全新浏览器 context（M1 `start`，从 0 开始，无持久化）
 3. 注入全局默认配置到根级 schema（`timeout` + `global_config`）
-4. 建立根级块帧（`enter_block(tree.name)`）；`Engine.run` 接收 `blocks_tree`（可选，无 ref 场景可为 None），根帧后 Traverser tick 遇 `RefNode` 动态调用子块
+4. 建立根级帧（`enter_frame(tree.name, schema_decl)`）；`Engine.run` 接收 `blocks_tree` 与 `resolver`，根帧后 Traverser tick 遇 `RefNode` 经 resolver 加载被引文档并动态调用
 5. 遍历执行
 6. 遍历结束（无论成败）统一 `browser.stop()` 释放会话
 
@@ -176,7 +187,7 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
 
 ## 8. 与契约的接口细节（待统一更新 contract.md）
 
-1. **入口校验失败不产出报告**：`engine.run` 在行为树/块声明/配置缺失或类型非法时
+1. **入口校验失败不产出报告**：`engine.run` 在行为树/文档声明/配置缺失或类型非法时
    直接返回 `RunResult(status="failure", failure_reason=...)`，`exec_report` /
    `trace_report` 为 None，不启动会话/遍历（§5.1 场景）。**建议 contract §5.1 标注
    `RunResult` 两份报告在校验失败路径下为可选（None）。**
@@ -186,27 +197,26 @@ mock 叶子执行器（`(node, timeout) -> LeafResult`），不依赖 M0/M5/M6 �
    **建议 contract §5.7.2 标注 M7 通过注入点触发 M6，M0/M5 依赖由调用方接线。**
 3. **超时语义**：生效 timeout 经 `resolve_config('timeout')`（自身 → 祖先 → 全局
    默认）解析；协作式 deadline 下传 M6（`LeafContext.timeout`），遍历器返回后再做
-   wall-clock 兜底判定（超时置 FAILURE）。**建议 contract §5.7.7 明确「块覆盖
-   timeout 时该块及子树叶子用覆盖值」。**
+   wall-clock 兜底判定（超时置 FAILURE）。**建议 contract §5.7.7 明确「文档覆盖
+   timeout 时本文档及 ref 子树叶子用覆盖值」。**
 4. **LoopUntil body 失败语义明确化**：每轮先判 until 满足即退；**body 失败 → 整体
    FAILURE 立即传播**（不吞掉失败继续循环）。**建议 contract §5.7.7 补充该句。**
 5. **Selector 命中分支后子节点失败 → 整体 FAILURE（不回落下一分支）**：分支条件
    命中即「提交」，子节点结果即 Selector 结果（§5.7.7「不承载兜底」的落地）。
    **建议 contract §5.7.7 明确命中后失败不回落。**
 6. **ref 动态调用模型**：M7 经 `SchemaSpace._current`（内部当前帧指针）维护激活帧。
-    遇 `RefNode` 走 `Traverser._tick_ref`：父帧求值 args（`this/x` 或字面量）→ coerce
-    到输入类型 → `enter_block` 建子帧并注入形参 → 递归执行被引用块的可执行树（其内部
-    ref 由各自 `_tick_ref` 管理）→ SUCCESS 时按 returns 读子帧输出写父帧 → `exit_block`
-    退出子帧。`_sync_frame` 与节点 `frame` 字段已移除；`resolve_config` 继承链 +
-    `enter_block` 注入块配置覆盖，天然实现「自身 → 祖先 → 全局默认」。
-   - **目标块运行期解析**（`_find_ref_tree`）：`this/<块>` 以 ref 节点所属文档
-     （`node.loc.doc_id`）为 `owner_doc`，先试 `owner_doc/块` 键（跨文档同名块收纳、
-     命中所属文档），再兜底纯块名；`文档/<块>` 先试 `文档/块` 键再兜底纯块名。
-     与静态 `_find_block_tree`/`_check_ref_graph` 语义一致，消除同名块跨文档分歧。
+    遇 `RefNode` 走 `Traverser._tick_ref`：经 `resolver` 按文档名加载被引文档 →
+    父帧求值 args（`this/x` 或字面量）→ coerce 到输入类型 → `enter_frame` 建子帧并注入
+    形参 → 从其 `Root` 递归 tick 被引文档主树（其内部 ref 由各自 `_tick_ref` 管理）→
+    SUCCESS 时按 returns 回写父帧 → `exit_frame` 退出子帧。节点 `frame` 字段已移除；
+    `resolve_config` 继承链 + `enter_frame` 注入文档配置覆盖，天然实现「自身 → 祖先 →
+    全局默认」。
+   - **被引文档加载**（`_load_doc_tree`）：经 `resolver.resolve(doc_id)` 取文档源 →
+     `parse_document` 解析其主树与文档级声明 → 展开为可执行基础树 → 从 `Root` 执行。
    - **returns 回收写父帧**：优先父帧对目标变量已声明类型（`parent.declared`/
      `outputs`/`inputs`），无则 `infer_type(value)`——类型一致性，不覆盖已声明类型。
-   - **节点总数（`count_nodes`）ref 感知**：`RefNode` 计 1 并递归计入被引用块子树
-     （经 `blocks_tree`，防御性 `_seen` 环保护），与运行期逐节点记录对齐，保证
+   - **节点总数（`count_nodes`）ref 感知**：`RefNode` 计 1 并递归计入被引文档树
+     （经 `resolver` 加载，防御性 `_seen` 环保护），与运行期逐节点记录对齐，保证
      `completed/total_nodes ≤ 1.0`、进度不提前饱和 1.0。
 7. **ExecState 复用 M8**：M7 不新增执行状态模型，直接经 `Reporter.exec_state()`
    复用 M8 `ExecState`（§12.4 数据源单一，进度由 completed/total_nodes 派生）。

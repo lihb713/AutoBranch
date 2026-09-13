@@ -210,7 +210,7 @@ def build_engine(
     if space is None:
         space = SchemaSpace()
     if frame is None:
-        frame = space.enter_block("测试")
+        frame = space.enter_frame("测试")
     if probe is None:
         probe = FakeProbe()
     if filler is None:

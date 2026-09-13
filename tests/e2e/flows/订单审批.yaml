@@ -1,20 +1,65 @@
-block 订单审批:
-  Sequence:
-    - Step:
-        action: 打开页面 "http://127.0.0.1:8123/index.html"
-        expect: 页面出现"登录"
-    - Step:
-        action: 在"用户名"输入框输入 admin
-        expect: 输入成功
-    - Step:
-        action: 在"密码"输入框输入 secret
-        expect: 输入成功
-    - Step:
-        action: 点击"登录"按钮
-        expect: 页面出现"登录成功"
-    - Step:
-        action: 提取第一行的"订单号"文本
-        expect: 提取结果非空
-    - Step:
-        action: 点击第一行的"批准"按钮
-        expect: 该行状态变为"已批准"
+tree: 订单审批
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Sequence
+    name: 订单审批
+    actions: [n3, n4, n5, n6, n7, n8]
+  n3:
+    type: Step
+    name: 打开登录页
+    action: n9
+    expect: 页面出现"登录"
+  n9:
+    type: Action
+    name: 打开页面
+    description: 打开页面 "http://127.0.0.1:8123/index.html"
+  n4:
+    type: Step
+    name: 输入用户名
+    action: n10
+    expect: 输入成功
+  n10:
+    type: Action
+    name: 输入用户名
+    description: 在"用户名"输入框输入 admin
+  n5:
+    type: Step
+    name: 输入密码
+    action: n11
+    expect: 输入成功
+  n11:
+    type: Action
+    name: 输入密码
+    description: 在"密码"输入框输入 secret
+  n6:
+    type: Step
+    name: 点击登录
+    action: n12
+    expect: 页面出现"登录成功"
+  n12:
+    type: Action
+    name: 点击登录
+    description: 点击"登录"按钮
+  n7:
+    type: Step
+    name: 提取订单号
+    action: n13
+    expect: 提取结果非空
+  n13:
+    type: Action
+    name: 提取订单号
+    description: 提取第一行的"订单号"文本
+  n8:
+    type: Step
+    name: 批准订单
+    action: n14
+    expect: 该行状态变为"已批准"
+  n14:
+    type: Action
+    name: 批准订单
+    description: 点击第一行的"批准"按钮
+root: n1

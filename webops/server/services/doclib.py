@@ -24,12 +24,12 @@ class DbResolver(RefResolver):
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def resolve(self, doc_id: str, block_name: str | None = None) -> DocumentSource:
+    def resolve(self, doc_id: str) -> DocumentSource:
         from webops.server.models.tree import Tree
 
         tree = self._db.scalars(select(Tree).where(Tree.name == doc_id)).first()
         if tree is None:
-            raise RefNotFoundError(doc_id, block_name)
+            raise RefNotFoundError(doc_id)
         return DocumentSource(id=tree.name, data=tree.content)
 
     @staticmethod

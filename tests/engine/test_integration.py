@@ -34,7 +34,7 @@ class TestEngineIntegrationLogin:
 
     def test_open_type_click_extract_loop(self, eng_driver, eng_http_server):
         space = SchemaSpace()
-        frame = space.enter_block("测试")
+        frame = space.enter_frame("测试")
         engine = EngineFunctions(
             browser=eng_driver,
             filler=MockFiller(),

@@ -15,28 +15,36 @@ from webops.server.db import configure_database, session_factory
 from webops.server.main import create_app
 from webops.server.services.engine import MockEngineService
 
-#: 通过 M2 清晰度校验的合法行为树文档。
+#: 通过 M2 清晰度校验的合法行为树文档（统一槽位 DSL）。
 VALID_YAML = """
 tree: 冒烟流程
 nodes:
   n1:
     type: Root
     name: 根
-    slots: {1: n2}
+    body: n2
   n2:
     type: Sequence
     name: 流程
-    slots: {1: n3, 2: n4}
+    actions: [n3, n4]
   n3:
     type: Step
     name: 登录
-    action: 点"登录"
+    action: n5
     expect: 出现"工作台"
+  n5:
+    type: Action
+    name: 点登录
+    description: 点"登录"
   n4:
     type: Step
     name: 退出
-    action: 点"退出"
+    action: n6
     expect: 回到登录页
+  n6:
+    type: Action
+    name: 点退出
+    description: 点"退出"
 root: n1
 """.strip()
 
@@ -47,7 +55,7 @@ nodes:
   n1:
     type: Root
     name: 根
-    slots: {1: n2}
+    body: n2
   n2:
     type: ref
     name: x
@@ -62,12 +70,16 @@ nodes:
   n1:
     type: Root
     name: 根
-    slots: {1: n2}
+    body: n2
   n2:
     type: LoopUntil
     name: l
-    action: 点"下一页"
+    action: n3
     until: 出现"最后一页"
+  n3:
+    type: Action
+    name: 下一页
+    description: 点击"下一页"
 root: n1
 """.strip()
 
@@ -98,19 +110,23 @@ def session(settings):
 
 
 def make_tree_yaml(name: str) -> str:
-    """生成一文档一树合法文档（契约 §12：tree/nodes/root）。"""
+    """生成一文档一树统一槽位合法文档（契约 §12：tree/nodes/root）。"""
     return (
         f"tree: {name}\n"
         "nodes:\n"
         "  n1:\n"
         "    type: Root\n"
         "    name: 根\n"
-        "    slots: {1: n2}\n"
+        "    body: n2\n"
         "  n2:\n"
         "    type: Step\n"
         "    name: 登录\n"
-        '    action: 点"登录"\n'
+        "    action: n3\n"
         '    expect: 出现"工作台"\n'
+        "  n3:\n"
+        "    type: Action\n"
+        "    name: 点登录\n"
+        '    description: 点击"登录"按钮\n'
         "root: n1\n"
     )
 

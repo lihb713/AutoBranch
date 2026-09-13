@@ -6,16 +6,16 @@
 
 ## 1. 概述
 
-实现行为树的**变量命名空间（schema）**机制：每个块实例拥有独立的命名空间（类似函数调用栈帧），管理变量的读/写、传参、返回值、配置参数继承与类型校验。**纯逻辑、无外部依赖、易测试**，是确定性信息流（§2 信息流层）的核心保障。
+实现行为树的**变量命名空间（schema）**机制：每次文档引用产生一个独立的执行帧（命名空间，类似函数调用栈帧），管理变量的读/写、传参、返回值、配置参数继承与类型校验。**纯逻辑、无外部依赖、易测试**，是确定性信息流（§2 信息流层）的核心保障。
 
 ## 2. 功能范围
 
 | 功能 | 说明 | 契约依据 |
 |---|---|---|
-| 帧模型 | 每次块引用创建独立 schema（命名空间） | §5.7.4 |
-| 严格作用域 | 每块只读写自己的 schema（`this/<名>` 单段） | §5.3.2 |
+| 帧模型 | 每次文档引用创建独立执行帧（schema/命名空间） | §5.7.4 |
+| 严格作用域 | 每帧只读写自己的帧（`this/<名>` 单段） | §5.3.2 |
 | 变量读写 | 路径形式读写（`this/xxx`、`[[get:this/xxx]]`/`[[set:类型:this/xxx]]`） | §5.3 |
-| 传参/返回值 | 经 ref `args` 注入子块、`returns` 回收子块输出 | §5.3.2/§5.3.3 |
+| 传参/返回值 | 经 ref `args` 注入子文档帧、`returns` 回收子文档输出 | §5.3.2/§5.3.3 |
 | 配置参数继承 | 自己的 schema → 向上找最近祖先 → 全局默认 | §5.3.4/§5.7.5 |
 | 类型契约 | 创建变量时声明类型，提取错误则断言失败 | §5.3.5 |
 | 页面变量机制 | 页面引用类型变量 + 操作页面绑定 | §5.10 |
@@ -23,8 +23,8 @@
 ## 3. 数据依赖
 
 ### 3.1 输入
-- **块声明**（来自 M2）：命名块的输入/输出/配置参数声明
-- **变量操作**：写入（`[[set:类型:this/path]]`）、读取（`[[get:this/path]]`）、配置参数查询（`$this` 仅内部兼容旧绑定）
+- **文档接口声明**（来自 M2）：文档级 `inputs`/`outputs` 与配置参数覆盖
+- **变量操作**：写入（`[[set:类型:this/path]]`）、读取（`[[get:this/path]]`）、配置参数查询（`resolve_config`）
 
 ### 3.2 输出
 - **变量值**：读取结果
@@ -35,7 +35,7 @@
 
 - **依赖**：无（纯逻辑）
 - **被依赖**：
-  - M7（编排器）— 每次块引用建立 schema 帧、变量读写
+  - M7（编排器）— 每次文档引用建立执行帧、变量读写
   - M5（引擎函数层）— extract 写入变量、open 写入页面引用、函数页面绑定
   - M9b（后端）— 间接通过 M7
 
@@ -45,15 +45,15 @@
 
 ```python
 class SchemaSpace:
-    def enter_block(self, block_name: str, decl: BlockDecl) -> SchemaFrame: ...
-    # 创建子块帧，如 T/登录/
-    def exit_block(self, frame: SchemaFrame | None = None) -> None: ...
+    def enter_frame(self, name: str, decl: FrameDecl | None = None) -> SchemaFrame: ...
+    # 创建子文档帧，如 T/登录/
+    def exit_frame(self, frame: SchemaFrame | None = None) -> None: ...
     # 退出当前帧并恢复父帧为当前帧（帧数据保留至行为树运行结束，供黑板上报；释放=退出激活栈）
     def write(self, frame: SchemaFrame, path: str, value: Value, value_type: str) -> None: ...
     def read(self, frame: SchemaFrame, path: str) -> Value | None: ...
     # 读/写严格限定：仅自己的帧（this/<名> 单段，resolve_target 单段化）
     def set_config(self, frame: SchemaFrame, name: str, value: Value, value_type: str | None = None) -> None: ...
-    # 在指定帧声明配置参数（块覆盖全局默认用）
+    # 在指定帧声明配置参数（文档覆盖全局默认用）
     def resolve_config(self, frame: SchemaFrame, name: str) -> Value: ...
     # 配置参数：自己的 schema → 祖先 → 全局默认
     def current_page(self, frame: SchemaFrame) -> PageRef | None: ...
@@ -65,8 +65,8 @@ class SchemaSpace:
 - **数据契约**（`webops/schema/models.py`）：
   - `Value`：`str | int | float | bool | PageRef | None`
   - `PageRef`：页面引用（`page_id` + 可选 `url`）
-  - `BlockDecl`：块接口声明（`inputs`/`outputs`：变量名 → 类型；`config`/`config_types`：配置参数名 → 值/类型；来自 M2，本模块独立定义所需最小结构，避免依赖 M2 包）
-  - `SchemaFrame`：独立帧（`id`/`block_name`/`parent`/`path_segments`/`storage`/`declared`/`config`/`children`/`inputs`/`outputs`/`page_write_order`），帧路径属性 `path`（如 `T/登录/`）
+  - `FrameDecl`：文档接口声明（`name` 文档名；`inputs`/`outputs`：变量名 → 类型；`config`/`config_types`：配置参数名 → 值/类型；来自 M2，本模块独立定义所需最小结构，避免依赖 M2 包）
+  - `SchemaFrame`：独立执行帧（`id`/`name`/`parent`/`path_segments`/`storage`/`declared`/`config`/`children`/`inputs`/`outputs`/`page_write_order`），帧路径属性 `path`（如 `T/登录/`）
 - **异常契约**（`webops/schema/errors.py`，基类 `SchemaError` 供 M7 捕获沿树传播）：
   - `SchemaPathError`：路径格式错误
   - `SchemaScopeError`：越权访问（目标帧不是自身帧）
@@ -75,7 +75,7 @@ class SchemaSpace:
 ### 5.2 路径规则
 
 - 路径为层次结构：`T/登录/username`；按 `/` 分层（`webops/schema/path.py`）
-- 首段仅 `this`/自身块名（自身帧）；直接子块名不再合法 → 越权（跨帧传参经 ref `args`/`returns`）
+- 首段仅 `this`/自身文档名（自身帧）；直接子文档名不再合法 → 越权（跨帧传参经 ref `args`/`returns`）
 - 目标帧后必须恰好一个变量段（变量名不含 `/`，含 `/` 或多段均被拒绝）
 - 写权限：仅自己的帧
 - 读权限：仅自己的帧
@@ -85,10 +85,10 @@ class SchemaSpace:
 ### 5.3 可见性规则（§5.3.2）
 
 ```
-每块实例只能:
-  写入 → 自己的 schema（this/<名> 单段）
-  读取 → 自己的 schema（this/<名> 单段）
-  不可见 → 直接子块 / 祖先 / 兄弟 / 孙子 的 schema（跨帧传参经 ref args/returns）
+每个文档执行帧只能:
+  写入 → 自己的帧（this/<名> 单段）
+  读取 → 自己的帧（this/<名> 单段）
+  不可见 → 直接子文档 / 祖先 / 兄弟 / 孙文档 的帧（跨帧传参经 ref args/returns）
 ```
 
 ### 5.4 类型契约
@@ -122,11 +122,11 @@ TYPE_REGISTRY = {
 
 ## 6. 验收标准
 
-- [x] 块引用产生独立帧，同名变量互不冲突（`enter_block` 每次创建独立帧，帧隔离测试覆盖）
-- [x] 作用域规则严格：越权读/写祖先/兄弟/孙子帧被拒绝（作用域矩阵参数化测试全组合覆盖）
+- [x] 文档引用产生独立帧，同名变量互不冲突（`enter_frame` 每次创建独立帧，帧隔离测试覆盖）
+- [x] 作用域规则严格：越权读/写祖先/兄弟/孙文档帧被拒绝（作用域矩阵参数化测试全组合覆盖）
 - [x] 传参逐层传递正确（T→登录→输入框）
-- [x] 取子块返回值正确（经 ref `returns` 回收，非直接读子帧）
-- [x] 配置参数继承正确：块覆盖 → 祖先 → 全局默认 三级查找
+- [x] 取子文档返回值正确（经 ref `returns` 回收，非直接读子帧）
+- [x] 配置参数继承正确：文档覆盖 → 祖先 → 全局默认 三级查找
 - [x] 类型契约：声明类型后非法值写入/提取被拒绝（`SchemaTypeError`）
 - [x] 页面变量可写入、可传递、可绑定（`current_page` 解析当前页面变量）
 - [x] 纯数据结构操作，无 I/O
@@ -134,9 +134,9 @@ TYPE_REGISTRY = {
 ## 7. 测试策略
 
 - **单元测试**：作用域规则矩阵（合法/越权读写组合）→ `tests/test_schema_scope.py`
-- **继承链测试**：配置参数多级继承、块覆盖优先级 → `tests/test_schema_config.py`
+- **继承链测试**：配置参数多级继承、文档覆盖优先级 → `tests/test_schema_config.py`
 - **类型校验测试**：各类型合法/非法值 → `tests/test_schema_types.py`
-- **帧隔离测试**：多块同名变量互不干扰 → `tests/test_schema_scope.py`
+- **帧隔离测试**：多文档同名变量互不干扰 → `tests/test_schema_scope.py`
 - **页面变量测试**：多页面变量写入/传参/绑定 → `tests/test_schema_page.py`
 - **独立性**：纯逻辑单测，无浏览器/LLM 依赖
 - **集成**：端到端纯逻辑链路（登录→传参→取返回值→配置继承→断言传播→页面绑定）→ `tests/test_schema_integration.py`
@@ -145,11 +145,11 @@ TYPE_REGISTRY = {
 
 - **包结构**（`webops/schema/`，纯标准库，无外部依赖）：
   - `errors.py`：`SchemaError` 基类 + `SchemaPathError`/`SchemaScopeError`/`SchemaTypeError`
-  - `models.py`：`Value`/`PageRef`/`BlockDecl`/`SchemaFrame`
+  - `models.py`：`Value`/`PageRef`/`FrameDecl`/`SchemaFrame`
   - `path.py`：`split_segments`（按 `/` 分层、拒绝空段）/`resolve_target`（提取首段目标帧 + 单段变量名）
   - `types.py`：`TYPE_REGISTRY` 类型登记表 + `TypeSpec`（token→Python 类→cast）+ `check_type`/`coerce`/`validate_type_name`/`infer_type`
   - `space.py`：`SchemaSpace` 门面（帧生命周期/读写/配置继承/页面变量）
-- **严格作用域解析**（`resolve_target`）：仅 `this`/自身块名 → 自身帧（单段化）；直接子块名/祖先/兄弟/孙子一律越权 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `this/登录/输入框/值`）→ 越权。跨帧传参经 ref `args`/`returns` 进行。
+- **严格作用域解析**（`resolve_target`）：仅 `this`/自身文档名 → 自身帧（单段化）；直接子文档名/祖先/兄弟/孙文档一律越权 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `this/登录/输入框/值`）→ 越权。跨帧传参经 ref `args`/`returns` 进行。
 - **配置继承**：`resolve_config` 沿 parent 链查找自身 `config` → 最近祖先 → 根级帧（`__init__` 注入 `global_config`）；业务变量走 `write`/`read` 严格作用域，天然不向上查找。
 - **类型校验双时机**：`write` 声明类型并即时校验；`read` 提取时二次强校验（防存储被上层绕开）。
 - **页面变量**：`PageRef` 为普通类型值；`current_page` 返回帧中最近写入的页面引用；`page_refs` 列出全部页面变量。

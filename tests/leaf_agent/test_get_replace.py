@@ -25,7 +25,7 @@ def llm_config() -> LLMConfig:
 @pytest.fixture
 def space() -> SchemaSpace:
     sp = SchemaSpace()
-    sp.enter_block("主流程")
+    sp.enter_frame("主流程")
     return sp
 
 
@@ -72,10 +72,10 @@ def test_get_undefined_fails_leaf(llm_config, space):
 
 def test_get_out_of_scope_fails_leaf(llm_config, space):
     """[[get:this/兄弟/值]] 越权读取 → 叶子直接 FAILURE（程序侧）。"""
-    sp = space  # fixture 已 enter_block 主流程
-    sp.enter_block("子块A")
-    sp.exit_block()
-    sp.enter_block("兄弟")
+    sp = space  # fixture 已 enter_frame 主流程
+    sp.enter_frame("子块A")
+    sp.exit_frame()
+    sp.enter_frame("兄弟")
     # 当前帧是"兄弟"，读"子块A/值"（兄弟级）应越权
     transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
     ctx, _ = _ctx(llm_config, sp, transport)

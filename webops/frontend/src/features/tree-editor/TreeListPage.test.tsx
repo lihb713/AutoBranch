@@ -9,13 +9,14 @@ const mocks = vi.hoisted(() => ({
   listTrees: vi.fn(),
   deleteTree: vi.fn(),
   runTree: vi.fn(),
+  createTree: vi.fn(),
 }));
 
 vi.mock("../../api/trees", () => ({
   treesApi: {
     listTrees: mocks.listTrees,
     getTree: vi.fn(),
-    createTree: vi.fn(),
+    createTree: mocks.createTree,
     updateTree: vi.fn(),
     deleteTree: mocks.deleteTree,
     checkTree: vi.fn(),
@@ -143,5 +144,46 @@ describe("TreeListPage", () => {
     expect(
       await screen.findByText("该行为树已有进行中的执行"),
     ).toBeInTheDocument();
+  });
+
+  it("导入文档：解析树名并 createTree，随后刷新列表", async () => {
+    mocks.listTrees.mockResolvedValue([]);
+    mocks.createTree.mockResolvedValue({ id: 9, name: "导入树", updated_at: "x" });
+    renderList();
+    await screen.findByText("还没有行为树");
+
+    const content = `tree: 导入树
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Action
+    name: 操作
+    description: 打开页面
+root: n1
+`;
+    const file = new File([content], "tree.yaml", { type: "text/yaml" });
+    fireEvent.change(screen.getByTestId("import-file"), { target: { files: [file] } });
+
+    await waitFor(() => expect(mocks.createTree).toHaveBeenCalled());
+    expect(mocks.createTree.mock.calls[0][0].name).toBe("导入树");
+    expect(mocks.createTree.mock.calls[0][0].content).toContain("type: Root");
+    expect(mocks.listTrees).toHaveBeenCalledTimes(2);
+  });
+
+  it("导入非法文档：显示错误且不 createTree", async () => {
+    mocks.listTrees.mockResolvedValue([]);
+    renderList();
+    await screen.findByText("还没有行为树");
+
+    const file = new File(["tree: 坏\nnodes: []"], "bad.yaml", { type: "text/yaml" });
+    fireEvent.change(screen.getByTestId("import-file"), { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/导入失败/)).toBeInTheDocument();
+    });
+    expect(mocks.createTree).not.toHaveBeenCalled();
   });
 });

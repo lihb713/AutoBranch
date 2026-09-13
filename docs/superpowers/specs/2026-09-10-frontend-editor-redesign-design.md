@@ -36,9 +36,8 @@
 
 - 画布上节点**独立存在**（对象池），父子关系通过**容器节点的槽位（下拉选择）**建立，而非物理嵌套。
 - **槽位有序**：执行顺序 = 槽位顺序（Sequence 先槽位1 后槽位2）。
-- 容器类型（Sequence/IfThenElse/Branch/Retry...）有槽位：
-  - IfThenElse：固定 2 槽（then/else）+ 判断条件字段
-  - Sequence：槽位数量可变，有「增加槽位」按钮
+- 槽位容器类型（与后端 DSL 一致，仅两类）：Root 固定 1 槽、Sequence 槽位数量可变（「增加槽位」按钮）。
+- 其余节点为**字段型**（无槽位）：IfThenElse 用 `if`/`then`/`else` 目标字段（分支后续动作=另一文档名或自然语言目标）；Branch 用 `action` + `branches` 分支行（`{when,then}`/`{otherwise}`）；Retry 用 `max` + `body` 目标；Step/LoopUntil/ref 用字段。
 - **槽位下拉只能选"游离树的根节点"**（未被任何槽位引用的节点；单节点也是树，根即自身）——保证纯树结构、无共享子树成图、不可选项不展示（符合前端设计法则）。
 
 ### 4. 主树区 + 游离区（画布布局）
@@ -115,7 +114,7 @@
 - returns 数量 = 被引树 outputs；returns 键（本树新建参数名）不得与本树已有变量重名。
 - **类型对齐**：args 传入变量类型 匹配 被引树 inputs 声明类型。
 
-**节点配置层**（主树与游离树节点都校验）：IfThenElse 两槽必须有挂载；Step 必填 action+expect；Branch when 非空；LoopUntil/Retry 必填 max；ref 必选目标、入参必填；condition/判断字段非空。复用后端 M2 清晰度校验（/check 权威）。
+**节点配置层**（主树与游离树节点都校验）：Step 必填 action+expect；Branch 必填 action + 至少一个分支（when 非空或 otherwise）；LoopUntil 必填 action/until/max；Retry 必填 max + body；IfThenElse 必填 if/then/else；ref 必选目标、入参必填；condition/判断字段非空。复用后端 M2 清晰度校验（/check 权威）。
 
 ### 11. 前端设计法则（已写入 AGENTS.md）
 

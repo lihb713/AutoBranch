@@ -126,3 +126,38 @@ def test_no_tools_returns_plain_text(config, fake):
     resp = session.request()  # 不传 tools
     assert resp.text == "纯文本回复"
     assert not resp.has_tool_calls
+
+
+def test_request_sends_stable_x_opencode_session(config, fake):
+    """每个会话发送稳定的 ``x-opencode-session`` 请求头（同一会话多轮一致）。
+
+    opencode.ai/zen/go 网关要求该头用于路由与提示缓存；缺省自动生成 UUID。
+    """
+    fake.responses = [chat_response(text="a"), chat_response(text="b")]
+    session = make_session(config, fake)
+    session.add_user_message("q1")
+    session.request()
+    session.add_user_message("q2")
+    session.request()
+
+    h1 = fake.requests[0].headers
+    h2 = fake.requests[1].headers
+    assert h1["x-opencode-session"]
+    assert h1["x-opencode-session"] == h2["x-opencode-session"]
+
+
+def test_config_session_id_reused_across_sessions(config, fake):
+    """配置提供 ``session_id`` 时，不同 LLMSession 实例复用同一 ID。"""
+    fake.responses = [chat_response(text="a"), chat_response(text="b")]
+    session_a = LLMSession(
+        config=config, system_prompt="你", transport=fake, session_id="fixed-session"
+    )
+    session_a.add_user_message("q")
+    session_a.request()
+    session_b = LLMSession(
+        config=config, system_prompt="你", transport=fake, session_id="fixed-session"
+    )
+    session_b.add_user_message("q")
+    session_b.request()
+    assert fake.requests[0].headers["x-opencode-session"] == "fixed-session"
+    assert fake.requests[1].headers["x-opencode-session"] == "fixed-session"
