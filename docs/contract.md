@@ -398,7 +398,7 @@ n9:
 ```
 
 > 参数**无层级概念**（一文档一树）：get/set 均针对当前文档执行帧，裸变量名即可；
-> 旧式 `this/变量` 前缀为兼容写法（M3 内部仍接受）。
+> 旧式 `裸变量名` 前缀为兼容写法（M3 内部仍接受）。
 
 **机制**：
 - **读取（get）确定性**：`[[get:xxx]]` 出现在叶子描述中，引擎在叶子执行前从
@@ -420,7 +420,7 @@ n9:
   │     └── ref 输入框(A')  schema: T/登录/输入框/   ← T 不可见
   └── ref 导出(B)  schema: T/导出/        ← T 调用产生的子帧
 
-T 可读/写:  this/xxx（仅自身帧，单段寻址）
+T 可读/写:  xxx（仅自身帧，单段寻址）
 T 不可读写: T/登录/xxx、T/登录/输入框/xxx   ← 跨帧一律不可见（经 ref args/returns 传参）
 ```
 
@@ -428,21 +428,21 @@ T 不可读写: T/登录/xxx、T/登录/输入框/xxx   ← 跨帧一律不可�
 
 ```
 每个文档执行帧只能:
-  写入 → 自己的帧（this/<名> 单段）
-  读取 → 自己的帧（this/<名> 单段）
+  写入 → 自己的帧（裸变量名 单段）
+  读取 → 自己的帧（裸变量名 单段）
   不可见 → 直接子文档 / 祖先 / 兄弟 / 孙文档 的帧
 ```
 
 **推论：传参是"逐层"的。** T 要给"输入框"文档传参，必须先传给登录文档，由登录文档内部转发：
 
 ```
-ref 登录: args: [this/username]       ← T 给直接子文档传参
-登录内:   ref 输入框: args: [this/值]   ← 登录文档负责给它自己的直接子文档传参
+ref 登录: args: [username]       ← T 给直接子文档传参
+登录内:   ref 输入框: args: [值]   ← 登录文档负责给它自己的直接子文档传参
 ```
 
 **取返回值 = ref returns 回收（对称）：**
 ```
-导出文档 B 完成后，把结果写到自己的帧 this/result
+导出文档 B 完成后，把结果写到自己的帧 result
 T 经 returns 回收: ref 导出: returns: {结果: str}   ← 本树新建接收变量"结果"（按序对应 B 的 outputs）
 ```
 
@@ -464,7 +464,7 @@ root: n1
 
 ```
 业务变量 (用户定义, 命名不固定):
-  严格作用域 —— 只能读/写自己的帧（this/<名> 单段，跨帧经 ref args/returns）
+  严格作用域 —— 只能读/写自己的帧（裸变量名 单段，跨帧经 ref args/returns）
   不向上查找 —— 用户必须显式写明"存到哪个变量 / 从哪个变量取"
   理由: 业务变量是用户定义的, 向上查找会破坏确定性
 
@@ -498,7 +498,7 @@ TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRe
   n4: {type: Action, description: 提取"订单金额" [[set:floatamount]]}
 
 页面引用类型 (见 §5.10):
-  open("https://.../login", save_to="this/登录页")   ← 类型: page_ref
+  open("https://.../login", save_to="登录页")   ← 类型: page_ref
   操作函数的页面绑定 = 当前页面变量指向的页
 ```
 
@@ -681,17 +681,17 @@ Sequence:
 ref 节点:
   type: ref
   target: <文档名>              # 单段，总是跨文档
-  args: [值...]                 # 列表，按序对应被引文档 inputs；元素为本树变量名（this/<名>）或字面量
+  args: [值...]                 # 列表，按序对应被引文档 inputs；元素为本树变量名（裸变量名）或字面量
   returns: {本树接收名: 类型}    # 字典，按序对应被引文档 outputs
 ```
 
 ```
 nodes:
-  n3: {type: ref, name: 去登录, target: 登录, args: [this/账号], returns: {登录结果: bool}}
+  n3: {type: ref, name: 去登录, target: 登录, args: [账号], returns: {登录结果: bool}}
 ```
 
 **参数绑定**（沿用 §5.3 schema 机制）：
-- `args` 按序对应被引文档 `inputs`；每个元素优先匹配本树已有变量名（`this/<名>`，命中即变量引用），未命中则作为字面量（str/int/float/bool）传入。
+- `args` 按序对应被引文档 `inputs`；每个元素优先匹配本树已有变量名（`裸变量名`，命中即变量引用），未命中则作为字面量（str/int/float/bool）传入。
 - `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量名**，值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `[[get:<接收名>]]` 引用。
 
 **绑定契约（严格执行）**：
@@ -709,14 +709,14 @@ nodes:
     └── ref 导出 → schema T/导出/
 
 可见性 (严格, 用户层单段寻址):
-  每帧只读写: 自己的帧（this/<名> 单段）
+  每帧只读写: 自己的帧（裸变量名 单段）
   不访问:     直接子文档 / 祖先 / 兄弟 / 孙文档 的帧（跨帧传参经 ref args/returns）
 
 传参逐层传递:  T → 登录 → 登录的子文档 ... (每层只处理直接子, 经 ref args/returns)
 同名不冲突:    不同文档的 username 在不同帧, 互不干扰
 ```
 
-> **注（用户 DSL）**：用户层已废除"直接写/读子帧"的语法（`this/子文档/变量` 多段路径、`写入:` 绑定）。传参/取返回一律经 ref 的 `args`/`returns` 显式声明；ref 为**运行期动态调用**（M7 `_tick_ref`：经 resolver 按文档名加载被引文档 → 建子帧 → 注入实参 → 从其 Root 递归执行 → returns 回收 → 退出子帧），帧保留至行为树运行结束（供黑板上报），激活帧控制访问权限。
+> **注（用户 DSL）**：用户层已废除"直接写/读子帧"的语法（`子文档/变量` 多段路径、`写入:` 绑定）。传参/取返回一律经 ref 的 `args`/`returns` 显式声明；ref 为**运行期动态调用**（M7 `_tick_ref`：经 resolver 按文档名加载被引文档 → 建子帧 → 注入实参 → 从其 Root 递归执行 → returns 回收 → 退出子帧），帧保留至行为树运行结束（供黑板上报），激活帧控制访问权限。
 
 #### 5.7.5 配置参数继承
 
@@ -757,7 +757,7 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 导出, actions: [n3, n4]}
   n3: {type: ref, name: 去登录, target: 登录,
-       args: [this/username, this/password], returns: {登录结果: bool}}   ← 引入登录文档
+       args: [username, password], returns: {登录结果: bool}}   ← 引入登录文档
   n4: {type: Step, name: 导出, action: n4a, expect: 出现"下载成功"}
   n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 [[get:登录结果]]）}
 root: n1
@@ -769,10 +769,10 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 主流程, actions: [n3]}
   n3: {type: ref, name: 去导出, target: 导出,
-       args: [this/账号, this/密码], returns: {导出结果: str}}
+       args: [账号, 密码], returns: {导出结果: str}}
 root: n1
 ```
-> 注：ref 用 `args: [...]` 按序传实参、`returns: {本树接收名: 类型}` 按序接收输出；叶子内变量读写用 `[[get:...]]` / `[[set:类型:this/...]]`。
+> 注：ref 用 `args: [...]` 按序传实参、`returns: {本树接收名: 类型}` 按序接收输出；叶子内变量读写用裸变量名 `[[get:...]]` / `[[set:类型:...]]`（旧式 `this/` 前缀兼容）。
 
 **Schema 流转路径追踪（主流程引用导出，导出引用登录）：**
 
@@ -1071,13 +1071,13 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 
 ```
 主流程 T (schema T/):
-  open("https://.../login", save_to="this/登录页")
-  open("https://.../orders", save_to="this/订单页")    ← 一个 schema 多个页面变量
+  open("https://.../login", save_to="登录页")
+  open("https://.../orders", save_to="订单页")    ← 一个 schema 多个页面变量
 
   ref: 登录文档 A:
-    args: [this/登录页]         ← 传页面变量 (同普通参数)
+    args: [登录页]         ← 传页面变量 (同普通参数)
   ref: 导出文档 B:
-    args: [this/订单页]
+    args: [订单页]
 ```
 
 **页面变量机制规则：**
@@ -1101,7 +1101,7 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 `[[set:str:变量]]` = 存 url 文本。**标注即类型契约**——open 产物恒为 PageRef、
 get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函数保证。
 
-**帧内变量单段限制**（M3 强约束）：路径在目标帧之后必须恰好一段变量名（如 `this/amount`）；含 `/` 或多段的路径（如 `this/a/b`）被拒绝——传参逐层进行（§5.3.2），不存在帧内子路径。
+**帧内变量单段限制**（M3 强约束）：路径在目标帧之后必须恰好一段变量名（如 `amount`）；含 `/` 或多段的路径（如 `a/b`）被拒绝——传参逐层进行（§5.3.2），不存在帧内子路径。
 
 **LLM 视角**：LLM 每次只面对**当前活动页**的语义图（一页），跨页数据走变量、不跨页记忆。多标签页并存由 `[[set:page_ref:...]]` 命名的页面变量承载；**切换由行为树描述显式表达**（"切回 X 页"→ activate、新开/访问 → open），LLM 按描述选函数，引擎保证活动页切换确定性。
 
@@ -2157,7 +2157,7 @@ M9b 行为树管理系统后端    M2+M7+M8 (内嵌引擎)
 ```
 功能:
   帧模型: 文档执行帧的独立命名空间 (§5.7.4)，ref 运行期动态调用建帧
-  严格作用域: 读/写自己（this/<名> 单段，跨帧经 ref args/returns）(§5.3.2)
+  严格作用域: 读/写自己（裸变量名 单段，跨帧经 ref args/returns）(§5.3.2)
   配置参数继承: 向上查找 (§5.3.4)
   页面变量机制 (§5.10)
   变量类型: TYPE_REGISTRY (str/int/float/bool/page_ref) (§5.3.5)
