@@ -34,49 +34,55 @@ from webops.parser.models import (
     make_issue,
 )
 
-#: ``[[get:this/path]]`` 读取引用（叶子执行前程序替换为真实值）
-_GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
-#: ``[[set[:type]:path]]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略），path 可带 this/ 或不带
+#: ``[[get:path]]`` 读取引用（叶子执行前程序替换为真实值）；path 为裸变量名（兼容 this/名）
+_GET_TMPL = re.compile(r"\[\[\s*get:\s*((?:this/)?[^\[\]]+?)\s*\]\]")
+#: ``[[set[:type]:path]]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略），path 裸名（兼容 this/名）
 _SET_TMPL = re.compile(
     r"\[\[\s*set:(?:(str|int|float|bool|page_ref):)?\s*((?:this/)?[^\[\]:]+?)\s*\]\]"
 )
-#: 裸 ``this/path``（绑定/传参路径等）
+#: 裸 ``this/path``（兼容旧写法；用于 scope 检查）
 _PLAIN_PATH = re.compile(r"(?<![\w$])this/([^\s{}|>]+)")
 
 
-def _normalize_set_path(path: str) -> str:
-    """路径补全 ``this/`` 前缀（``页面A`` → ``this/页面A``）。"""
+def _bare_name(path: str) -> str:
+    """归一化为裸变量名：``this/param`` / ``$this/param`` → ``param``。"""
     p = path.strip()
-    if p.startswith("this/") or p.startswith("$this/"):
-        return p
-    if p in ("this", "$this") or p.startswith(("this", "$this")):
-        return "this"
-    return f"this/{p}"
+    for prefix in ("this/", "$this/"):
+        if p.startswith(prefix):
+            return p[len(prefix) :]
+    if p in ("this", "$this"):
+        return ""
+    return p
 
 
 def _iter_set_decls(text: str) -> list[tuple[str, str]]:
-    """提取写入声明 ``(path, type)``（type ∈ TYPE_REGISTRY token/空串）。"""
+    """提取写入声明 ``(裸变量名, type)``（type ∈ TYPE_REGISTRY token/空串）。"""
     decls: list[tuple[str, str]] = []
     for m in _SET_TMPL.finditer(text):
         type_name = (m.group(1) or "").strip()
-        path = _normalize_set_path(m.group(2) or "")
-        if path and path != "this":
+        path = _bare_name(m.group(2) or "")
+        if path:
             decls.append((path, type_name))
     return decls
 
 
 def _iter_get_paths(text: str) -> list[str]:
-    """提取描述中的全部读取路径（``[[get:this/...]]``）。"""
-    return [m.group(1).strip() for m in _GET_TMPL.finditer(text) if m.group(1).strip()]
+    """提取描述中的全部读取变量名（``[[get:...]]`` → 裸名）。"""
+    names: list[str] = []
+    for m in _GET_TMPL.finditer(text):
+        name = _bare_name(m.group(1))
+        if name:
+            names.append(name)
+    return names
 
 
 def _iter_set_paths(text: str) -> list[str]:
-    """提取描述中的全部写入路径（``[[set:...]]``）。"""
+    """提取描述中的全部写入变量名（``[[set:...]]`` → 裸名）。"""
     return [path for path, _ in _iter_set_decls(text)]
 
 
 def _iter_schema_paths(text: str) -> list[str]:
-    """从自然语言描述中提取全部 ``this/...`` schema 路径（读引用/写声明/裸路径）。"""
+    """从自然语言描述中提取全部变量路径（读引用/写声明/裸 this/ 兼容）。"""
     paths: list[str] = []
     rest = _GET_TMPL.sub("", text)
     rest = _SET_TMPL.sub("", rest)
@@ -90,28 +96,18 @@ def _iter_schema_paths(text: str) -> list[str]:
 
 
 def _schema_segments(path: str) -> tuple[str, ...] | None:
-    """剥掉 ``this/`` 前缀后的路径段（如 ``this/username`` → ``('username',)``）。
+    """归一化为裸变量名后按 ``/`` 分段（``this/username`` → ``('username',)``）。
 
-    兼容旧标记 ``$this``（仅内部归一化）；非法返回 None。函数式传参后
-    用户层只用单段 ``this/<名>``。
+    去 this/ 后仅单段合法；非法/空返回 None。
     """
-    p = path.strip()
-    for prefix in ("this/", "$this/"):
-        if p.startswith(prefix):
-            p = p[len(prefix) :]
-            break
-    else:
-        if p in ("this", "$this") or p.startswith(("this", "$this")):
-            return None
+    p = _bare_name(path)
     parts = [s for s in p.split("/") if s]
     return tuple(parts) if parts else None
 
 
 def _display_path(path: str) -> str:
-    p = path.strip()
-    if p.startswith(("this/", "$this/")):
-        return p
-    return f"this/{p}"
+    """展示/存储用的裸变量名（去 this/ 前缀）。"""
+    return _bare_name(path)
 
 
 @dataclass

@@ -65,26 +65,28 @@ class _LeafOutcome:
     records: list[ToolCallRecord] = field(default_factory=list)
 
 
-#: ``[[get:this/path]]`` 读取引用（叶子执行前程序替换，M2 同款正则）
-_GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
+#: ``[[get:path]]`` 读取引用（叶子执行前程序替换，M2 同款正则；path 裸变量名或兼容 this/名）
+_GET_TMPL = re.compile(r"\[\[\s*get:\s*((?:this/)?[^\[\]]+?)\s*\]\]")
 
 
-def _norm_path(path: str) -> str:
-    """把 `$this/` 前缀归一化为 `this/`（extract target 与 set_targets 比较用）。
-
-    M3 解析层兼容 ``$this``/``this`` 两种当前帧标记；为让校验一致，统一按
-    新语法 ``this/`` 比较。
-    """
+def _bare_name(path: str) -> str:
+    """归一化为裸变量名：``this/param`` / ``$this/param`` → ``param``。"""
     p = (path or "").strip()
-    if p.startswith("$this/"):
-        return "this/" + p[len("$this/") :]
+    for prefix in ("this/", "$this/"):
+        if p.startswith(prefix):
+            return p[len(prefix) :]
     return p
 
 
-def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | None]:
-    """叶子执行前把 ``[[get:this/path]]`` 替换为 blackboard 真实值（确定性）。
+def _norm_path(path: str) -> str:
+    """把 `$this/`/`this/` 前缀归一化为裸变量名（extract target 与 set_targets 比较用）。"""
+    return _bare_name(path)
 
-    返回 ``(替换后文本, None)``；读取失败（变量未定义或越出作用域）返回
+
+def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | None]:
+    """叶子执行前把 ``[[get:path]]`` 替换为 blackboard 真实值（确定性）。
+
+    返回 ``(替换后文本, None)``；读取失败（变量未定义）返回
     ``(原文, 错误说明)``——该叶子应直接 FAILURE，不让 LLM 猜测。
     描述不含 ``[[get:...]]`` 时不做替换（即使未注入 space 也正常执行）。
     """
@@ -95,14 +97,15 @@ def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | No
     frame = ctx.space._current
     replaced = description
     for match in _GET_TMPL.finditer(description):
-        rel = match.group(1).strip()
-        path = f"this/{rel}"
+        var = _bare_name(match.group(1))
+        if not var:
+            continue
         try:
-            value = ctx.space.read(frame, path)
+            value = ctx.space.read(frame, var)
         except SchemaError as exc:
-            return description, f"变量读取失败（{path}）: {exc}"
+            return description, f"变量读取失败（{var}）: {exc}"
         if value is None:
-            return description, f"变量未定义: {path}"
+            return description, f"变量未定义: {var}"
         replaced = replaced.replace(match.group(0), str(value))
     return replaced, None
 

@@ -175,7 +175,7 @@ def test_extract_target_declared_allowed(llm_config, space):
     assert result.status == "success"
     extract_calls = [c for c in engine.calls if c[0] == "extract"]
     assert len(extract_calls) == 1
-    assert extract_calls[0][1]["target"] == "this/已声明"
+    assert extract_calls[0][1]["target"] == "已声明"
 
 def test_open_save_to_must_be_declared(llm_config, space):
     """open 的 save_to 目标未在叶子 [[set:]] 声明集内 → 拒绝（不写入）。"""
@@ -258,4 +258,4 @@ def test_open_save_to_declared_allowed(llm_config, space):
     assert result.status == "success"
     open_calls = [c for c in engine.calls if c[0] == "open"]
     assert len(open_calls) == 1
-    assert open_calls[0][1]["save_to"] == "this/页面A"
+    assert open_calls[0][1]["save_to"] == "页面A"

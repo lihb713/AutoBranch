@@ -146,7 +146,7 @@ class RefNode(Node):
 
 - 统一槽位模型下，分支目标不支持裸字符串 = `ref: <文档名>` 简写（旧 §4.3.2「分支目标 = 文档引用」写法已废除）——`Branch.branches[].action` 与 `otherwise` 均为槽位字段，值为子树根 id；跨文档复用由分支子树里的 `ref` 节点承担。
 - 配置参数覆盖在文档顶层识别（`timeout`/`retry`/`browser` 标量），未声明不要求用户书写（§4.2/§5.7.5）。
-- 变量作用域校验（§5.3.2）：语法 `[[get:this/变量]]`（读取引用）/`[[set:类型:this/变量]]`（写入声明）——用户层仅 `this/变量`（自身）单段合法；多段（`this/子文档/变量`）或指向非自身 → `scope.out_of_scope`。**get 已定义校验**：`[[get:this/x]]` 的 x 必须是本文档 inputs 声明、文档内 `[[set:...]]` 目标或 ref returns 目标，否则 `scope.get_undeclared`（output 声明不构成 get 源）。`ActionNode.set_targets` 记录动作的 `[[set:...]]` 可写集；`ActionNode.set_decls` 记录类型标注 `[[set:page_ref:this/页面A]]`（存页签引用 PageRef）与 `[[set:str:this/url]]`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`[[get:...]]` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
+- 变量作用域校验（§5.3.2）：语法 `[[get:变量]]`（读取引用）/`[[set:类型:变量]]`（写入声明）——**裸变量名**（作用于当前文档执行帧），无层级；旧式 `this/变量` 前缀为兼容写法。跨帧传参经 ref args/returns。**get 已定义校验**：`[[get:x]]` 的 x 必须是本文档 inputs 声明、文档内 `[[set:...]]` 目标或 ref returns 目标，否则 `scope.get_undeclared`（output 声明不构成 get 源）。`ActionNode.set_targets` 记录动作的 `[[set:...]]` 可写集（裸变量名）；`ActionNode.set_decls` 记录类型标注 `[[set:page_ref:页面A]]`（存页签引用 PageRef）与 `[[set:str:url]]`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref），type 为空串时按动作推断；`[[get:...]]` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
 - 引用处参数契约（§5.7.3）：被引文档声明的 `inputs` 须由 ref `args` 按数量/类型对应，`outputs` 由 `returns` 按数量对应；不一致 → `ref.args_mismatch` / `ref.returns_mismatch` / `ref.name_conflict`。
 
 ## 6. 验收标准

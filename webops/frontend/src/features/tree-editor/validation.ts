@@ -59,7 +59,11 @@ function literalMatches(typ: string, value: string): boolean {
   return true;
 }
 
-const SET_TMPL = /\[\[\s*set:(?:(str|int|float|bool|page_ref):)?\s*this\/([^[\]:]+?)\s*\]\]/g;
+const SET_TMPL = /\[\[\s*set:(?:(str|int|float|bool|page_ref):)?\s*(?:this\/)?([^[\]:]+?)\s*\]\]/g;
+
+function bareName(path: string): string {
+  return path.replace(/^(?:this\/|\$this\/)/, "");
+}
 
 /** 收集本树已声明变量：文档级 inputs + 各叶子 [[set:...]] 目标 + 各 ref returns 键。 */
 export function collectDeclaredVars(doc: TreeDoc): Set<string> {
@@ -69,7 +73,7 @@ export function collectDeclaredVars(doc: TreeDoc): Set<string> {
       for (const key of Object.keys(node.returns ?? {})) vars.add(key);
     } else {
       for (const desc of Object.values(node.fields)) {
-        for (const m of desc.matchAll(SET_TMPL)) vars.add(m[2]);
+        for (const m of desc.matchAll(SET_TMPL)) vars.add(bareName(m[2]));
       }
     }
   }

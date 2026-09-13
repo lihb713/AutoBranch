@@ -387,28 +387,30 @@ n9:
 
 变量通过**带层次结构的 schema（命名空间）**管理。每次文档引用产生一个独立的执行帧（schema，类似函数调用栈帧），参数写在各自的命名空间里，**同名不冲突**。
 
-**变量引用统一为前后有界的引用符号（与自然语言明确区分）**：
+**变量引用统一为前后有界的引用符号（与自然语言明确区分），用裸变量名**：
 
 ```
-变量引用统一为带 schema 的路径形式 (this = 当前文档执行帧):
-  读取:  [[get:this/amount]]            （叶子执行前程序确定性替换为真实值）
-  写入声明: [[set:类型:this/amount]]     （声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref）
+变量引用统一为裸变量名（作用于当前文档执行帧）:
+  读取:  [[get:amount]]            （叶子执行前程序确定性替换为真实值）
+  写入声明: [[set:类型:amount]]     （声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref）
   传参:   ref 处的 args: [值...]         （传实参给被引用文档）
   取返回: ref 处的 returns: {名: 类型}    （接收被引用文档的输出）
 ```
 
+> 参数**无层级概念**（一文档一树）：get/set 均针对当前文档执行帧，裸变量名即可；
+> 旧式 `this/变量` 前缀为兼容写法（M3 内部仍接受）。
+
 **机制**：
-- **读取（get）确定性**：`[[get:this/xxx]]` 出现在叶子描述中，引擎在叶子执行前从
+- **读取（get）确定性**：`[[get:xxx]]` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
-  读取失败（变量未定义 / 越出可见作用域）→ 该叶子直接 FAILURE（程序错误）。
-- **get 变量静态校验**：`[[get:this/x]]` 读取的变量必须是**本文档 inputs 声明**（调用方
-  经 ref args 传入）、**本文档内 `[[set:...:this/x]]` 声明**或 **ref 的 returns 目标变量**；
+  读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
+- **get 变量静态校验**：`[[get:x]]` 读取的变量必须是**本文档 inputs 声明**（调用方
+  经 ref args 传入）、**本文档内 `[[set:...:x]]` 声明**或 **ref 的 returns 目标变量**；
   未定义即读取 → 清晰度校验报 `scope.get_undeclared`（解析期拦截）。output 声明不构成
   get 源（输出是本文档返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
   也须配 `[[set:...]]` 标注才能被 get。
-- **写入（set）声明**：`[[set:类型:this/xxx]]` 声明本动作的可写变量集。LLM 决定何时调用
+- **写入（set）声明**：`[[set:类型:xxx]]` 声明本动作的可写变量集。LLM 决定何时调用
   extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**（未声明路径拒绝）。
-- 用户层统一 `this` 单段（`this/变量`）；`$this` 仅为内部兼容（M3 保留，新代码用 `this`）。
 
 #### 5.3.1 schema 的层级结构
 
@@ -492,8 +494,8 @@ TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRe
 
 ```
 示例:
-  n3: {type: Step, action: n4, expect: [[get:this/amount]] 是数字 且 在 0~100000 之间}
-  n4: {type: Action, description: 提取"订单金额" [[set:float:this/amount]]}
+  n3: {type: Step, action: n4, expect: [[get:amount]] 是数字 且 在 0~100000 之间}
+  n4: {type: Action, description: 提取"订单金额" [[set:floatamount]]}
 
 页面引用类型 (见 §5.10):
   open("https://.../login", save_to="this/登录页")   ← 类型: page_ref
@@ -690,7 +692,7 @@ nodes:
 
 **参数绑定**（沿用 §5.3 schema 机制）：
 - `args` 按序对应被引文档 `inputs`；每个元素优先匹配本树已有变量名（`this/<名>`，命中即变量引用），未命中则作为字面量（str/int/float/bool）传入。
-- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量名**，值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `[[get:this/<接收名>]]` 引用。
+- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量名**，值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `[[get:<接收名>]]` 引用。
 
 **绑定契约（严格执行）**：
 - `args` 数量 ≠ 被引文档 inputs 数量 → `ref.args_mismatch`；`returns` 数量 ≠ outputs 数量 → `ref.returns_mismatch`；接收名与本树 inputs 重名 → `ref.name_conflict`。
@@ -738,13 +740,13 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 登录, actions: [n3, n4, n5, n6]}
   n3: {type: Step, name: 填账号, action: n3a, expect: 输入成功}
-  n3a: {type: Action, name: 填账号, description: 填 [[get:this/username]]}
+  n3a: {type: Action, name: 填账号, description: 填 [[get:username]]}
   n4: {type: Step, name: 填密码, action: n4a, expect: 输入成功}
-  n4a: {type: Action, name: 填密码, description: 填 [[get:this/password]]}
+  n4a: {type: Action, name: 填密码, description: 填 [[get:password]]}
   n5: {type: Step, name: 点登录, action: n5a, expect: 出现"工作台"}
   n5a: {type: Action, name: 点登录, description: 点"登录"}
   n6: {type: Step, name: 记录状态, action: n6a, expect: 非空}
-  n6a: {type: Action, name: 记录状态, description: 提取登录状态 [[set:bool:this/login_success]]}
+  n6a: {type: Action, name: 记录状态, description: 提取登录状态 [[set:boollogin_success]]}
 root: n1
 
 导出.yaml:
@@ -757,7 +759,7 @@ nodes:
   n3: {type: ref, name: 去登录, target: 登录,
        args: [this/username, this/password], returns: {登录结果: bool}}   ← 引入登录文档
   n4: {type: Step, name: 导出, action: n4a, expect: 出现"下载成功"}
-  n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 [[get:this/登录结果]]）}
+  n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 [[get:登录结果]]）}
 root: n1
 
 主流程.yaml:
@@ -770,7 +772,7 @@ nodes:
        args: [this/账号, this/密码], returns: {导出结果: str}}
 root: n1
 ```
-> 注：ref 用 `args: [...]` 按序传实参、`returns: {本树接收名: 类型}` 按序接收输出；叶子内变量读写用 `[[get:this/...]]` / `[[set:类型:this/...]]`。
+> 注：ref 用 `args: [...]` 按序传实参、`returns: {本树接收名: 类型}` 按序接收输出；叶子内变量读写用 `[[get:...]]` / `[[set:类型:this/...]]`。
 
 **Schema 流转路径追踪（主流程引用导出，导出引用登录）：**
 
@@ -1082,7 +1084,7 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 
 ```
 1. 打开页签: open(url, save_to?) — 打开 url 新建页签并成为当前活动页；
-   **仅当动作描述含 [[set:page_ref:this/页面A]] 声明时才填 save_to** 写入页面引用；
+   **仅当动作描述含 [[set:page_ref页面A]] 声明时才填 save_to** 写入页面引用；
    省略 save_to 不保存任何变量（首次打开/访问即新建页签，无"获取页面变量"概念）
 2. 切回已存页签: activate(page_var) — 把已存页面变量指向的页签设为当前活动页
    （只切焦点，不新建）；描述如"切回/使用已打开的 X 页"时调用

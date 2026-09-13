@@ -196,29 +196,28 @@ class SchemaSpace:
         """导出当前帧（含子帧）的全量变量快照。
 
         :param frame: 起始帧；None 用当前激活帧（无则根帧）。
-        :return: ``[{path, type, value}]``，path 形如 ``this/param`` 或
-          ``this/子块/param``（相对起始帧的完整层级），供执行报告与前端
-          变量黑板展示。注意：此处递归子帧路径属**展示输出**（黑板上报各
-          调用帧变量），并非 ``resolve_target`` 运行期寻址——运行期寻址
-          已单段化，仅当前帧。
+        :return: ``[{path, type, value}]``，path 形如 ``文档名/变量名``
+          （如 ``test2/param1``）——每个帧独立平铺展示，**无嵌套层级**；
+          供执行报告与前端变量黑板展示。注意：此处递归子帧属**展示输出**
+          （黑板上报各调用帧变量），并非 ``resolve_target`` 运行期寻址——
+          运行期寻址仅当前帧单段裸变量名。
         """
         start = frame if frame is not None else self._current
         if start is None:
             start = self.root
         result: list[dict] = []
 
-        def walk(fr: SchemaFrame, prefix: str) -> None:
+        def walk(fr: SchemaFrame) -> None:
             for var in sorted(fr.storage):
                 result.append(
                     {
-                        "path": f"{prefix}{var}",
+                        "path": f"{fr.name}/{var}",
                         "type": fr.declared.get(var, ""),
                         "value": fr.storage[var],
                     }
                 )
             for child_name in sorted(fr.children):
-                child = fr.children[child_name]
-                walk(child, f"{prefix}{child_name}/")
+                walk(fr.children[child_name])
 
-        walk(start, "this/")
+        walk(start)
         return result

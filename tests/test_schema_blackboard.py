@@ -1,6 +1,7 @@
-"""M3 变量引用新语法与 blackboard 快照测试。
+"""M3 变量引用（裸变量名）与 blackboard 快照测试。
 
-覆盖：``this/``（无 $）路径读写、``snapshot_variables`` 快照导出。
+覆盖：裸变量名读写（兼容 `this/` 前缀）、`snapshot_variables` 以「文档名/变量名」
+平铺导出（无层级）。
 """
 
 from __future__ import annotations
@@ -15,79 +16,85 @@ def _space() -> SchemaSpace:
     return SchemaSpace(global_config={"timeout": 30})
 
 
-def test_this_path_write_read():
-    """`this/param`（无 $）路径读写与 `$this/param` 等价。"""
+def test_bare_name_write_read():
+    """裸变量名读写（get/set 均针对当前文档帧）。"""
+    sp = _space()
+    root = sp.enter_frame("主流程")
+    sp.write(root, "amount", 98.0, "float")
+    assert sp.read(root, "amount") == 98.0
+
+
+def test_this_path_still_compatible():
+    """兼容旧式 `this/param` / `$this/param` 路径读写。"""
     sp = _space()
     root = sp.enter_frame("主流程")
     sp.write(root, "this/amount", 98.0, "float")
     assert sp.read(root, "this/amount") == 98.0
-    # 旧 $this 仍内部兼容
     assert sp.read(root, "$this/amount") == 98.0
+    assert sp.read(root, "amount") == 98.0
 
 
-def test_this_child_path_write_read():
-    """单段寻址：跨帧传参经各帧局部变量（帧路径不再支持子块段）。"""
+def test_frames_isolated_bare_names():
+    """各文档帧变量隔离：子帧裸名变量与父帧互不冲突。"""
     sp = _space()
     root = sp.enter_frame("主流程")
     child = sp.enter_frame("登录")
-    sp.write(root, "this/username", "admin", "str")
-    sp.write(child, "this/username", sp.read(root, "this/username"), "str")
-    assert sp.read(child, "this/username") == "admin"
-    # 父块经单段读自己局部变量
-    assert sp.read(root, "this/username") == "admin"
+    sp.write(root, "username", "父", "str")
+    sp.write(child, "username", "子", "str")
+    assert sp.read(root, "username") == "父"
+    assert sp.read(child, "username") == "子"
     sp.exit_frame()
 
 
-def test_this_scope_violation_read():
-    """`this` 引用祖先/兄弟/孙子帧越权被拒。"""
+def test_cross_frame_path_rejected():
+    """跨帧多段路径（祖先/兄弟/孙子）越权被拒。"""
     sp = _space()
-    root = sp.enter_frame("主流程")
+    sp.enter_frame("主流程")
     child = sp.enter_frame("登录")
-    # 子块尝试读孙块（未建）→ 越权
     with pytest.raises(SchemaScopeError):
-        sp.read(child, "this/子块/x")
+        sp.read(child, "主流程/x")
+    with pytest.raises(SchemaScopeError):
+        sp.read(child, "登录/子块/x")
     sp.exit_frame()
-    # 根块尝试读兄弟级（不存在）→ 越权
-    with pytest.raises(SchemaScopeError):
-        sp.read(root, "this/不存在/块/x")
 
 
 def test_snapshot_variables_flat():
-    """snapshot_variables 导出当前帧变量（含子帧）。"""
+    """snapshot_variables 导出各帧变量为「文档名/变量名」（无层级）。"""
     sp = _space()
     root = sp.enter_frame("主流程")
-    sp.write(root, "this/amount", 98.0, "float")
+    sp.write(root, "amount", 98.0, "float")
     child = sp.enter_frame("登录")
-    sp.write(child, "this/username", "admin", "str")
+    sp.write(child, "username", "admin", "str")
     sp.exit_frame()
 
     snap = sp.snapshot_variables(root)
     paths = {item["path"]: item for item in snap}
-    assert paths["this/amount"]["value"] == 98.0
-    assert paths["this/amount"]["type"] == "float"
-    assert paths["this/登录/username"]["value"] == "admin"
-    assert paths["this/登录/username"]["type"] == "str"
+    assert paths["主流程/amount"]["value"] == 98.0
+    assert paths["主流程/amount"]["type"] == "float"
+    assert paths["登录/username"]["value"] == "admin"
+    assert paths["登录/username"]["type"] == "str"
+    assert "this/" not in " ".join(paths)
 
 
 def test_snapshot_variables_contains_page_ref():
     sp = _space()
     root = sp.enter_frame("主流程")
-    sp.write(root, "this/登录页", PageRef(page_id="1", url="http://x"), "page_ref")
+    sp.write(root, "登录页", PageRef(page_id="1", url="http://x"), "page_ref")
     snap = sp.snapshot_variables(root)
     paths = {item["path"]: item for item in snap}
-    assert paths["this/登录页"]["type"] == "page_ref"
-    assert paths["this/登录页"]["value"].page_id == "1"
+    assert paths["主流程/登录页"]["type"] == "page_ref"
+    assert paths["主流程/登录页"]["value"].page_id == "1"
 
 
 def test_snapshot_variables_uses_current_frame():
     sp = _space()
     root = sp.enter_frame("主流程")
-    sp.write(root, "this/a", "1", "str")
+    sp.write(root, "a", "1", "str")
     child = sp.enter_frame("登录")
-    sp.write(child, "this/b", "2", "str")
-    # 当前激活帧是登录子块
+    sp.write(child, "b", "2", "str")
+    # 当前激活帧是登录子帧 → 仅展示登录帧变量
     snap = sp.snapshot_variables()
     paths = {item["path"] for item in snap}
-    assert "this/b" in paths
-    assert "this/a" not in paths  # 父帧不可见
+    assert "登录/b" in paths
+    assert "主流程/a" not in paths
     sp.exit_frame()
