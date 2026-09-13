@@ -1,14 +1,14 @@
 import type { NodeType } from "./treeModel";
 
 const ITEMS: { type: NodeType; title: string; hint: string }[] = [
-  { type: "Step", title: "步骤", hint: "操作 + 验证" },
-  { type: "Sequence", title: "顺序", hint: "按序执行动作" },
-  { type: "IfThenElse", title: "判断", hint: "判 if 分流" },
-  { type: "Branch", title: "分支", hint: "先操作再按条件分流" },
-  { type: "Retry", title: "重试", hint: "失败重试限次" },
-  { type: "LoopUntil", title: "循环", hint: "直到条件满足" },
-  { type: "Action", title: "动作", hint: "单个操作（叶子）" },
-  { type: "ref", title: "引用", hint: "引用另一文档" },
+  { type: "Step", title: "Step", hint: "操作 + 验证" },
+  { type: "Sequence", title: "Sequence", hint: "按序执行动作" },
+  { type: "IfThenElse", title: "IfThenElse", hint: "判 if 分流" },
+  { type: "Branch", title: "Branch", hint: "先操作再按条件分流" },
+  { type: "Retry", title: "Retry", hint: "失败重试限次" },
+  { type: "LoopUntil", title: "LoopUntil", hint: "直到条件满足" },
+  { type: "Action", title: "Action", hint: "单个操作（叶子）" },
+  { type: "ref", title: "ref", hint: "引用另一文档" },
 ];
 
 type NodePaletteProps = {
