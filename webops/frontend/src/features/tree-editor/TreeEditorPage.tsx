@@ -141,9 +141,16 @@ export function TreeEditorPage() {
     (refId: string) => {
       if (!doc) return;
       if (expandedRefs.has(refId)) {
+        // 收缩：移除展开标记并清除预览（TreeCanvas 布局/渲染基于 refPreviews）
         const next = new Set(expandedRefs);
         next.delete(refId);
         setExpandedRefs(next);
+        setRefPreviews((prev) => {
+          if (!(refId in prev)) return prev;
+          const copy = { ...prev };
+          delete copy[refId];
+          return copy;
+        });
         setSelectedPreview((prev) => (prev && prev.refId === refId ? null : prev));
         return;
       }

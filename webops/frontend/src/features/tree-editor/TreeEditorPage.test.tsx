@@ -204,4 +204,61 @@ describe("TreeEditorPage（统一槽位模型）", () => {
     expect(screen.getByTestId("delete-node")).toBeDisabled();
     expect(screen.getByTestId("delete-subtree")).toBeDisabled();
   });
+
+  it("ref 展开后收缩：预览消失且按钮回到「展开」", async () => {
+    const refContent = `tree: A
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: ref
+    name: 去B
+    target: B
+    args: []
+    returns: {}
+root: n1
+`;
+    const refTree = {
+      id: 7,
+      name: "A",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-01T00:00:00",
+      content: refContent,
+    };
+    mocks.getTree.mockResolvedValue(refTree);
+    mocks.getTreeByName.mockResolvedValue({
+      id: 8,
+      name: "B",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-01T00:00:00",
+      content: `tree: B
+nodes:
+  n1:
+    type: Root
+    name: B根
+    body: n2
+  n2:
+    type: Action
+    name: 动作
+    description: x
+root: n1
+`,
+    });
+    renderEditor("/editor/1");
+    await waitFor(() => expect(screen.getByTestId("node-card-n2")).toBeInTheDocument());
+
+    // 展开 → 预览子树出现
+    fireEvent.click(screen.getByTestId("node-toggle-n2"));
+    await waitFor(() => expect(screen.getByTestId("preview-node-n1")).toBeInTheDocument());
+    expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("收缩");
+
+    // 收缩 → 预览消失、按钮回「展开」
+    fireEvent.click(screen.getByTestId("node-toggle-n2"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("preview-node-n1")).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("展开");
+  });
 });
