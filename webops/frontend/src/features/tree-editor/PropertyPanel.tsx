@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TextField } from "../../components/TextField";
+import { DocInterfaceEditor } from "./DocInterfaceEditor";
 import {
   detachSlot,
   freeRoots,
@@ -63,6 +64,7 @@ export function PropertyPanel({
     return (
       <aside className="property-panel" data-testid="property-panel">
         <p className="palette__title">属性面板</p>
+        <DocInterfaceEditor doc={doc} readonly={readonly} onUpdate={onUpdate} />
         <p className="property-panel__hint">未选中节点</p>
       </aside>
     );
@@ -165,6 +167,7 @@ export function PropertyPanel({
   return (
     <aside className="property-panel" data-testid="property-panel" data-node-id={node.id}>
       <p className="palette__title">属性面板</p>
+      <DocInterfaceEditor doc={doc} readonly={readonly} onUpdate={onUpdate} />
       <div className="property-panel__header">
         <span className="property-panel__type" data-testid="node-type-badge">
           {node.type}
@@ -318,6 +321,13 @@ export function PropertyPanel({
           {cycleError ? (
             <p className="error-message" data-testid="ref-cycle-error">
               {cycleError}
+            </p>
+          ) : null}
+          {!node.target ? (
+            <p className="property-panel__hint">选择目标文档后配置入参/出参</p>
+          ) : !meta ? (
+            <p className="property-panel__hint" data-testid="ref-loading">
+              正在加载目标文档参数…
             </p>
           ) : null}
           {meta ? (
