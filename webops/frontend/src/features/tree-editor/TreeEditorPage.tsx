@@ -353,7 +353,6 @@ export function TreeEditorPage() {
               refPreviews={refPreviews}
               onToggleRef={toggleRef}
               onSelect={setSelectedId}
-              onDeleteNode={handleDeleteNode}
             />
             {Object.keys(doc.nodes).length <= 1 ? (
               <EmptyState title="还没有节点" hint="点击左侧面板的节点类型添加" />

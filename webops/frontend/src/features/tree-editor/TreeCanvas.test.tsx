@@ -26,7 +26,6 @@ function renderCanvas(props: Partial<Parameters<typeof TreeCanvas>[0]> = {}) {
       selectedId={null}
       issueByNode={new Map()}
       onSelect={() => {}}
-      onDeleteNode={() => {}}
       {...props}
     />,
   );
@@ -66,20 +65,7 @@ describe("TreeCanvas", () => {
     expect(onSelect).toHaveBeenCalledWith("n3");
   });
 
-  it("节点删除按钮回调 onDeleteNode", () => {
-    const onDeleteNode = vi.fn();
-    renderCanvas({ onDeleteNode });
-    fireEvent.click(screen.getByTestId("node-delete-n3"));
-    expect(onDeleteNode).toHaveBeenCalledWith("n3", false);
-  });
-
-  it("无根节点时渲染空画布占位", () => {
-    const empty: TreeDoc = { ...DOC, root: "missing", nodes: {} };
-    renderCanvas({ doc: empty });
-    expect(screen.getByText("画布为空")).toBeInTheDocument();
-  });
-
-  it("ref 展开显示只读预览子树，收缩收起", () => {
+  it("ref 展开显示被引文档只读子树（含内部连线与连接主树的线）", () => {
     const docWithRef: TreeDoc = {
       tree: "A",
       inputs: {},
@@ -111,16 +97,20 @@ describe("TreeCanvas", () => {
       },
     };
     const onToggleRef = vi.fn();
-    renderCanvas({
+    const { container } = renderCanvas({
       doc: docWithRef,
       refPreviews: { r2: preview },
       onToggleRef,
     });
-    // 展开态：显示被引文档只读子树
+
+    // 被引文档只读子树渲染
     expect(screen.getByTestId("preview-node-b1")).toBeInTheDocument();
     expect(screen.getByTestId("preview-node-b2")).toBeInTheDocument();
-    expect(screen.getByTestId("ref-toggle-r2")).toHaveTextContent("收缩");
-    fireEvent.click(screen.getByTestId("ref-toggle-r2"));
+    // ref → 预览根 连接线 + 预览内部连线（共 2 条，加主树 1 条 = 3）
+    expect(container.querySelectorAll("svg path")).toHaveLength(3);
+    // 展开态按钮在 ref 节点右上角（NodeCard 内），文本「收缩」
+    expect(screen.getByTestId("node-toggle-r2")).toHaveTextContent("收缩");
+    fireEvent.click(screen.getByTestId("node-toggle-r2"));
     expect(onToggleRef).toHaveBeenCalledWith("r2");
   });
 
@@ -145,7 +135,13 @@ describe("TreeCanvas", () => {
       },
     };
     renderCanvas({ doc: docWithRef, refPreviews: {}, onToggleRef: vi.fn() });
-    expect(screen.getByTestId("ref-toggle-r2")).toHaveTextContent("展开");
+    expect(screen.getByTestId("node-toggle-r2")).toHaveTextContent("展开");
     expect(screen.queryByTestId("ref-preview")).not.toBeInTheDocument();
+  });
+
+  it("无根节点时渲染空画布占位", () => {
+    const empty: TreeDoc = { ...DOC, root: "missing", nodes: {} };
+    renderCanvas({ doc: empty });
+    expect(screen.getByText("画布为空")).toBeInTheDocument();
   });
 });

@@ -17,12 +17,13 @@ type NodeCardProps = {
   selected: boolean;
   issueFields: Set<string>;
   onClick: (id: string) => void;
-  onDelete: (id: string, subtree: boolean) => void;
+  /** ref 节点专属：展开/收缩被引文档预览。 */
+  onToggleRef?: () => void;
+  expanded?: boolean;
 };
 
-export function NodeCard({ node, selected, issueFields, onClick, onDelete }: NodeCardProps) {
+export function NodeCard({ node, selected, issueFields, onClick, onToggleRef, expanded }: NodeCardProps) {
   const name = node.name.trim() || node.type;
-  const isRoot = node.type === "Root";
   const cls = [
     "node-card",
     selected ? "node-card--selected" : "",
@@ -30,6 +31,7 @@ export function NodeCard({ node, selected, issueFields, onClick, onDelete }: Nod
   ]
     .filter(Boolean)
     .join(" ");
+  const isRef = node.type === "ref";
   return (
     <div
       className={cls}
@@ -44,32 +46,19 @@ export function NodeCard({ node, selected, issueFields, onClick, onDelete }: Nod
       <span className="node-card__name" data-testid={`node-name-${node.id}`}>
         {name}
       </span>
-      <span className="node-card__actions">
+      {isRef && onToggleRef ? (
         <button
           type="button"
-          data-testid={`node-delete-${node.id}`}
-          disabled={isRoot}
+          className="node-card__toggle"
+          data-testid={`node-toggle-${node.id}`}
           onClick={(e) => {
             e.stopPropagation();
-            onDelete(node.id, false);
+            onToggleRef();
           }}
-          title="删除单节点（子节点各自成游离树）"
         >
-          删
+          {expanded ? "收缩" : "展开"}
         </button>
-        <button
-          type="button"
-          data-testid={`node-delete-subtree-${node.id}`}
-          disabled={isRoot}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(node.id, true);
-          }}
-          title="删除子树（连带后代）"
-        >
-          子树
-        </button>
-      </span>
+      ) : null}
     </div>
   );
 }

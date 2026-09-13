@@ -179,12 +179,14 @@ describe("TreeEditorPage（统一槽位模型）", () => {
     expect(screen.getByText("列表页占位")).toBeInTheDocument();
   });
 
-  it("删除中间节点：其子节点回游离区", async () => {
+  it("删除中间节点：其子节点回游离区（属性面板删除）", async () => {
     mocks.getTree.mockResolvedValue(TREE);
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n3")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTestId("node-delete-n3"));
+    fireEvent.click(screen.getByTestId("node-card-n3"));
+    await waitFor(() => expect(screen.getByTestId("property-panel")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("delete-node"));
     await waitFor(() => {
       expect(screen.queryByTestId("node-card-n3")).not.toBeInTheDocument();
     });
@@ -192,10 +194,14 @@ describe("TreeEditorPage（统一槽位模型）", () => {
     expect(screen.getByTestId("free-tree-label-n4")).toHaveTextContent("游离");
   });
 
-  it("根节点不可删除（按钮禁用）", async () => {
+  it("根节点删除按钮禁用（属性面板）", async () => {
     mocks.getTree.mockResolvedValue(TREE);
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n1")).toBeInTheDocument());
-    expect(screen.getByTestId("node-delete-n1")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("node-card-n1"));
+    await waitFor(() => expect(screen.getByTestId("delete-node")).toBeInTheDocument());
+    expect(screen.getByTestId("delete-node")).toBeDisabled();
+    expect(screen.getByTestId("delete-subtree")).toBeDisabled();
   });
 });

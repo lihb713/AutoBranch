@@ -15,7 +15,6 @@ function renderCard(props: Partial<Parameters<typeof NodeCard>[0]> = {}) {
       selected={false}
       issueFields={new Set<string>()}
       onClick={() => {}}
-      onDelete={() => {}}
       {...props}
     />,
   );
@@ -38,23 +37,34 @@ describe("NodeCard", () => {
     expect(screen.getByTestId("node-card-n1").className).toContain("node-card--issue");
   });
 
-  it("Root 节点删除按钮禁用", () => {
-    renderCard({ node: node({ type: "Root" }) });
-    expect(screen.getByTestId("node-delete-n1")).toBeDisabled();
-    expect(screen.getByTestId("node-delete-subtree-n1")).toBeDisabled();
-  });
-
-  it("点击删除调用 onDelete（单节点/子树）", () => {
-    const onDelete = vi.fn();
-    renderCard({ onDelete });
-    fireEvent.click(screen.getByTestId("node-delete-n1"));
-    expect(onDelete).toHaveBeenCalledWith("n1", false);
-    fireEvent.click(screen.getByTestId("node-delete-subtree-n1"));
-    expect(onDelete).toHaveBeenCalledWith("n1", true);
-  });
-
   it("选中态加高亮类", () => {
     renderCard({ selected: true });
     expect(screen.getByTestId("node-card-n1").className).toContain("node-card--selected");
+  });
+
+  it("点击卡片回调 onClick", () => {
+    const onClick = vi.fn();
+    renderCard({ onClick });
+    fireEvent.click(screen.getByTestId("node-card-n1"));
+    expect(onClick).toHaveBeenCalledWith("n1");
+  });
+
+  it("ref 节点显示展开按钮（右上角），点击触发 onToggleRef", () => {
+    const onToggleRef = vi.fn();
+    renderCard({ node: node({ type: "ref" }), onToggleRef, expanded: false });
+    const toggle = screen.getByTestId("node-toggle-n1");
+    expect(toggle).toHaveTextContent("展开");
+    fireEvent.click(toggle);
+    expect(onToggleRef).toHaveBeenCalled();
+  });
+
+  it("ref 展开态按钮文本为收缩", () => {
+    renderCard({ node: node({ type: "ref" }), onToggleRef: () => {}, expanded: true });
+    expect(screen.getByTestId("node-toggle-n1")).toHaveTextContent("收缩");
+  });
+
+  it("非 ref 节点不显示展开按钮", () => {
+    renderCard();
+    expect(screen.queryByTestId("node-toggle-n1")).not.toBeInTheDocument();
   });
 });
