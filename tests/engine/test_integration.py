@@ -44,7 +44,7 @@ class TestEngineIntegrationLogin:
 
         result = engine.call("open", {"url": f"{eng_http_server}/sg_login.html"})
         assert result.ok, result.error
-        assert space.current_page(frame) is not None
+        assert eng_driver.current_page() is not None
 
         sg = engine.call("semantic_graph", {"scope": "full", "lod": 2})
         assert sg.ok, sg.error

@@ -106,6 +106,7 @@ class BrowserDriver:
         self._pages: dict[str, Page] = {}
         self._next_page_id = 1
         self._http_recorder = HttpRecorder()
+        self._active_id: str | None = None
 
     # ------------------------------------------------------------------ 会话
 
@@ -221,6 +222,7 @@ class BrowserDriver:
         ref_id = str(self._next_page_id)
         self._next_page_id += 1
         self._pages[ref_id] = page
+        self._active_id = ref_id
         return OpResult(True, detail={"page_ref": PageRef(ref_id), "url": url})
 
     def page(self, page_ref: PageRef) -> OpResult:
@@ -242,6 +244,32 @@ class BrowserDriver:
                 raise FatalBrowserError(f"浏览器致命错误: {message}") from exc
             return OpResult(False, f"页面已释放: {page_ref.id}", {"code": ErrorCode.INVALID_REF})
         return OpResult(True, detail={"page": PageHandle(self, page, page_ref)})
+
+    def current_page(self) -> PageRef | None:
+        """返回当前活动页引用（最近 open/activate 的页；无则 None）。"""
+        if self._context is None or self._active_id is None:
+            return None
+        if self._active_id not in self._pages:
+            return None
+        return PageRef(self._active_id)
+
+    def activate_page(self, page_ref: PageRef) -> OpResult:
+        """把已打开的页设为当前活动页（bring_to_front），后续操作作用于该页。"""
+        if self._context is None:
+            return OpResult(False, "浏览器会话未启动", {"code": ErrorCode.SESSION_NOT_RUNNING})
+        page = self._pages.get(page_ref.id)
+        if page is None:
+            return OpResult(False, f"无效页面引用: {page_ref.id}", {"code": ErrorCode.INVALID_REF})
+        try:
+            page.bring_to_front()
+        except PlaywrightError as exc:
+            code, message = _classify_playwright_error(exc)
+            self._pages.pop(page_ref.id, None)
+            if code == "FATAL":
+                raise FatalBrowserError(f"浏览器致命错误: {message}") from exc
+            return OpResult(False, f"页面已释放: {page_ref.id}", {"code": ErrorCode.INVALID_REF})
+        self._active_id = page_ref.id
+        return OpResult(True, detail={"page_ref": page_ref})
 
     def _safe_close_page(self, page: Page) -> None:
         try:

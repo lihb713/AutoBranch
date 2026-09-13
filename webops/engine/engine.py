@@ -151,17 +151,23 @@ class EngineFunctions:
     # ------------------------------------------------------------ 页面函数
 
     def open(self, url: str, save_to: str | None = None) -> OpResult:
-        """打开页面，把新建页签的页面引用写入变量（契约 §5.10）。
+        """打开页面并把新页设为当前活动页（契约 §5.10）。
 
         :param url: 要打开的 URL。
-        :param save_to: 页面引用写入的目标变量（形如 ``this/页面A``）；
-          省略时写入默认活动页变量 ``this/{page_var}``。
+        :param save_to: 可选，页面引用写入的目标变量（形如 ``this/页面A``）。
+           **仅当动作描述含 ``[[set:page_ref:...]]`` 声明时才填写**；省略则只打开
+           页面、不保存任何页面变量（当前活动页由浏览器维护）。
         """
         result = self._browser.open(url)
         if not result.ok:
             return result
         browser_ref = result.detail["page_ref"]
         page_url = result.detail.get("url", "")
+        if not save_to:
+            return OpResult(
+                True,
+                detail={"page_ref": browser_ref, "url": page_url},
+            )
         frame = self._frame_provider()
         if frame is None:
             return OpResult(
@@ -170,10 +176,7 @@ class EngineFunctions:
                 {"code": ErrorCode.INVALID_ARGUMENT},
             )
         schema_ref = SchemaPageRef(page_id=browser_ref.id, url=page_url)
-        if save_to:
-            var_path = self._normalize_var_path(save_to)
-        else:
-            var_path = f"this/{self._page_var}"
+        var_path = self._normalize_var_path(save_to)
         try:
             self._space.write(frame, var_path, schema_ref, "page_ref")
         except SchemaError as exc:
@@ -211,18 +214,10 @@ class EngineFunctions:
                 f"变量 {page_var!r} 不是页面引用（无法作为页签切换），请先用 open 打开并存入",
                 {"code": ErrorCode.INVALID_ARGUMENT, "var": page_var},
             )
-        # 校验页签仍打开（M1 取回 page 句柄）
-        browser_result = self._browser.page(BrowserPageRef(id=page_ref.page_id))
+        # 切换浏览器活动页（bring_to_front，校验页签仍打开）
+        browser_result = self._browser.activate_page(BrowserPageRef(id=page_ref.page_id))
         if not browser_result.ok:
-            return OpResult(
-                False,
-                f"页签已关闭/不可用（{page_ref.page_id}），请重新 open",
-                {"code": ErrorCode.INVALID_REF, "page_id": page_ref.page_id},
-            )
-        try:
-            self._space.activate_page(target, var)
-        except SchemaError as exc:
-            return OpResult(False, f"activate 失败: {exc}", {"code": ErrorCode.INVALID_ARGUMENT})
+            return browser_result
         return OpResult(True, detail={"page_var": page_var, "page_id": page_ref.page_id})
 
     def get_url(self, save_to: str) -> OpResult:
@@ -448,18 +443,15 @@ class EngineFunctions:
         return resolve_target(frame, self._normalize_var_path(path))
 
     def _current_page_handle(self) -> OpResult:
-        """从当前页面变量解析出目标 page 句柄（M3 §5.10 → M1）。"""
-        frame = self._frame_provider()
-        if frame is None:
-            return OpResult(False, "当前 schema 帧不可用", {"code": ErrorCode.INVALID_REF})
-        page_ref = self._space.current_page(frame)
+        """解析当前活动页句柄（浏览器最近 open/activate 的页，§5.10 → M1）。"""
+        page_ref = self._browser.current_page()
         if page_ref is None:
             return OpResult(
                 False,
-                "无当前页面变量（尚无打开的页面）",
+                "无当前页面（尚未打开任何页面）",
                 {"code": ErrorCode.INVALID_REF},
             )
-        return self._browser.page(BrowserPageRef(id=page_ref.page_id))
+        return self._browser.page(page_ref)
 
     def _resolve_ref(self, ref: str, page_handle) -> OpResult:
         """解析 ref：无效/过期返回失败，合法返回解析结果（detail["resolution"]）。"""

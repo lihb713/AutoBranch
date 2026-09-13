@@ -846,9 +846,9 @@ ExecState: 复用 M8 (未新增模型)
 
 ```
 页面函数:
-  open(url)         打开页面, 返回页面引用 (写入变量, §5.9)
+  open(url, save_to?)  打开页面, 新建页签并成为当前活动页; 仅显式 save_to 才写变量 (§5.10)
 
-操作类函数 (Playwright 封装, 作用于当前页面变量指向的页):
+操作类函数 (Playwright 封装, 作用于当前活动页):
   click(ref)          点击元素
   type(ref, text)     输入文本
   select(ref, opt)    选择下拉
@@ -861,7 +861,7 @@ ExecState: 复用 M8 (未新增模型)
   upload(ref, path) 上传文件到文件选择控件
 
 语义图函数:
-  semantic_graph(范围, LOD)  获取当前页面变量指向页的语义图 (§8.8)
+  semantic_graph(范围, LOD)  获取当前活动页的语义图 (§8.8)
 
 HTTP 函数 (两种形态, 见 §5.8.2):
   clear_requests()             清理页面请求记录
@@ -874,7 +874,7 @@ HTTP 函数 (两种形态, 见 §5.8.2):
 
 **引擎函数集是可扩展的**——随需求增减。底层封装供 LLM 调用的 web 操作方法集，后续可按需增加或减少（如新增 download/upload、自定义复合操作等）。
 
-> **页面操作绑定**：所有页面操作函数（click/type/semantic_graph/...）作用于**当前页面变量指向的页面**。页面切换由变量指定（§5.9），LLM 不做页面切换决策。
+> **页面操作绑定**：所有页面操作函数（click/type/semantic_graph/...）作用于**浏览器当前活动页**（最近 open/activate 的页签，§5.10）。首次打开/访问网址直接 `open(url)` 新建页签，无需先有当前页面；切换已打开页签用 `activate(page_var)`。
 
 **注意**：`finish` 不是引擎函数——**流程完成/报告由行为树执行流程固化**（见 §5.8.3），不由 LLM 决定调用。
 
@@ -907,8 +907,9 @@ EngineFunctions (暴露给 LLM 的 15 个函数, ENGINE_TOOLS 注册表驱动):
   调用入口: call(name, arguments) — M6 按注册表分发
 
 open(url) 变量名约定:
-  签名无路径参数, 实现写入当前帧固定 page_var (默认 this/page, 构造可配置)
-  → 契约 §5.10 的 "open(url, save_to=...)" 由上层用变量机制显式命名或配置 page_var
+  仅当动作描述含 [[set:page_ref:...]] 声明时才经 save_to 显式命名变量;
+  省略 save_to 不保存任何页面变量（浏览器活动页由 M1 维护）
+  → 契约 §5.10 的 "open(url, save_to=...)" 由上层用变量机制显式命名
 
 ref 映射 (§7.8 策略 B 落地):
   选择器优先级 = #dom_id → tag:has-text("文本") (无id有文本的链接/按钮)
@@ -922,7 +923,8 @@ extract 类型来源:
 
 wait/download 缺省: wait_timeout_ms=30000, download_dir="."
 
-页面绑定错误码: 无当前页面变量 → ok=False + detail["code"]=INVALID_REF
+页面绑定错误码: 无当前活动页（尚未打开任何页面）→ ok=False + detail["code"]=INVALID_REF;
+  首次打开/访问网址是正常初始状态, LLM 直接 open 新建页签即可
 
 语义图失败分类:
   ProgramStageError → ok=False (NOT_FOUND)
@@ -1053,13 +1055,13 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 
 ### 5.10 页面变量机制（多标签页）
 
-**页面不是特殊实体，而是一类变量（页面引用）**。所有页面通过变量承载，操作哪个页面由变量指明：
+**页面不是特殊实体，而是一类变量（页面引用）**。所有页面通过变量承载，操作哪个页面由**浏览器当前活动页**指明（而非变量）：
 
 ```
 页面 = 一类变量值 (页面引用 P1/P2/...)
-  打开: open(url) → 返回页面引用, 写入变量
+  打开: open(url) → 新建页签并成为当前活动页; 仅显式 save_to 时才写入变量
   传递: 和普通参数一样 (经 ref args 传入子文档帧)
-  切换: 变量指定, 由文档结构决定, LLM 无决策
+  切换: activate(page_var) 把已存页签设为当前活动页
   生命周期: 整个行为树执行结束才释放
 ```
 
@@ -1079,15 +1081,16 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 **页面变量机制规则：**
 
 ```
-1. 打开并存页签: open(url, save_to) — 打开 url 新建页签，把页面引用写入 save_to
-   （如 [[set:page_ref:this/页面A]] 声明存页签时）；save_to 省略写默认活动页变量
+1. 打开页签: open(url, save_to?) — 打开 url 新建页签并成为当前活动页；
+   **仅当动作描述含 [[set:page_ref:this/页面A]] 声明时才填 save_to** 写入页面引用；
+   省略 save_to 不保存任何变量（首次打开/访问即新建页签，无"获取页面变量"概念）
 2. 切回已存页签: activate(page_var) — 把已存页面变量指向的页签设为当前活动页
    （只切焦点，不新建）；描述如"切回/使用已打开的 X 页"时调用
 3. 取 URL 字符串: get_url(save_to) — 存当前活动页 url 为文本（[[set:str:...]]）
 4. 传递: 父文档经 ref args 传子文档, 和普通参数传递完全一致
    → 子文档要用某页面, 调用方在 ref 处用 args 传入对应页面变量 (无 LLM 推断)
 5. 操作绑定: 引擎函数作用于"当前活动页"
-   → "当前活动页"实现约定: 最近 activate 的页签变量；无 activate 时最近 open 的页
+   → "当前活动页"由 M1 浏览器维护: 最近 open/activate 的页签（不依赖 schema 变量）
 6. 生命周期: 页面与变量同生灭, 行为树执行结束才释放
    → 可能被子文档引用 / 作为返回值传给父文档, 故无法确定何时不再使用
 ```

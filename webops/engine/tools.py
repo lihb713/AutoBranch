@@ -30,16 +30,17 @@ ENGINE_TOOLS: list[ToolSpec] = [
     ToolSpec(
         name="open",
         description=(
-            "打开 URL 新建页签，并把该页签引用存入页面变量。"
-            "若动作描述含 [[set:page_ref:xxx]] 声明存页签，把 save_to 填为对应变量名"
-            "（形如 this/页面A）；"
-            "描述含 [[set:str:xxx]] 存 URL 字符串时用 get_url，不用本函数。"
+            "打开 URL 新建页签并设为当前活动页。仅当动作描述含 [[set:page_ref:xxx]] "
+            "声明要保存页签时才把 save_to 填为对应变量名（形如 this/页面A）；否则省略 "
+            "save_to（只打开页面，不保存变量）。描述含 [[set:str:xxx]] 存 URL 字符串时用 "
+            "get_url，不用本函数。"
         ),
         parameters=_object_params(
             ("url",),
             url=_prop_string("要打开的 URL，如 https://example.com/login"),
             save_to=_prop_string(
-                "（可选）页签引用存入的变量，形如 this/页面A；省略则存默认活动页变量"
+                "（可选，仅当描述含 [[set:page_ref:...]] 声明时）页签引用存入的变量，"
+                "形如 this/页面A"
             ),
         ),
     ),

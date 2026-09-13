@@ -263,13 +263,24 @@ def _execute_tool_calls(
 
 
 def _fetch_initial_graph(ctx: LeafContext) -> str:
-    """获取初始语义图正文；失败返回错误说明（供 LLM 自行决策）。"""
+    """获取初始语义图正文；失败返回说明（供 LLM 自行决策）。
+
+    无当前页面（首次打开）是正常初始状态，返回明确引导而非报错：本动作
+    若是访问/打开网址应直接 ``open``，无需先有当前页面。
+    """
     op = ctx.engine.call(
         "semantic_graph",
         {"scope": ctx.initial_graph_scope, "lod": ctx.initial_graph_lod},
     )
     if not op.ok:
-        return f"（初始语义图获取失败: {op.error or '未知错误'}）"
+        error = op.error or "未知错误"
+        if "无当前页面" in error:
+            return (
+                "（当前无打开的页面。若本动作是访问/打开某网址，请直接调用 open(url) 打开新页面，"
+                "无需先有当前页面；若引用已保存的 url 字符串或页签变量，据此用 open 或 activate "
+                "访问/切换已打开页面）"
+            )
+        return f"（初始语义图获取失败: {error}）"
     detail = op.detail or {}
     text = detail.get("text")
     if text:

@@ -70,7 +70,7 @@ class TestDispatch:
             probe=FakeProbe(),
             graph_generator=fake_graph_generator(make_graph(), make_snapshot()),
         )
-        assert engine.call("open", {"url": "http://example.com/page"}).ok
+        assert engine.call("open", {"url": "http://example.com/page", "save_to": "this/page"}).ok
         assert engine.call("semantic_graph", {"scope": "full", "lod": 2}).ok
         return engine, space, frame
 

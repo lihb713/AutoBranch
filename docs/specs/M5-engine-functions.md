@@ -25,20 +25,20 @@
 
 ### 3.1 输入
 - **工具调用参数**：LLM 选择的函数名 + 参数（ref、文本、范围、LOD 等）
-- **当前页面变量**（来自 M3）：函数绑定的页面
+- **当前活动页**（来自 M1 浏览器）：函数绑定的页面（最近 open/activate 的页）
 - **浏览器能力**（来自 M1）：各操作函数实现
 - **语义图生成**（来自 M4）：semantic_graph 接口
 
 ### 3.2 输出
 - **工具调用结果**（`OpResult`）：成功/失败 + 错误信息，回传给 LLM（agent 语义）
-- **变量写入副作用**：open 写页面引用、extract 写提取值（经 M3）
+- **变量写入副作用**：open(save_to) 写页面引用、extract 写提取值（经 M3）
 
 ## 4. 单元间依赖
 
 - **依赖**：
-  - M1（浏览器驱动）— 操作/文件/HTTP/截图/DOM 爬取实现
+  - M1（浏览器驱动）— 操作/文件/HTTP/截图/DOM 爬取实现、当前活动页跟踪
   - M4（语义图生成）— semantic_graph 函数
-  - M3（schema 命名空间）— 变量读写、页面变量绑定
+  - M3（schema 命名空间）— 变量读写、页面变量绑定（仅显式 save_to）
 - **被依赖**：
   - M6（叶子 agent 执行）— LLM 通过 M5 的函数集执行操作
   - M7（编排器）— 间接
@@ -123,11 +123,11 @@ class EngineFunctions:
 2. **`EngineFunctions` 构造注入**（design D6）：`browser`（M1）/`filler`（M4 `LlmFiller`）/`schema_space`（M3）/`current_frame`（当前 schema 帧提供者）+ 可选 `probe`（默认 `EngineProbe`）、`graph_generator`（默认真实 M4 `semantic_graph`，测试注入 mock）、`budget_limit`、`page_var`（默认 `page`）、`download_dir`（默认 `.`）、`wait_timeout_ms`（默认 30000）。M6/M7 调用时注入真实依赖。
 3. **调用入口 `call(name, arguments)`**：M6 经 `EngineFunctions.call` 按函数名分发（注册表驱动），参数缺失/类型不符返回 `ok=False`（参数错误），未知函数名返回 `ok=False`；`ENGINE_TOOLS` 扩展即自动可分发。
 4. **ref 映射**（§7.8 策略 B）：`EngineRefMap` 维护 `[N]` ↔ 元素 id ↔ DOM 快照节点 ↔ CSS 选择器；选择器推导优先级：`#<dom_id>`（DOM `id` 属性）→ `tag:has-text("文本")`（无 id 且有可见文本的元素，如导航链接/按钮，可靠定位）→ 快照树标签路径兜底（`body > form > input`，中间被过滤节点会致路径不精确，仅作最后手段）。`semantic_graph` 每次生成刷新映射表并作废旧 ref；页面 URL 与快照 URL 不一致（导航）同样使 ref 过期。拒绝语义区分：从未出现=无效（`invalid`）、曾在历史快照出现=过期（`stale`）。
-5. **`open`/`activate`/`get_url` 页面机制**：`open(url, save_to=None)` 开新页签，`save_to` 提供时把页面引用（PageRef，类型 `page_ref`）写入该变量（如 `[[set:page_ref:this/页面A]]` 声明存页签），省略时写默认活动页变量（`this/{page_var}`）；`activate(page_var)` 把已存页签设为当前活动页（只切焦点不新建，变量非页面引用或页签已关返回明确错误）；`get_url(save_to)` 取当前活动页 url 存为文本（类型 `str`，与页签区分，`[[set:str:...]]`）。
+5. **`open`/`activate`/`get_url` 页面机制**：`open(url, save_to=None)` 开新页签并设为**浏览器当前活动页**；`save_to` **仅当动作描述含 `[[set:page_ref:...]]` 声明时才填写**，提供时把页面引用（PageRef，类型 `page_ref`）写入该变量（如 `this/页面A`），**省略时不保存任何页面变量**（首次打开/访问即新建页签，无"获取页面变量"概念）；`activate(page_var)` 把已存页签变量对应的页设为当前活动页（只切焦点不新建，变量非页面引用或页签已关返回明确错误）；`get_url(save_to)` 取当前活动页 url 存为文本（类型 `str`，与页签区分，`[[set:str:...]]`）。**当前活动页由 M1 浏览器维护**（最近 open/activate 的页），click/type/semantic_graph 等绑定到它，不依赖 schema 页面变量。
 6. **`extract` 类型来源与 coerce**：目标变量声明类型按 `frame.outputs → frame.inputs → frame.declared` 查找；**已声明类型（非空 token）→ `coerce(type_name, value)` 转换后存储**（转换失败 → `ok=False` 断言失败），无声明 / 空类型 → 按提取值 `infer_type` 推断。写入前经 M3 `check_type` 强校验。
 7. **`wait`/`download` 缺省参数**：契约签名 `wait(condition)`/`download(ref)` 无超时/保存目录参数，实现使用构造缺省（`wait_timeout_ms=30000`、`download_dir="."`），M6 可按需配置。
 8. **HTTP 形态**：形态 A（`clear_requests`/`get_response`）委托 M1 `HttpRecorder`（会话级）；形态 B（`http_request`）委托 M1 `webops.browser.http.http_request`（独立请求，认证经 `headers` 显式提供、不携带页面会话）。
 9. **错误语义**（§5.5 确认）：所有普通失败（M1 程序侧失败、ref 无效/过期、类型校验失败、无匹配请求、无当前页面、参数错误、意外异常）返回 `OpResult(ok=False, error=..., detail["code"]=分类错误码)`；`FatalBrowserError`（浏览器崩溃/context 关闭）原样上抛不包装。`call` 内对意外异常兜底包装为 `ok=False`（`UNKNOWN`），不中断 agent 会话。
-10. **页面绑定错误码**：无当前页面变量/当前 schema 帧不可用时返回 `ok=False`，`detail["code"]=INVALID_REF`（页绑定缺失，可恢复，LLM 应先 `open`）。
+10. **页面绑定错误码**：无当前活动页（尚未打开任何页面）时返回 `ok=False`，`detail["code"]=INVALID_REF`（页绑定缺失，可恢复，LLM 应先 `open`）。首次打开/访问网址是正常初始状态，`open` 直接新建页签，无需先有当前页面。
 11. **语义图失败分类**：`ProgramStageError`（程序侧，可重试）→ `ok=False`（NOT_FOUND）；`LlmStageError`（LLM 填充失败）→ `ok=False`（UNKNOWN）；`SemanticGraphBudgetExceeded` → `ok=False`（UNKNOWN）；`FatalBrowserError` 上抛。
 12. **测试覆盖**：单元测试 43 个（模型/注册表/分发/扩展/ref 映射/页面绑定/open/semantic_graph/HTTP 两形态/extract/wait-scroll/错误语义/模块独立性）+ 集成测试 1 个（真实浏览器 + 真实语义图闭环 open→semantic_graph→type/click→extract），全部经 `webops` conda 环境 `pytest` 通过；`ruff check .` 无告警。

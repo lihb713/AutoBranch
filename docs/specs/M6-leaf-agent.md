@@ -150,7 +150,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 ## 8. 与契约的接口细节（待统一更新 contract.md）
 
 1. **`LeafTrace` 对齐 M8**：`execute_leaf` 输出 `trace` 直接复用 M8 定义的 `LeafTrace`（`webops/reporting/models.py`），其 `decision` 字段由 M6 填充为 LLM 最终回答文本；`calls` 为 M8 `ToolCallRecord` 序列（M6 内部记录的时间戳经 `to_m8()` 去除）。**注意：M8 的 `ToolCallRecord` 不含时间戳字段**——若需在报告中展示调用时间，需跨模块在 M8 `ToolCallRecord` 增加可选 `timestamp` 字段（本次未改 M8）。
-2. **初始语义图预取**：引擎在驱动循环开始前预取一次 `semantic_graph(scope=full, lod=2)`（可配置），与节点描述一并作为用户消息注入；预取失败不终止，以错误说明文本注入，由 LLM 自行决策（如先 `open` 页面）。此预取不计入 `LeafTrace.calls`（calls 仅含 LLM 发起的工具调用）。
+2. **初始语义图预取**：引擎在驱动循环开始前预取一次 `semantic_graph(scope=full, lod=2)`（可配置），与节点描述一并作为用户消息注入；预取失败不终止，以说明文本注入，由 LLM 自行决策（如先 `open` 页面）。**无当前页面（首次打开/访问网址）是正常初始状态**：此时注入明确引导——本动作若是访问/打开某网址，直接 `open(url)` 新建页签（无需先有当前页面）；若引用已保存的 url 字符串或页签变量，据此用 `open` 或 `activate`。系统提示词亦含此引导。此预取不计入 `LeafTrace.calls`（calls 仅含 LLM 发起的工具调用）。
 3. **最终回答标记约定**：Action `结果: 成功`/`结果: 失败`；Condition `结果: 真`/`结果: 假`（确定判断）、`结果: 失败`（无法确定→LLM 侧失败）。契约 §5.5「返回确定的布尔值（结构化结果）」在本模块以结果标记行实现（兼容 JSON）。
 4. **错误来源默认分类**（design D4 明确化）：程序侧仅两类（`FatalBrowserError` 与 `LLMConnectionError`/`LLMTimeoutError`），其余失败（含全部终止条件）一律 `error_source="llm"`；**例外：Condition 的确定布尔判断（真/假）是正常节点结果，`error_source=None`**（不是错误，flow 沿树走分支）。
 5. **`terminator` 取值集合**：`round_limit`/`no_progress`/`timeout`/`budget`（LLM 侧终止）与 `fatal_error`/`llm_connection`/`llm_timeout`/`llm_error`（错误中断）；正常完成或决策不可解析为 `None`。

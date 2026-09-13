@@ -25,7 +25,8 @@
 
 ### 3.1 输入
 - **内部行为树对象 + 文档声明**（来自 M2）：`BehaviorTree` / `ActionNode` / `ConditionNode` / `SequenceNode` / `SelectorNode` / `RepeatNode` / `FinishNode` / `RefNode`（ref 保留为调用节点）；文档级 `decl_inputs`/`decl_outputs`/`config` 与 `blocks_tree`（文档名 → 该文档主树）
-- **schema 命名空间**（来自 M3）：帧管理（`enter_frame`/`exit_frame`）、配置继承（`resolve_config`）、页面变量（`current_page`）
+- **schema 命名空间**（来自 M3）：帧管理（`enter_frame`/`exit_frame`）、配置继承（`resolve_config`）、页面变量（仅显式 `save_to` 保存，如 `[[set:page_ref:...]]`）
+- **浏览器活动页**（来自 M1）：叶子截图/报告 URL 取当前活动页（最近 open/activate 的页）
 - **叶子执行**（来自 M6）：`execute_leaf(node, ctx)` → `LeafResult`（经 `RunConfig` 注入 M0/M5 依赖或注入 mock）
 - **报告**（来自 M8）：`Reporter.start_node/record_node/capture_screenshot/exec_state/finalize`
 

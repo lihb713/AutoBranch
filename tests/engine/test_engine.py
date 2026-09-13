@@ -35,13 +35,13 @@ def _seeded(browser, url="http://example.com/page", value="", dom_id="username")
 
 
 class TestPageBinding:
-    """任务 4.x：页面操作绑定当前页面变量。"""
+    """任务 4.x：页面操作绑定当前活动页（浏览器）。"""
 
-    def test_no_current_page_variable_returns_failure(self):
+    def test_no_current_page_returns_failure(self):
         engine, _, _ = build_engine(FakeBrowser())
         result = engine.call("click", {"ref": "[1]"})
         assert result.ok is False
-        assert "当前页面变量" in result.error
+        assert "无当前页面" in result.error
 
     def test_operations_bind_to_current_page(self):
         browser = FakeBrowser()
@@ -64,7 +64,7 @@ class TestPageBinding:
         assert engine.call("upload", {"ref": "[1]", "path": "x.txt"}).ok
         assert handle.calls[-1] == ("upload", "#username", "x.txt")
 
-    def test_multiple_page_variables_switch_target(self):
+    def test_switch_active_page_binding(self):
         browser = FakeBrowser()
         browser.pages = {
             "1": FakePageHandle(PageRef("1"), url="http://same"),
@@ -77,34 +77,52 @@ class TestPageBinding:
                 make_graph(url="http://same"), make_snapshot(url="http://same")
             ),
         )
+        # 无活动页时操作失败（首次尚未打开页面）
+        assert engine.call("click", {"ref": "[1]"}).ok is False
+
+        # 保存两个页签变量，用 activate 切换浏览器活动页
         space.write(frame, "$this/A", SchemaPageRef("1", "http://same"), "page_ref")
         space.write(frame, "$this/B", SchemaPageRef("2", "http://same"), "page_ref")
-        assert engine.call("semantic_graph", {"scope": "full", "lod": 2}).ok
-        assert space.current_page(frame).page_id == "2"
 
+        assert engine.call("activate", {"page_var": "$this/B"}).ok
+        assert browser.current_page().id == "2"
+        assert engine.call("semantic_graph", {"scope": "full", "lod": 2}).ok
         assert engine.call("click", {"ref": "[1]"}).ok
         assert browser.pages["2"].calls[-1] == ("click", "#username")
         assert browser.pages["1"].calls == []
 
-        space.write(frame, "$this/A", SchemaPageRef("1", "http://same"), "page_ref")
-        assert space.current_page(frame).page_id == "1"
+        assert engine.call("activate", {"page_var": "$this/A"}).ok
+        assert browser.current_page().id == "1"
+        assert engine.call("semantic_graph", {"scope": "full", "lod": 2}).ok
         assert engine.call("click", {"ref": "[1]"}).ok
         assert browser.pages["1"].calls[-1] == ("click", "#username")
 
 
 class TestOpen:
-    """任务 5.1：open 写入页面引用变量。"""
+    """任务 5.1：open 打开页面（仅显式 save_to 时保存变量）。"""
 
-    def test_open_writes_page_ref_variable(self):
+    def test_open_does_not_save_variable_by_default(self):
         browser = FakeBrowser()
         engine, space, frame = build_engine(browser)
         result = engine.call("open", {"url": "http://example.com/login"})
         assert result.ok
-        value = space.read(frame, "this/page")
+        # 无 save_to：不保存任何页面变量（当前活动页由浏览器维护）
+        assert "var" not in result.detail
+        assert space.read(frame, "this/page") is None
+        assert browser.current_page().id == "1"
+
+    def test_open_with_save_to_writes_page_ref(self):
+        browser = FakeBrowser()
+        engine, space, frame = build_engine(browser)
+        result = engine.call(
+            "open", {"url": "http://example.com/login", "save_to": "this/页签A"}
+        )
+        assert result.ok
+        value = space.read(frame, "this/页签A")
         assert value is not None
         assert value.page_id == "1"
         assert result.detail["page_ref"].id == "1"
-        assert result.detail["var"] == "this/page"
+        assert result.detail["var"] == "this/页签A"
 
     def test_open_failure_returns_failure(self):
         browser = FakeBrowser()
@@ -315,7 +333,7 @@ class TestErrorSemantics:
         assert "执行失败" in result.error
 
 class TestActivatePage:
-    """/5.10 补全：open save_to 命名页签 + activate 切换 + get_url 存文本。"""
+    """§5.10：open save_to 命名页签 + activate 切换 + get_url 存文本。"""
 
     def test_open_with_save_to_stores_named_tab(self):
         browser = FakeBrowser()
@@ -326,8 +344,8 @@ class TestActivatePage:
         assert value is not None
         assert isinstance(value, SchemaPageRef)
         assert value.page_id == "1"
-        # 默认活动页仍指向该页（open 后成为活动页）
-        assert space.current_page(frame).page_id == "1"
+        # 打开后该页成为浏览器活动页
+        assert browser.current_page().id == "1"
 
     def test_activate_switches_to_named_tab(self):
         browser = FakeBrowser()
@@ -335,17 +353,18 @@ class TestActivatePage:
         assert engine.call("open", {"url": "http://a", "save_to": "this/页面A"}).ok
         assert engine.call("open", {"url": "http://b", "save_to": "this/页面B"}).ok
         # 当前活动页是 B（最近 open）
-        assert space.current_page(frame).url == "http://b"
+        assert browser.pages[browser.current_page().id].url == "http://b"
         # 切回 A
         result = engine.call("activate", {"page_var": "this/页面A"})
         assert result.ok, result.error
-        assert space.current_page(frame).page_id == "1"
+        assert browser.current_page().id == "1"
 
     def test_activate_non_page_var_fails(self):
         browser = FakeBrowser()
         engine, space, frame = build_engine(browser)
-        # 写入一个文本变量（非页签）
-        engine.call("get_url", {"save_to": "this/url文本"})
+        # 打开页面并写入一个文本变量（非页签）
+        assert engine.call("open", {"url": "http://x"}).ok
+        assert engine.call("get_url", {"save_to": "this/url文本"}).ok
         result = engine.call("activate", {"page_var": "this/url文本"})
         assert result.ok is False
         assert "不是页面引用" in result.error

@@ -73,6 +73,7 @@ class FakeBrowser:
         self.pages: dict[str, FakePageHandle] = {}
         self.http_recorder = HttpRecorder()
         self.fail_open: bool = False
+        self.active_id: str | None = None
 
     def open(self, url: str) -> OpResult:
         if self.fail_open:
@@ -80,7 +81,24 @@ class FakeBrowser:
         page_id = str(len(self.pages) + 1)
         handle = FakePageHandle(PageRef(page_id), url=url)
         self.pages[page_id] = handle
+        self.active_id = page_id
         return OpResult(True, detail={"page_ref": PageRef(page_id), "url": url})
+
+    def current_page(self) -> PageRef | None:
+        if self.active_id is None or self.active_id not in self.pages:
+            return None
+        return PageRef(self.active_id)
+
+    def activate_page(self, page_ref: PageRef) -> OpResult:
+        handle = self.pages.get(page_ref.id)
+        if handle is None:
+            return OpResult(
+                False,
+                f"无效页面引用: {page_ref.id}",
+                {"code": ErrorCode.INVALID_REF},
+            )
+        self.active_id = page_ref.id
+        return OpResult(True, detail={"page_ref": page_ref})
 
     def page(self, page_ref: PageRef) -> OpResult:
         handle = self.pages.get(page_ref.id)

@@ -143,6 +143,14 @@ class MockBrowser:
         self.started = False
         self.stops.append(True)
 
+    def current_page(self):
+        return None
+
+    def activate_page(self, page_ref):
+        from webops.engine.models import OpResult
+
+        return OpResult(True, detail={"page_ref": page_ref})
+
 
 # ---------------------------------------------------------------- 上下文构造
 

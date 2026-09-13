@@ -16,7 +16,6 @@ import time
 from datetime import UTC, datetime
 
 from webops.browser.errors import FatalBrowserError
-from webops.browser.models import PageRef as BrowserPageRef
 from webops.leaf_agent.models import LeafResult
 from webops.orchestrator.context import RunContext
 from webops.orchestrator.models import FAILURE, SUCCESS, NodeStatus, OrchestratorError
@@ -253,12 +252,15 @@ class Traverser:
         if status == FAILURE:
             self._note_failure(node, _leaf_failure_text(node_type, result, timed_out, timeout))
 
-        page_ref = self.ctx.space.current_page(self.ctx.current_frame)
+        page_ref = self.ctx.browser.current_page()
         screenshot_path = ""
+        page_url = None
         if page_ref is not None:
-            screenshot_path = self.ctx.reporter.capture_screenshot(
-                BrowserPageRef(id=page_ref.page_id), node.description
-            )
+            page_result = self.ctx.browser.page(page_ref)
+            if page_result.ok:
+                handle = page_result.detail["page"]
+                page_url = handle.url
+                screenshot_path = self.ctx.reporter.capture_screenshot(page_ref, node.description)
         report = NodeReport(
             node_type=node_type,
             node_desc=node.description,
@@ -266,7 +268,7 @@ class Traverser:
             timestamp=_now_iso(),
             action_call=_primary_action_call(node, result),
             condition_result=result.bool_value if isinstance(node, ConditionNode) else None,
-            page_url=page_ref.url if page_ref is not None else None,
+            page_url=page_url,
             screenshot_path=screenshot_path or None,
             llm_trace=result.trace,
         )
