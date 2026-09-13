@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { layoutDocument, layoutTree, NODE_H, NODE_W } from "./layout";
-import type { TreeNode } from "./treeModel";
+import type { TreeDoc, TreeNode } from "./treeModel";
 
 function nodes(spec: Record<string, Partial<TreeNode>>): Record<string, TreeNode> {
   const out: Record<string, TreeNode> = {};
@@ -67,5 +67,34 @@ describe("layout", () => {
     });
     const { boxes } = layoutTree("n1", n);
     expect(boxes.size).toBe(2);
+  });
+
+  it("ref 展开预览并入主树布局（向下生长不重叠）", () => {
+    const doc = nodes({
+      r1: { type: "Root", body: "s1" },
+      s1: { type: "Sequence", actions: ["ref1"] },
+      ref1: { type: "ref" },
+    });
+    const preview: TreeDoc = {
+      tree: "B",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "b1",
+      nodes: {
+        b1: { id: "b1", type: "Root", name: "B根", fields: {}, body: "b2" },
+        b2: { id: "b2", type: "Sequence", name: "B主", fields: {}, actions: ["b3"] },
+        b3: { id: "b3", type: "Action", name: "动作", fields: { description: "x" } },
+      },
+    };
+    const { boxes } = layoutDocument("r1", [], doc, { ref1: preview });
+    // 预览节点以 ref1: 前缀并入主树布局
+    expect(boxes.has("ref1:b1")).toBe(true);
+    expect(boxes.has("ref1:b3")).toBe(true);
+    // 向下生长：ref 在预览根之上，预览根在预览子之上
+    expect(boxes.get("ref1")!.y).toBeLessThan(boxes.get("ref1:b1")!.y);
+    expect(boxes.get("ref1:b1")!.y).toBeLessThan(boxes.get("ref1:b3")!.y);
+    // 不重叠：预览根位于 ref 卡片之下
+    expect(boxes.get("ref1:b1")!.y).toBeGreaterThanOrEqual(boxes.get("ref1")!.y + NODE_H);
   });
 });

@@ -56,6 +56,7 @@ export function TreeEditorPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedPreview, setSelectedPreview] = useState<{ refId: string; nodeId: string } | null>(null);
   const [docNames, setDocNames] = useState<string[]>([]);
   const [refMeta, setRefMeta] = useState<Record<string, RefMeta>>({});
   const [docRefs, setDocRefs] = useState<Record<string, string[]>>({});
@@ -143,6 +144,7 @@ export function TreeEditorPage() {
         const next = new Set(expandedRefs);
         next.delete(refId);
         setExpandedRefs(next);
+        setSelectedPreview((prev) => (prev && prev.refId === refId ? null : prev));
         return;
       }
       const refNode = doc.nodes[refId];
@@ -273,6 +275,24 @@ export function TreeEditorPage() {
     }
   }, [treeId, navigate]);
 
+  const handleSelect = useCallback((id: string) => {
+    setSelectedId(id);
+    setSelectedPreview(null);
+  }, []);
+
+  const handleSelectPreview = useCallback((refId: string, nodeId: string) => {
+    setSelectedPreview({ refId, nodeId });
+  }, []);
+
+  const previewNode =
+    selectedPreview && refPreviews[selectedPreview.refId]
+      ? (refPreviews[selectedPreview.refId].nodes[selectedPreview.nodeId] ?? null)
+      : null;
+  const selectedNode =
+    previewNode ?? (doc && selectedId ? (doc.nodes[selectedId] ?? null) : null);
+  const selectedDoc =
+    selectedPreview && refPreviews[selectedPreview.refId] ? refPreviews[selectedPreview.refId] : doc;
+
   if (loading) {
     return <div className="page-loading">加载中…</div>;
   }
@@ -287,8 +307,6 @@ export function TreeEditorPage() {
       </div>
     );
   }
-
-  const selectedNode = doc && selectedId ? (doc.nodes[selectedId] ?? null) : null;
 
   return (
     <section className="editor-page">
@@ -352,15 +370,17 @@ export function TreeEditorPage() {
               issueByNode={issueByNode}
               refPreviews={refPreviews}
               onToggleRef={toggleRef}
-              onSelect={setSelectedId}
+              onSelect={handleSelect}
+              onSelectPreview={handleSelectPreview}
             />
             {Object.keys(doc.nodes).length <= 1 ? (
               <EmptyState title="还没有节点" hint="点击左侧面板的节点类型添加" />
             ) : null}
           </div>
           <PropertyPanel
-            doc={doc}
+            doc={selectedDoc ?? doc}
             node={selectedNode}
+            readonly={selectedPreview !== null}
             docNames={docNames}
             refMeta={refMeta}
             refTargetsOf={refTargetsOf}

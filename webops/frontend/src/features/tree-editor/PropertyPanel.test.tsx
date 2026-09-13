@@ -186,4 +186,21 @@ describe("PropertyPanel", () => {
     fireEvent.click(screen.getByTestId("branch-remove-b1-0"));
     expect((onUpdate.mock.calls[0][0] as TreeDoc).nodes.b1.branches).toHaveLength(0);
   });
+
+  it("readonly 模式：字段/槽位禁用、无删除与增删按钮", () => {
+    renderPanel(DOC, DOC.nodes.n3, { readonly: true });
+    expect(screen.getByTestId("field-n3-expect")).toBeDisabled();
+    expect(screen.getByTestId("slot-n3-0")).toBeDisabled();
+    expect(screen.queryByTestId("delete-node")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("delete-subtree")).not.toBeInTheDocument();
+  });
+
+  it("readonly 模式：ref 节点目标下拉与参数禁用", () => {
+    const refMeta: Record<string, RefMeta> = {
+      文档B: { inputs: { url: "str" }, outputs: ["处理结果"] },
+    };
+    renderPanel(REF_DOC, REF_DOC.nodes.r2, { refMeta, readonly: true });
+    expect(screen.getByTestId("ref-target-r2")).toBeDisabled();
+    expect(screen.getByTestId("ref-arg-r2-0")).toBeDisabled();
+  });
 });

@@ -31,6 +31,8 @@ const TYPE_TOKENS = ["str", "int", "float", "bool", "page_ref"];
 type PropertyPanelProps = {
   doc: TreeDoc;
   node: TreeNode | null;
+  /** 只读模式（ref 展开预览节点）：展示节点信息，禁止编辑。 */
+  readonly?: boolean;
   docNames: string[];
   refMeta: Record<string, RefMeta>;
   refTargetsOf: (name: string) => string[];
@@ -47,6 +49,7 @@ function nodeLabel(doc: TreeDoc, id: string): string {
 export function PropertyPanel({
   doc,
   node,
+  readonly = false,
   docNames,
   refMeta,
   refTargetsOf,
@@ -66,6 +69,7 @@ export function PropertyPanel({
   }
 
   const updateNode = (patch: Partial<TreeNode>) => {
+    if (readonly) return;
     onUpdate({ ...doc, nodes: { ...doc.nodes, [node.id]: { ...node, ...patch } } });
   };
 
@@ -170,6 +174,7 @@ export function PropertyPanel({
       <TextField
         label="节点名称"
         value={node.name}
+        disabled={readonly}
         onChange={(e) => updateNode({ name: e.target.value })}
         placeholder="画布显示名"
       />
@@ -183,6 +188,7 @@ export function PropertyPanel({
               <select
                 className="text-field__input"
                 value={m.childId ?? ""}
+                disabled={readonly}
                 data-testid={`slot-${node.id}-${index}`}
                 onChange={(e) => handleSlotChange(index, e.target.value)}
               >
@@ -195,7 +201,7 @@ export function PropertyPanel({
               </select>
             </div>
           ))}
-          {node.type === "Sequence" ? (
+          {node.type === "Sequence" && !readonly ? (
             <button
               type="button"
               className="slot-row__add"
@@ -219,6 +225,7 @@ export function PropertyPanel({
                 <TextField
                   label="条件 when"
                   value={b.when ?? ""}
+                  disabled={readonly}
                   onChange={(e) => updateBranch(i, { when: e.target.value })}
                 />
               )}
@@ -226,6 +233,7 @@ export function PropertyPanel({
               <select
                 className="text-field__input"
                 value={(b.action ?? b.otherwise) || ""}
+                disabled={readonly}
                 onChange={(e) => updateBranch(i, { action: e.target.value || undefined, otherwise: undefined })}
               >
                 <option value="">（空）</option>
@@ -235,23 +243,28 @@ export function PropertyPanel({
                   </option>
                 ))}
               </select>
-              <button
-                type="button"
-                className="slot-row__add"
-                onClick={() => updateBranch(i, b.otherwise ? { otherwise: undefined } : { otherwise: "" })}
-              >
-                切换 otherwise
-              </button>
-              <button
-                type="button"
-                className="slot-row__add slot-row__add--danger"
-                onClick={() => removeBranch(i)}
-                data-testid={`branch-remove-${node.id}-${i}`}
-              >
-                删除分支
-              </button>
+              {!readonly ? (
+                <>
+                  <button
+                    type="button"
+                    className="slot-row__add"
+                    onClick={() => updateBranch(i, b.otherwise ? { otherwise: undefined } : { otherwise: "" })}
+                  >
+                    切换 otherwise
+                  </button>
+                  <button
+                    type="button"
+                    className="slot-row__add slot-row__add--danger"
+                    onClick={() => removeBranch(i)}
+                    data-testid={`branch-remove-${node.id}-${i}`}
+                  >
+                    删除分支
+                  </button>
+                </>
+              ) : null}
             </div>
           ))}
+          {!readonly ? (
           <button
             type="button"
             className="slot-row__add"
@@ -260,6 +273,7 @@ export function PropertyPanel({
           >
             + 添加分支
           </button>
+        ) : null}
         </div>
       ) : null}
 
@@ -271,6 +285,7 @@ export function PropertyPanel({
               label={def.label}
               value={node.fields[def.key] ?? ""}
               placeholder={def.placeholder}
+              disabled={readonly}
               data-testid={`field-${node.id}-${def.key}`}
               onChange={(e) => setField(def.key, e.target.value)}
             />
@@ -286,6 +301,7 @@ export function PropertyPanel({
             <select
               className="text-field__input"
               value={node.target ?? ""}
+              disabled={readonly}
               data-testid={`ref-target-${node.id}`}
               onChange={(e) => handleRefTarget(e.target.value)}
             >
@@ -312,6 +328,7 @@ export function PropertyPanel({
                   label={`入参 ${inp}（${meta.inputs[inp]}）`}
                   value={(node.args ?? [])[i] ?? ""}
                   placeholder="本树变量名或字面量"
+                  disabled={readonly}
                   data-testid={`ref-arg-${node.id}-${i}`}
                   onChange={(e) => setArg(i, e.target.value)}
                 />
@@ -322,12 +339,14 @@ export function PropertyPanel({
                   <TextField
                     label="接收参数名"
                     value={Object.keys(node.returns ?? {})[i] ?? ""}
+                    disabled={readonly}
                     data-testid={`ref-return-name-${node.id}-${i}`}
                     onChange={(e) => setReturnName(i, e.target.value)}
                   />
                   <select
                     className="text-field__input"
                     value={Object.values(node.returns ?? {})[i] ?? "str"}
+                    disabled={readonly}
                     data-testid={`ref-return-type-${node.id}-${i}`}
                     onChange={(e) => setReturnType(i, e.target.value)}
                   >
@@ -344,26 +363,28 @@ export function PropertyPanel({
         </div>
       ) : null}
 
-      <div className="property-panel__section">
-        <button
-          type="button"
-          className="slot-row__add slot-row__add--danger"
-          data-testid="delete-node"
-          disabled={isRoot}
-          onClick={() => onDeleteNode(node.id, false)}
-        >
-          删除此节点（子节点各自成游离树）
-        </button>
-        <button
-          type="button"
-          className="slot-row__add slot-row__add--danger"
-          data-testid="delete-subtree"
-          disabled={isRoot}
-          onClick={() => onDeleteNode(node.id, true)}
-        >
-          删除子树（连带后代）
-        </button>
-      </div>
+      {!readonly ? (
+        <div className="property-panel__section">
+          <button
+            type="button"
+            className="slot-row__add slot-row__add--danger"
+            data-testid="delete-node"
+            disabled={isRoot}
+            onClick={() => onDeleteNode(node.id, false)}
+          >
+            删除此节点（子节点各自成游离树）
+          </button>
+          <button
+            type="button"
+            className="slot-row__add slot-row__add--danger"
+            data-testid="delete-subtree"
+            disabled={isRoot}
+            onClick={() => onDeleteNode(node.id, true)}
+          >
+            删除子树（连带后代）
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }

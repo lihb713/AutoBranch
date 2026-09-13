@@ -1,5 +1,5 @@
 ﻿import { freeRoots, slotFields, type TreeDoc } from "./treeModel";
-import { layoutDocument, NODE_H, NODE_W } from "./layout";
+import { layoutDocument, prefixTree, NODE_H, NODE_W } from "./layout";
 import { NodeCard } from "./NodeCard";
 
 type TreeCanvasProps = {
@@ -9,6 +9,8 @@ type TreeCanvasProps = {
   refPreviews?: Record<string, TreeDoc>;
   onToggleRef?: (id: string) => void;
   onSelect: (id: string) => void;
+  /** 点击展开预览中的节点（查看只读属性）。 */
+  onSelectPreview?: (refId: string, nodeId: string) => void;
 };
 
 type Edge = { x1: number; y1: number; x2: number; y2: number; key: string };
@@ -18,33 +20,6 @@ function edgePath(e: Edge): string {
   return `M ${e.x1} ${e.y1} L ${e.x1} ${midY} L ${e.x2} ${midY} L ${e.x2} ${e.y2}`;
 }
 
-/** 展开的 ref 预览：被引文档整棵只读子树（含内部连线，节点卡片只读）。 */
-function PreviewSubtree({ preview, offsetX, offsetY }: { preview: TreeDoc; offsetX: number; offsetY: number }) {
-  const free = freeRoots(preview);
-  const layout = layoutDocument(preview.root, free, preview.nodes);
-  return (
-    <div className="canvas__preview" data-testid="ref-preview">
-      {[...layout.boxes.entries()].map(([id, box]) => {
-        const node = preview.nodes[id];
-        if (!node) return null;
-        return (
-          <div
-            key={id}
-            className="canvas__node"
-            data-testid={`preview-node-${id}`}
-            style={{ left: offsetX + box.x, top: offsetY + box.y }}
-          >
-            <div className="node-card node-card--preview" data-node-type={node.type}>
-              <span className="node-card__type">{node.type}</span>
-              <span className="node-card__name">{node.name.trim() || node.type}</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function TreeCanvas({
   doc,
   selectedId,
@@ -52,12 +27,26 @@ export function TreeCanvas({
   refPreviews = {},
   onToggleRef,
   onSelect,
+  onSelectPreview,
 }: TreeCanvasProps) {
   const free = freeRoots(doc);
-  const layout = layoutDocument(doc.root, free, doc.nodes);
+  // 预览子树并入主树布局（ref → 预览根 视作子节点，向下生长避免重叠）
+  const layout = layoutDocument(doc.root, free, doc.nodes, refPreviews);
 
+  // 全部节点表（主树 + 预览前缀节点，用于画边与渲染预览）
+  const allNodes: Record<string, TreeDoc["nodes"][string]> = { ...doc.nodes };
+  const previewSource: Record<string, { refId: string; nodeId: string }> = {};
+  for (const [refId, preview] of Object.entries(refPreviews)) {
+    const prefix = `${refId}:`;
+    Object.assign(allNodes, prefixTree(preview, prefix));
+    for (const nodeId of Object.keys(preview.nodes)) {
+      previewSource[`${prefix}${nodeId}`] = { refId, nodeId };
+    }
+  }
+
+  // 收集连线：主树内部 + 预览内部 + ref → 预览根
   const edges: Edge[] = [];
-  for (const node of Object.values(doc.nodes)) {
+  for (const node of Object.values(allNodes)) {
     const from = layout.boxes.get(node.id);
     if (!from) continue;
     for (const m of slotFields(node)) {
@@ -73,43 +62,18 @@ export function TreeCanvas({
       });
     }
   }
-
-  // 展开的 ref 预览：内部连线 + ref → 预览根 连接主树
-  const previewOffsets: { refId: string; offsetX: number; offsetY: number }[] = [];
-  for (const [refId, preview] of Object.entries(refPreviews)) {
+  for (const refId of Object.keys(refPreviews)) {
     const refBox = layout.boxes.get(refId);
-    if (!refBox) continue;
-    const pl = layoutDocument(preview.root, freeRoots(preview), preview.nodes);
-    const offX = refBox.x;
-    const offY = refBox.y + NODE_H + 24;
-    previewOffsets.push({ refId, offsetX: offX, offsetY: offY });
-    // ref → 预览根 连接线
-    const rootBox = pl.boxes.get(preview.root);
-    if (rootBox) {
+    const rootKey = `${refId}:${refPreviews[refId].root}`;
+    const rootBox = layout.boxes.get(rootKey);
+    if (refBox && rootBox) {
       edges.push({
         x1: refBox.x + NODE_W / 2,
         y1: refBox.y + NODE_H,
-        x2: offX + rootBox.x + NODE_W / 2,
-        y2: offY + rootBox.y,
+        x2: rootBox.x + NODE_W / 2,
+        y2: rootBox.y,
         key: `${refId}-ref-root`,
       });
-    }
-    // 预览内部父子连线
-    for (const node of Object.values(preview.nodes)) {
-      const from = pl.boxes.get(node.id);
-      if (!from) continue;
-      for (const m of slotFields(node)) {
-        if (!m.childId) continue;
-        const to = pl.boxes.get(m.childId);
-        if (!to) continue;
-        edges.push({
-          x1: offX + from.x + NODE_W / 2,
-          y1: offY + from.y + NODE_H,
-          x2: offX + to.x + NODE_W / 2,
-          y2: offY + to.y,
-          key: `${refId}-${node.id}-${m.childId}`,
-        });
-      }
     }
   }
 
@@ -120,12 +84,12 @@ export function TreeCanvas({
       {hasRoot ? (
         <div
           className="canvas__scroll"
-          style={{ width: layout.width + 320, height: layout.height + 320 }}
+          style={{ width: layout.width + 40, height: layout.height + 40 }}
         >
           <svg
             className="canvas__edges"
-            width={layout.width + 320}
-            height={layout.height + 320}
+            width={layout.width + 40}
+            height={layout.height + 40}
             data-testid="canvas-edges"
           >
             {edges.map((e) => (
@@ -140,8 +104,25 @@ export function TreeCanvas({
             ))}
           </svg>
           {[...layout.boxes.entries()].map(([id, box]) => {
-            const node = doc.nodes[id];
+            const node = allNodes[id];
             if (!node) return null;
+            const isPreview = previewSource[id] !== undefined;
+            if (isPreview) {
+              const { refId, nodeId } = previewSource[id];
+              return (
+                <div key={id} className="canvas__node" style={{ left: box.x, top: box.y }}>
+                  <div
+                    className="node-card node-card--preview"
+                    data-testid={`preview-node-${nodeId}`}
+                    data-node-type={node.type}
+                    onClick={() => onSelectPreview?.(refId, nodeId)}
+                  >
+                    <span className="node-card__type">{node.type}</span>
+                    <span className="node-card__name">{node.name.trim() || node.type}</span>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={id} className="canvas__node" style={{ left: box.x, top: box.y }}>
                 <NodeCard
@@ -157,14 +138,6 @@ export function TreeCanvas({
               </div>
             );
           })}
-          {previewOffsets.map(({ refId, offsetX, offsetY }) => (
-            <PreviewSubtree
-              key={`preview-${refId}`}
-              preview={refPreviews[refId]}
-              offsetX={offsetX}
-              offsetY={offsetY}
-            />
-          ))}
           {free.map((fid) => {
             const box = layout.boxes.get(fid);
             if (!box) return null;

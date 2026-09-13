@@ -114,6 +114,43 @@ describe("TreeCanvas", () => {
     expect(onToggleRef).toHaveBeenCalledWith("r2");
   });
 
+  it("点击预览节点回调 onSelectPreview（查看只读属性）", () => {
+    const docWithRef: TreeDoc = {
+      tree: "A",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "r2" },
+        r2: {
+          id: "r2",
+          type: "ref",
+          name: "去B",
+          fields: {},
+          target: "B",
+          args: [],
+          returns: {},
+        },
+      },
+    };
+    const preview: TreeDoc = {
+      tree: "B",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "b1",
+      nodes: {
+        b1: { id: "b1", type: "Root", name: "B根", fields: {}, body: "b2" },
+        b2: { id: "b2", type: "Action", name: "动作", fields: { description: "x" } },
+      },
+    };
+    const onSelectPreview = vi.fn();
+    renderCanvas({ doc: docWithRef, refPreviews: { r2: preview }, onSelectPreview });
+    fireEvent.click(screen.getByTestId("preview-node-b1"));
+    expect(onSelectPreview).toHaveBeenCalledWith("r2", "b1");
+  });
+
   it("ref 未展开（无预览）时不渲染子树", () => {
     const docWithRef: TreeDoc = {
       tree: "A",
