@@ -90,6 +90,32 @@ describe("PropertyPanel", () => {
     expect(next.nodes.n2.actions).toEqual(["n3", ""]);
   });
 
+  it("空 Sequence（无槽位）仍显示「增加槽位」按钮", () => {
+    const seqNode: TreeNode = {
+      id: "s1",
+      type: "Sequence",
+      name: "顺序",
+      fields: {},
+      actions: [],
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "s1" },
+        s1: seqNode,
+      },
+    };
+    const onUpdate = vi.fn();
+    renderPanel(doc, seqNode, { onUpdate });
+    fireEvent.click(screen.getByTestId("add-slot-s1"));
+    const next = onUpdate.mock.calls[0][0] as TreeDoc;
+    expect(next.nodes.s1.actions).toEqual([""]);
+  });
+
   it("Step 展示 expect 标量字段", () => {
     renderPanel(DOC, DOC.nodes.n3);
     expect(screen.getByTestId("field-n3-expect")).toHaveValue("ok");

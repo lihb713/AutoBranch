@@ -179,7 +179,7 @@ export function PropertyPanel({
         placeholder="画布显示名"
       />
 
-      {mounts.length > 0 ? (
+      {(node.type === "Sequence" || mounts.length > 0) ? (
         <div className="property-panel__section" data-testid="slot-editor">
           <p className="property-panel__section-title">槽位挂载</p>
           {mounts.map((m, index) => (
