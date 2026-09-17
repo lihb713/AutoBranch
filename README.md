@@ -71,6 +71,11 @@ npm install
 conda run -n autobranch python -m playwright install chromium
 ```
 
+### 数据库
+
+- **无需手动初始化**：AutoBranch 使用 **SQLite 单文件库**。后端（`uvicorn ... autobranch.server.main:app`）首次启动时自动创建数据库文件并建表（`configure_database` → `create_all`），安装后直接启动即可。
+- 默认数据库文件位于 `data/autobranch.db`（`data/` 目录会自动创建）。
+
 ## 配置
 
 项目读取根目录 `autobranch.config.json`（示例见下方；该文件已加入 `.gitignore`，请勿提交含密钥的配置）。支持的环境变量：
@@ -80,6 +85,8 @@ conda run -n autobranch python -m playwright install chromium
 | `AUTOBRANCH_LLM_API_KEY` | LLM API 密钥（优先于配置文件） |
 | `AUTOBRANCH_DB_PATH` | SQLite 数据库路径（默认 `data/autobranch.db`） |
 | `AUTOBRANCH_REPORT_DIR` | 报告/截图持久化目录（默认 `data/reports`） |
+
+> **数据库连接说明**：`autobranch.config.json` 中**不需要**（也没有）数据库连接项——SQLite 为单文件库，路径由 `AUTOBRANCH_DB_PATH` 环境变量或默认值 `data/autobranch.db` 决定，无连接串/账号配置；后端启动时自动初始化建表。如需更换数据库位置，设置环境变量即可，无需改动配置文件或代码。
 
 ```json
 {
