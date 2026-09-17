@@ -1,6 +1,6 @@
 """M7 动态 ref 调用执行器（一文档一树）：args 注入 / returns 回收 / 帧隔离。
 
-经 ``_tick_ref``：经 resolver 按文档名加载被引文档 → 求值实参（父帧裸路径
+经 ``_tick_ref``：经 resolver 按文档名加载被引文档 → 求值实参（``Param.x``
 或字面量）→ coerce 到输入类型 → 建子帧注入形参 → 递归执行被引文档主树
 （从 Root 执行）→ SUCCESS 回收 returns 写父帧 → 退出子帧。
 """
@@ -24,9 +24,9 @@ from autobranch.parser.parser import BehaviorTreeParser
 from autobranch.parser.refs import MappingResolver
 from autobranch.schema.models import PageRef
 
-_GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
+_GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
 _SET_TMPL = re.compile(
-    r"\[\[\s*set:(?:(str|int|float|bool|page_ref):)?\s*this/([^\[\]:]+?)\s*\]\]"
+    r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object))?"
 )
 
 
@@ -39,7 +39,7 @@ def _doc_resolver(docs: dict[str, dict]) -> MappingResolver:
 
 
 def _space_leaf(space, extra=None):
-    """模拟 M6 叶子：对描述做 get 替换 + 按 set 声明写入（不经 LLM）。
+    """模拟 M6 叶子：对描述做 Param. 替换 + 按 NewParam. 声明写入（不经 LLM）。
 
     ``extra`` 为 ``{描述: callable(frame) -> str|None}`` 的自定义写入钩子；
     get 读取失败 → FAILURE（程序侧语义）。set 声明从描述文本解析
@@ -61,8 +61,8 @@ def _space_leaf(space, extra=None):
             if problem is not None:
                 return leaf_failure(f"{desc}: {problem}")
         for m in _SET_TMPL.finditer(node.description):
-            path = f"this/{m.group(2)}"
-            space.write(frame, path, "成功输出", m.group(1) or "str")
+            path = f"this/{m.group(1)}"
+            space.write(frame, path, "成功输出", m.group(2) or "str")
         return leaf_success(desc)
 
     return leaf
@@ -92,14 +92,14 @@ def _login_doc(inputs=None, outputs=None, body=None) -> dict:
 
 
 class TestRefCallFromDsl:
-    """新 DSL 端到端：args 列表（本树变量名/字面量）按序对应被引树 inputs，
-    returns 字典（本树接收名:类型）按序对应被引树 outputs。"""
+    """新 DSL 端到端：args 列表（Param.x 变量引用/字面量）按序对应被引树 inputs，
+    returns 字典（NewParam.接收名:类型）按序对应被引树 outputs。"""
 
     def test_dsl_ref_args_and_returns_end_to_end(self, config) -> None:
         login = _login_doc(
             inputs={"username": "str"},
             outputs=["result"],
-            body=["读参数 [[get:this/username]]", "输出 [[set:str:this/result]]"],
+            body=["读参数 Param.username", "输出 NewParam.result:str"],
         )
         main = {
             "tree": "主流程",
@@ -115,8 +115,8 @@ class TestRefCallFromDsl:
                     "type": "ref",
                     "name": "去登录",
                     "target": "登录",
-                    "args": ["账号"],
-                    "returns": {"结果": "str"},
+                    "args": ["Param.account"],
+                    "returns": {"NewParam.result": "str"},
                 },
             },
             "root": "n1",
@@ -127,7 +127,7 @@ class TestRefCallFromDsl:
         main_tree = result.tree.root
 
         def fill_account(frame):
-            ctx.space.write(frame, "this/账号", "admin", "str")
+            ctx.space.write(frame, "this/account", "admin", "str")
             return None
 
         def check_param(frame):
@@ -141,20 +141,20 @@ class TestRefCallFromDsl:
         space = ctx.space
         ctx.leaf_executor = _space_leaf(
             space,
-            extra={"填账号": fill_account, "读参数 [[get:this/username]]": check_param},
+            extra={"填账号": fill_account, "读参数 Param.username": check_param},
         )
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         root = space._current
-        assert root.storage["结果"] == "成功输出"
+        assert root.storage["result"] == "成功输出"
         child = root.children["登录"]
         assert child.storage["username"] == "admin"
         assert child.storage["result"] == "成功输出"
 
     def test_dsl_ref_literal_arg(self, config) -> None:
-        """args 元素非本树变量名 → 按字面量传入（校验与 inputs 类型匹配）。"""
+        """args 元素非 Param.x 引用 → 按字面量传入（校验与 inputs 类型匹配）。"""
         login = _login_doc(
             inputs={"username": "str"},
-            body=["读参数 [[get:this/username]]"],
+            body=["读参数 Param.username"],
         )
         main = {
             "tree": "主流程",
@@ -189,7 +189,7 @@ class TestRefCallFromDsl:
         )
         space = ctx.space
         ctx.leaf_executor = _space_leaf(
-            space, extra={"读参数 [[get:this/username]]": check_param}
+            space, extra={"读参数 Param.username": check_param}
         )
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         assert space._current.children["登录"].storage["username"] == "admin"
@@ -202,20 +202,20 @@ class TestRefCall:
         login = _login_doc(
             inputs={"username": "str"},
             outputs=["result"],
-            body=["读参数 [[get:this/username]]", "输出 [[set:str:this/result]]"],
+            body=["读参数 Param.username", "输出 NewParam.result:str"],
         )
         resolver = _doc_resolver({"登录": login})
         main_tree = seq(
             action("填账号"),
             RefNode(
                 ref_target="登录",
-                args=("this/账号",),
-                returns=(("结果", "str"),),
+                args=("Param.account",),
+                returns=(("result", "str"),),
             ),
         )
 
         def fill_account(frame):
-            ctx.space.write(frame, "this/账号", "admin", "str")
+            ctx.space.write(frame, "this/account", "admin", "str")
             return None
 
         def check_param(frame):
@@ -227,12 +227,12 @@ class TestRefCall:
         space = ctx.space
         ctx.leaf_executor = _space_leaf(
             space,
-            extra={"填账号": fill_account, "读参数 [[get:this/username]]": check_param},
+            extra={"填账号": fill_account, "读参数 Param.username": check_param},
         )
         assert Traverser(ctx).tick(main_tree) == SUCCESS
-        # 父帧：returns 回收写入 this/结果
+        # 父帧：returns 回收写入 this/result
         root = ctx.space._current
-        assert root.storage["结果"] == "成功输出"
+        assert root.storage["result"] == "成功输出"
         # 子帧：args 注入的形参与块内 set 的输出
         child = root.children["登录"]
         assert child.storage["username"] == "admin"
@@ -244,7 +244,7 @@ class TestRefCall:
         login = _login_doc(
             inputs={"username": "str"},
             outputs=["result"],
-            body=["读参数 [[get:this/username]]", "输出 [[set:str:this/result]]"],
+            body=["读参数 Param.username", "输出 NewParam.result:str"],
         )
         resolver = _doc_resolver({"登录": login})
         seen_frames = []
@@ -256,22 +256,22 @@ class TestRefCall:
         main_tree = seq(
             RefNode(
                 ref_target="登录",
-                args=("this/账号1",),
-                returns=(("结果1", "str"),),
+                args=("Param.account1",),
+                returns=(("result1", "str"),),
             ),
             RefNode(
                 ref_target="登录",
-                args=("this/账号2",),
-                returns=(("结果2", "str"),),
+                args=("Param.account2",),
+                returns=(("result2", "str"),),
             ),
         )
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
-        space.write(space._current, "this/账号1", "u1", "str")
-        space.write(space._current, "this/账号2", "u2", "str")
+        space.write(space._current, "this/account1", "u1", "str")
+        space.write(space._current, "this/account2", "u2", "str")
         ctx.leaf_executor = _space_leaf(
             space,
-            extra={"读参数 [[get:this/username]]": check_param},
+            extra={"读参数 Param.username": check_param},
         )
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 两次调用是独立帧实例
@@ -282,8 +282,8 @@ class TestRefCall:
         assert seen_frames[1][1] == "u2"
         # 各自 returns 回收进父帧不同变量
         root = ctx.space._current
-        assert root.storage["结果1"] == "成功输出"
-        assert root.storage["结果2"] == "成功输出"
+        assert root.storage["result1"] == "成功输出"
+        assert root.storage["result2"] == "成功输出"
 
     def test_child_failure_propagates_and_skips_returns(self, config) -> None:
         login = _login_doc(
@@ -295,18 +295,18 @@ class TestRefCall:
         main_tree = seq(
             RefNode(
                 ref_target="登录",
-                args=("this/账号",),
-                returns=(("结果", "str"),),
+                args=("Param.account",),
+                returns=(("result", "str"),),
             ),
             action("后续"),
         )
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
-        space.write(space._current, "this/账号", "admin", "str")
+        space.write(space._current, "this/account", "admin", "str")
         ctx.leaf_executor.results["块内失败"] = leaf_failure("块内失败")
         assert Traverser(ctx).tick(main_tree) == FAILURE
         # FAILURE → 不写 returns，且后续叶子不执行
-        assert "结果" not in ctx.space._current.storage
+        assert "result" not in ctx.space._current.storage
         assert len(ctx.leaf_executor.calls) == 1
         # 激活帧恢复父帧
         assert ctx.space._current.name == "主流程"
@@ -321,7 +321,7 @@ class TestRefCall:
         assert ctx.leaf_executor.timeouts["块叶子"] == 7.0
 
     def test_page_ref_passed_as_arg_and_activated_in_child(self, config) -> None:
-        login = _login_doc(inputs={"page": "page_ref"}, body=["激活 [[get:this/page]]"])
+        login = _login_doc(inputs={"page": "page_ref"}, body=["激活 Param.page"])
         resolver = _doc_resolver({"登录": login})
 
         def activate(frame):
@@ -331,11 +331,11 @@ class TestRefCall:
                 return "页面变量未激活"
             return None
 
-        main_tree = seq(RefNode(ref_target="登录", args=("this/页",)))
+        main_tree = seq(RefNode(ref_target="登录", args=("Param.pageVar",)))
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
-        space.write(space._current, "this/页", PageRef(page_id="p1", url="https://x"), "page_ref")
-        ctx.leaf_executor = _space_leaf(space, extra={"激活 [[get:this/page]]": activate})
+        space.write(space._current, "this/pageVar", PageRef(page_id="p1", url="https://x"), "page_ref")
+        ctx.leaf_executor = _space_leaf(space, extra={"激活 Param.page": activate})
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 子帧注入的是 PageRef 值（页面变量走 args 传递）
         child = ctx.space._current.children["登录"]
@@ -343,11 +343,11 @@ class TestRefCall:
         assert child.storage["page"].page_id == "p1"
 
     def test_ref_arg_undefined_fails(self, config) -> None:
-        """父帧未定义变量作为裸路径实参 → ref FAILURE，不注入 "None"、不建子帧。"""
+        """父帧未定义变量作为 Param.x 实参 → ref FAILURE，不注入 "None"、不建子帧。"""
         login = _login_doc(inputs={"username": "str"}, body=["块内动作"])
         resolver = _doc_resolver({"登录": login})
         main_tree = seq(
-            RefNode(ref_target="登录", args=("this/未定义账号",)),
+            RefNode(ref_target="登录", args=("Param.undefinedArg",)),
         )
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space

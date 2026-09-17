@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import UTC, datetime
 
@@ -33,7 +34,6 @@ from autobranch.parser.models import (
 from autobranch.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
 from autobranch.schema import FrameDecl
 from autobranch.schema.errors import SchemaError
-from autobranch.schema.path import resolve_target
 from autobranch.schema.types import coerce, infer_type
 
 logger = logging.getLogger(__name__)
@@ -469,20 +469,15 @@ class Traverser:
         return expansion.tree, decl
 
     def _eval_arg(self, frame, expr: str):
-        """求值实参表达式：``this/<名>`` 或裸名（父帧已有变量）→ 读父帧；
-        否则视为字面量。
-
-        未定义（父帧从未写入该变量）返回 ``_MISSING`` 哨兵，由调用方判失败；
-        已定义（即便值为 None）返回存储值原样。``space.read`` 对未定义与
-        已存 None 均返回 None，故先经 ``resolve_target``/storage 判定存在性。
+        """求值实参表达式：``Param.<名>`` → 读当前帧变量（未定义返回 ``_MISSING`` 哨兵）；
+        其余一律按字面量解析（``_parse_literal``）。消除旧版"裸名命中变量否则字面量"的二义性。
         """
-        if _single_segment(expr) is not None:
-            target, var = resolve_target(frame, expr)
-            if var not in target.storage:
+        m = _PARAM_REF.match((expr or "").strip())
+        if m:
+            var = m.group(1)
+            if var not in frame.storage:
                 return _MISSING
-            return self.ctx.space.read(frame, expr)
-        if expr in frame.storage:
-            return self.ctx.space.read(frame, f"this/{expr}")
+            return self.ctx.space.read(frame, var)
         return _parse_literal(expr)
 
     # ------------------------------------------------------------ 报告与状态
@@ -520,12 +515,8 @@ class Traverser:
 _MISSING = object()
 
 
-def _single_segment(path: str) -> str | None:
-    """取单段裸路径 ``this/<名>`` 的 ``<名>``；其余形式（跨段/字面量）返回 None。"""
-    parts = [p for p in (path or "").strip().split("/") if p]
-    if len(parts) == 2 and parts[0] == "this":
-        return parts[1]
-    return None
+#: ``Param.<名>`` 变量引用（实参求值用；ASCII 词边界防 ``NewParam.`` 误判）
+_PARAM_REF = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def _parse_literal(expr: str):

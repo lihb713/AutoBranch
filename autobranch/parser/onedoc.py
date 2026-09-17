@@ -580,6 +580,22 @@ def _slot(field: str, child_id: str | None) -> _Slot:
     return _Slot(field, [child_id] if child_id else [], [])
 
 
+def _strip_return_name(key: object) -> tuple[str, str | None]:
+    """returns 键 → (裸接收名, 内联类型或 None)。
+
+    键形如 ``NewParam.名`` / ``NewParam.名:int``；无 ``NewParam.`` 前缀的裸名兼容保留。
+    """
+    k = str(key).strip()
+    inline: str | None = None
+    if k.startswith("NewParam."):
+        k = k[len("NewParam."):]
+    if ":" in k:
+        k, inline = k.split(":", 1)
+        k = k.strip()
+        inline = inline.strip() or None
+    return k, inline
+
+
 def _ref_ir(
     doc_id: str,
     nid: str,
@@ -600,7 +616,8 @@ def _ref_ir(
     returns_pairs: list[tuple[str, str]] = []
     if isinstance(returns, dict):
         for k, v in returns.items():
-            returns_pairs.append((str(k), str(v)))
+            name, inline = _strip_return_name(k)
+            returns_pairs.append((name, str(v).strip() or inline or ""))
     return IRNode(
         kind="ref",
         ref_target=str(target).strip(),
@@ -646,7 +663,8 @@ def _function_call_ir(
     returns_pairs: list[tuple[str, str]] = []
     if isinstance(returns, dict):
         for k, v in returns.items():
-            returns_pairs.append((str(k), str(v)))
+            name, inline = _strip_return_name(k)
+            returns_pairs.append((name, str(v).strip() or inline or ""))
     else:
         issues.append(
             _issue(
