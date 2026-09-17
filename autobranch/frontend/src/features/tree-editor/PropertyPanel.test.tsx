@@ -45,7 +45,7 @@ const REF_DOC: TreeDoc = {
       fields: {},
       target: "文档B",
       args: ["url"],
-      returns: { 结果: "str" },
+      returns: { "NewParam.result": "str" },
     },
   },
 };
@@ -115,6 +115,31 @@ describe("PropertyPanel", () => {
     expect(labels).toEqual(["游离一", "游离二"]);
   });
 
+  it("描述字段渲染 Param/NewParam 高亮", () => {
+    const action: TreeNode = {
+      id: "a1",
+      type: "Action",
+      name: "操作",
+      fields: { description: "访问 Param.base_url 并保存为 NewParam.siteUrl:str" },
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "a1" },
+        a1: action,
+      },
+    };
+    const { container } = renderPanel(doc, action, {});
+    expect(container.querySelectorAll(".hl-param")).toHaveLength(1);
+    expect(container.querySelectorAll(".hl-newparam")).toHaveLength(1);
+    expect(container.querySelector(".hl-param")).toHaveTextContent("Param.base_url");
+    expect(container.querySelector(".hl-newparam")).toHaveTextContent("NewParam.siteUrl:str");
+  });
+
   it("Sequence 增加槽位追加空占位", () => {
     const onUpdate = vi.fn();
     renderPanel(DOC, DOC.nodes.n2, { onUpdate });
@@ -171,7 +196,7 @@ describe("PropertyPanel", () => {
     expect(labels).not.toContain("主流程");
 
     expect(screen.getByTestId("ref-arg-r2-0")).toHaveValue("url");
-    expect(screen.getByTestId("ref-return-name-r2-0")).toHaveValue("结果");
+    expect(screen.getByTestId("ref-return-name-r2-0")).toHaveValue("NewParam.result");
     expect(screen.getByTestId("ref-return-type-r2-0")).toHaveValue("str");
   });
 
@@ -206,10 +231,10 @@ describe("PropertyPanel", () => {
       refMeta: { 文档B: { inputs: { url: "str" }, outputs: ["处理结果"] } },
     });
     fireEvent.change(screen.getByTestId("ref-return-name-r2-0"), {
-      target: { value: "结果2" },
+      target: { value: "NewParam.result2" },
     });
     const next = onUpdate.mock.calls[0][0] as TreeDoc;
-    expect(next.nodes.r2.returns).toEqual({ 结果2: "str" });
+    expect(next.nodes.r2.returns).toEqual({ "NewParam.result2": "str" });
   });
 
   it("Branch 分支增删与 otherwise 切换", () => {

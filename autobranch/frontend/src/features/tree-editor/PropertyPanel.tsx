@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { pluginsApi } from "../../api/plugins";
 import { Combobox, type ComboboxOption } from "../../components/Combobox";
+import { HighlightedField } from "../../components/HighlightedField";
 import { TextField } from "../../components/TextField";
 import type { FunctionInfo } from "../../types/plugin";
 import { schemaTypeToToken, TYPE_TOKENS } from "./tokens";
@@ -234,7 +235,7 @@ export function PropertyPanel({
     <section className="prop-group" data-testid={`prop-group-${title}`}>
       <h4 className="prop-group__title">{title}</h4>
       {defs.map((def) => (
-        <TextField
+        <HighlightedField
           key={def.key}
           label={def.label}
           value={node.fields[def.key] ?? ""}
@@ -255,7 +256,7 @@ export function PropertyPanel({
           {b.otherwise ? (
             <span className="property-panel__type">otherwise</span>
           ) : (
-            <TextField
+            <HighlightedField
               label="条件 when"
               value={b.when ?? ""}
               disabled={readonly}
@@ -333,7 +334,7 @@ export function PropertyPanel({
           </p>
         ) : (
           Object.keys(meta.inputs).map((inp, i) => (
-            <TextField
+            <HighlightedField
               key={`in-${inp}`}
               label={`入参 ${inp}（${meta.inputs[inp]}）`}
               value={(node.args ?? [])[i] ?? ""}
@@ -351,7 +352,7 @@ export function PropertyPanel({
           {meta.outputs.map((out, i) => (
             <div key={`out-${out}`} className="slot-row">
               <span className="slot-row__label">出参 {out}</span>
-              <TextField
+              <HighlightedField
                 label="接收参数名"
                 value={Object.keys(node.returns ?? {})[i] ?? ""}
                 disabled={readonly}
@@ -397,7 +398,7 @@ export function PropertyPanel({
           <p className="property-panel__hint">选择函数后自动列出参数</p>
         ) : (
           fcParams.map((p, i) => (
-            <TextField
+            <HighlightedField
               key={`fc-in-${p}`}
               label={`入参 ${p}（${schemaTypeToToken(schema.properties?.[p]?.type)}）`}
               value={(node.args ?? [])[i] ?? ""}
@@ -417,7 +418,7 @@ export function PropertyPanel({
           selectedFunc.returns.map((r, i) => (
             <div key={`fc-out-${r}`} className="slot-row">
               <span className="slot-row__label">返回值 {r}</span>
-              <TextField
+              <HighlightedField
                 label="接收参数名"
                 value={Object.keys(node.returns ?? {})[i] ?? ""}
                 disabled={readonly}
