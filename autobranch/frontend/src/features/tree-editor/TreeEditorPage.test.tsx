@@ -269,6 +269,57 @@ root: n1
     expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("展开");
   });
 
+  it("已有 ref 节点：加载文档后自动加载目标文档 inputs/outputs，属性面板展示入参/出参", async () => {
+    mocks.getTree.mockResolvedValue({
+      id: 7,
+      name: "A",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-01T00:00:00",
+      content: `tree: A
+nodes:
+  n1:
+    type: Root
+    name: A根
+    body: n2
+  n2:
+    type: ref
+    name: 去B
+    target: B
+root: n1
+`,
+    });
+    mocks.getTreeByName.mockResolvedValue({
+      id: 8,
+      name: "B",
+      created_at: "2026-01-01T00:00:00",
+      updated_at: "2026-01-01T00:00:00",
+      content: `tree: B
+inputs:
+  param1: str
+outputs:
+  - param2
+nodes:
+  n1:
+    type: Root
+    name: B根
+    body: n2
+  n2:
+    type: Action
+    name: 动作
+    description: x
+root: n1
+`,
+    });
+    renderEditor("/editor/1");
+    await waitFor(() => expect(screen.getByTestId("node-card-n2")).toBeInTheDocument());
+
+    await waitFor(() => expect(mocks.getTreeByName).toHaveBeenCalledWith("B"));
+
+    fireEvent.click(screen.getByTestId("node-card-n2"));
+    await waitFor(() => expect(screen.getByText("入参 param1（str）")).toBeInTheDocument());
+    expect(screen.getByText("出参 param2")).toBeInTheDocument();
+  });
+
   it("行为树级文档接口（入参/出参）在「树信息」Tab 可编辑", async () => {
     mocks.getTree.mockResolvedValue(TREE);
     renderEditor("/editor/1");

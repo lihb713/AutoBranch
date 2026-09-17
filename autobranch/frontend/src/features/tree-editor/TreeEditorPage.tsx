@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/request";
 import { runsApi } from "../../api/runs";
@@ -64,6 +64,8 @@ export function TreeEditorPage() {
   const [expandedRefs, setExpandedRefs] = useState<Set<string>>(new Set());
   const [refPreviews, setRefPreviews] = useState<Record<string, TreeDoc>>({});
   const [activeTab, setActiveTab] = useState<"property" | "nodes" | "tree">("property");
+  const refMetaLoading = useRef<Set<string>>(new Set());
+  const refMetaFailed = useRef<Set<string>>(new Set());
 
   // 加载全部文档名（ref 目标下拉）
   useEffect(() => {
@@ -108,7 +110,10 @@ export function TreeEditorPage() {
   }, [treeId]);
 
   const loadRefMeta = useCallback((target: string) => {
-    if (refMeta[target]) return;
+    if (refMeta[target] || refMetaLoading.current.has(target) || refMetaFailed.current.has(target)) {
+      return;
+    }
+    refMetaLoading.current.add(target);
     treesApi
       .getTreeByName(target)
       .then((tree) => {
@@ -123,13 +128,24 @@ export function TreeEditorPage() {
           }));
           setDocRefs((prev) => ({ ...prev, [target]: collectRefTargets(targetDoc) }));
         } catch {
-          // 被引文档解析失败不阻断编辑（保存时后端兜底）
+          refMetaFailed.current.add(target);
         }
       })
       .catch(() => {
-        // 目标不存在：校验层已报 missing_doc
+        refMetaFailed.current.add(target);
+      })
+      .finally(() => {
+        refMetaLoading.current.delete(target);
       });
   }, [refMeta]);
+
+  // 加载文档/新增 ref 目标后，自动加载全部 ref 目标的 inputs/outputs（幂等，仅缺失时请求）
+  useEffect(() => {
+    if (!doc) return;
+    for (const n of Object.values(doc.nodes)) {
+      if (n.type === "ref" && n.target) loadRefMeta(n.target);
+    }
+  }, [doc, loadRefMeta]);
 
   const refTargetsOf = useCallback(
     (docName: string) => {
