@@ -91,7 +91,7 @@ class BrowserPlugin(PluginBase):
         name="open",
         description=(
             "打开 URL 新建页签并设为当前活动页，返回页面对象（可存入变量供后续 "
-            "activate 切换；描述含 [[set]] 声明时由引擎写入目标变量）"
+            "activate 切换；描述含 NewParam. 声明时由引擎写入目标变量）"
         ),
         parameters=_props(("url",), url={"type": "string", "description": "要打开的 URL"}),
         output_param="save_to",

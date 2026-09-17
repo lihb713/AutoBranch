@@ -144,9 +144,9 @@ def expand_document(
 def _check_get_defined(
     ctx: ExpandContext, tree: Node, input_names: set[str]
 ) -> None:
-    """主树内 ``[[get:this/x]]`` 变量已定义校验（§5）。
+    """主树内 ``Param.x`` 变量已定义校验（§5）。
 
-    get 可读取 = 文档级 inputs 声明 + 主树内 ``[[set:...]]`` 目标
+    get 可读取 = 文档级 inputs 声明 + 主树内 ``NewParam.`` 目标
     + ref returns 目标变量；output 不构成 get 源。未定义 → get_undeclared。
     """
     defined = set(input_names) | _collect_output_assignment_names_ir(tree)
@@ -219,7 +219,7 @@ def _collect_output_assignment_names_ir(node: Node) -> set[str]:
 
 
 def _set_decl_names(desc: str) -> set[str]:
-    """叶子描述中单段 ``[[set:...:this/<名>]]`` 的目标名集合。"""
+    """叶子描述中单段 ``NewParam.x`` 的目标名集合。"""
     names: set[str] = set()
     for path, _ in _iter_set_decls(desc):
         segs = _schema_segments(path)
@@ -263,7 +263,7 @@ def _collect_output_assignment_names(node: IRNode | None) -> set[str]:
 
 
 def _collect_get_refs(node: IRNode | None) -> list[tuple[str, Loc | None]]:
-    """收集块内全部叶子（Action/Condition/Finish）描述中的 ``[[get:this/x]]`` 引用。
+    """收集块内全部叶子（Action/Condition/Finish）描述中的 ``Param.x`` 引用。
 
     返回 ``(变量名, loc)`` 列表，供 get 已定义校验使用。
     """

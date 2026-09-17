@@ -26,7 +26,7 @@ def test_prompt_render_is_deterministic():
 
 def test_prompt_version_is_stable():
     """4.3 提示词带版本号。"""
-    assert PROMPT_VERSION == "1.4"
+    assert PROMPT_VERSION == "1.5"
 
 
 def test_system_prompt_differentiates_node_type():

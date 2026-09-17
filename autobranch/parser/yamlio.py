@@ -88,7 +88,7 @@ def _split_key(s: str) -> tuple[str | None, str]:
     """切分映射项 ``key: value``。
 
     ``:`` 须后随空格或行尾且不在引号/流式括号内；否则视为标量
-    （如 ``https://x``、``[[get:this/账号]]`` 不会被误切分）。
+    （如 ``https://x``、``Param.账号`` 不会被误切分）。
     """
     depth = 0
     quote: str | None = None

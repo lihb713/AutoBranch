@@ -32,7 +32,7 @@ def test_decision_sequence_regression(config, fake, stub_engine):
     assert result.status == "success"
     assert [c.name for c in result.trace.calls] == ["browser.semantic_graph", "browser.type"]
     assert result.trace.calls[1].arguments == {"ref": "[1]", "text": "admin"}
-    assert result.trace.llm_input["prompt_version"] == "1.4"
+    assert result.trace.llm_input["prompt_version"] == "1.5"
 
 
 def test_prompt_rendering_regression_golden():

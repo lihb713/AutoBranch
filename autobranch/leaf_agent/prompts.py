@@ -16,7 +16,7 @@ from typing import Literal
 
 from autobranch.parser.models import ActionNode, ConditionNode
 
-PROMPT_VERSION = "1.4"
+PROMPT_VERSION = "1.5"
 
 _ACTION_SYSTEM = """\
 你是一个 Web 自动化执行代理。你的任务是根据「节点描述」，在浏览器中执行对应的网页操作。

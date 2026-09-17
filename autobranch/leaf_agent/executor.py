@@ -72,8 +72,10 @@ class _LeafOutcome:
     screenshots: list[str] = field(default_factory=list)
 
 
-#: ``[[get:path]]`` 读取引用（叶子执行前程序替换，M2 同款正则；path 裸变量名或兼容 this/名）
-_GET_TMPL = re.compile(r"\[\[\s*get:\s*((?:this/)?[^\[\]]+?)\s*\]\]")
+#: ``Param.<name>`` 读取引用（叶子执行前程序替换；与 M2 同款正则，ASCII 词边界）
+_GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
+#: 反引号转义段（`` `Param` `` → 纯文本，不替换）
+_BACKTICK = re.compile(r"`([^`]*)`")
 
 
 def _bare_name(path: str) -> str:
@@ -91,30 +93,36 @@ def _norm_path(path: str) -> str:
 
 
 def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | None]:
-    """叶子执行前把 ``[[get:path]]`` 替换为 blackboard 真实值（确定性）。
+    """叶子执行前把 ``Param.x`` 替换为 blackboard 真实值（确定性）。
 
     返回 ``(替换后文本, None)``；读取失败（变量未定义）返回
     ``(原文, 错误说明)``——该叶子应直接 FAILURE，不让 LLM 猜测。
-    描述不含 ``[[get:...]]`` 时不做替换（即使未注入 space 也正常执行）。
+    反引号转义段（`` `Param.x` ``）不替换，并去除反引号。
+    描述不含 ``Param.`` 时不做替换（即使未注入 space 也正常执行）。
     """
-    if not _GET_TMPL.search(description):
-        return description, None
+    if not _GET_TMPL.search(_BACKTICK.sub("", description)):
+        return _BACKTICK.sub(r"\1", description), None
     if ctx.space is None:
         return description, "变量读取依赖 SchemaSpace（未注入 space）"
     frame = ctx.space._current
-    replaced = description
-    for match in _GET_TMPL.finditer(description):
-        var = _bare_name(match.group(1))
-        if not var:
+    parts = _BACKTICK.split(description)
+    out: list[str] = []
+    for idx, seg in enumerate(parts):
+        if idx % 2 == 1:
+            out.append(seg)
             continue
-        try:
-            value = ctx.space.read(frame, var)
-        except SchemaError as exc:
-            return description, f"变量读取失败（{var}）: {exc}"
-        if value is None:
-            return description, f"变量未定义: {var}"
-        replaced = replaced.replace(match.group(0), str(value))
-    return replaced, None
+        replaced = seg
+        for match in _GET_TMPL.finditer(seg):
+            var = match.group(1)
+            try:
+                value = ctx.space.read(frame, var)
+            except SchemaError as exc:
+                return description, f"变量读取失败（{var}）: {exc}"
+            if value is None:
+                return description, f"变量未定义: {var}"
+            replaced = replaced.replace(match.group(0), str(value))
+        out.append(replaced)
+    return "".join(out), None
 
 
 def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResult:
@@ -311,7 +319,7 @@ def _plugin_tool_call(
         if _norm_path(target) not in declared:
             result = FunctionResult.failure(
                 f"{full_name} 目标 {target!r} 未在叶子可写变量集内"
-                f"（声明: {', '.join(set_targets) or '无'}；请用 [[set:...]] 声明）"
+                f"（声明: {', '.join(set_targets) or '无'}；请用 NewParam.x 声明）"
             )
             return result, _plugin_text(result, ""), [], None
         result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
@@ -336,7 +344,7 @@ def _initial_tools(ctx: LeafContext) -> list[ToolSpec]:
             extra = {
                 spec.output_param: {
                     "type": "string",
-                    "description": "产出值存入的变量名（裸名，须在 [[set]] 声明集内）",
+                    "description": "产出值存入的变量名（裸名，须在 NewParam. 声明集内）",
                 }
             }
         tools.append(spec.to_tool_spec(extra_params=extra))
@@ -346,7 +354,7 @@ def _initial_tools(ctx: LeafContext) -> list[ToolSpec]:
 def _write_result(ctx: LeafContext, target: str, value: Any, type_name: str = "") -> None:
     """引擎落笔：把产出型工具返回值写入当前帧目标变量。
 
-    ``type_name`` 来自节点 ``[[set:类型:名]]`` 声明；声明为具体类型（如 int）
+    ``type_name`` 来自节点 ``NewParam.名[:类型]`` 声明；声明为具体类型（如 int）
     时先 coerce 再存（网页提取值默认 str）。
     """
     if ctx.space is None:
