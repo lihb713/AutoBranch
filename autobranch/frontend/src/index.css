@@ -986,6 +986,7 @@ body {
   flex: 1;
   min-height: 0;
   grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 320px;
 }
 
 .editor__main {
@@ -994,6 +995,61 @@ body {
   min-width: 0;
   min-height: 0;
   gap: var(--space-3);
+}
+
+/* 右侧单一侧栏（Tab：属性 / 节点 / 树信息） */
+.editor__side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.editor__side-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex: none;
+}
+
+.editor__side-tab {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  border-bottom: 2px solid transparent;
+}
+
+.editor__side-tab:hover {
+  color: #1e293b;
+  background: #f1f5f9;
+}
+
+.editor__side-tab--active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  font-weight: 600;
+}
+
+.editor__side-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.editor__side-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
 
 .canvas {

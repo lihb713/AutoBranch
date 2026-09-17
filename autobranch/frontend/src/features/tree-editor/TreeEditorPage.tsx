@@ -63,6 +63,7 @@ export function TreeEditorPage() {
   const [docRefs, setDocRefs] = useState<Record<string, string[]>>({});
   const [expandedRefs, setExpandedRefs] = useState<Set<string>>(new Set());
   const [refPreviews, setRefPreviews] = useState<Record<string, TreeDoc>>({});
+  const [activeTab, setActiveTab] = useState<"property" | "nodes" | "tree">("property");
 
   // 加载全部文档名（ref 目标下拉）
   useEffect(() => {
@@ -192,6 +193,7 @@ export function TreeEditorPage() {
   const handleAddNode = useCallback(
     (type: NodeType) => {
       if (!doc) return;
+      setActiveTab("property");
       if (type === "Step") {
         const { doc: next, stepId } = createStepWithAction(doc);
         setDoc(next);
@@ -286,6 +288,7 @@ export function TreeEditorPage() {
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
     setSelectedPreview(null);
+    setActiveTab("property");
   }, []);
 
   const handleSelectPreview = useCallback((refId: string, nodeId: string) => {
@@ -361,20 +364,7 @@ export function TreeEditorPage() {
 
       {doc ? (
         <div className="editor">
-          <NodePalette onAdd={handleAddNode} />
           <div className="editor__main">
-            <div className="editor__toolbar">
-              <TextField
-                label="行为树名称"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="如：登录流程"
-              />
-              <span className="canvas__drop-hint">节点间动作关联一律经槽位挂载；保存前即时校验</span>
-            </div>
-            <div className="doc-interface-bar">
-              <DocInterfaceEditor doc={doc} readonly={selectedPreview !== null} onUpdate={setDoc} />
-            </div>
             <TreeCanvas
               doc={doc}
               selectedId={selectedId}
@@ -385,20 +375,66 @@ export function TreeEditorPage() {
               onSelectPreview={handleSelectPreview}
             />
             {Object.keys(doc.nodes).length <= 1 ? (
-              <EmptyState title="还没有节点" hint="点击左侧面板的节点类型添加" />
+              <EmptyState title="还没有节点" hint="点击右侧「节点」面板添加" />
             ) : null}
           </div>
-          <PropertyPanel
-            doc={selectedDoc ?? doc}
-            node={selectedNode}
-            readonly={selectedPreview !== null}
-            docNames={docNames}
-            refMeta={refMeta}
-            refTargetsOf={refTargetsOf}
-            onUpdate={setDoc}
-            onLoadRefMeta={loadRefMeta}
-            onDeleteNode={handleDeleteNode}
-          />
+          <aside className="editor__side" data-testid="editor-side">
+            <div className="editor__side-tabs" role="tablist" aria-label="侧栏面板">
+              <button
+                type="button"
+                className={`editor__side-tab${activeTab === "property" ? " editor__side-tab--active" : ""}`}
+                data-testid="side-tab-property"
+                onClick={() => setActiveTab("property")}
+              >
+                属性
+              </button>
+              <button
+                type="button"
+                className={`editor__side-tab${activeTab === "nodes" ? " editor__side-tab--active" : ""}`}
+                data-testid="side-tab-nodes"
+                onClick={() => setActiveTab("nodes")}
+              >
+                节点
+              </button>
+              <button
+                type="button"
+                className={`editor__side-tab${activeTab === "tree" ? " editor__side-tab--active" : ""}`}
+                data-testid="side-tab-tree"
+                onClick={() => setActiveTab("tree")}
+              >
+                树信息
+              </button>
+            </div>
+            <div className="editor__side-body">
+              {activeTab === "property" ? (
+                <PropertyPanel
+                  doc={selectedDoc ?? doc}
+                  node={selectedNode}
+                  readonly={selectedPreview !== null}
+                  docNames={docNames}
+                  refMeta={refMeta}
+                  refTargetsOf={refTargetsOf}
+                  onUpdate={setDoc}
+                  onLoadRefMeta={loadRefMeta}
+                  onDeleteNode={handleDeleteNode}
+                />
+              ) : null}
+              {activeTab === "nodes" ? (
+                <NodePalette onAdd={handleAddNode} />
+              ) : null}
+              {activeTab === "tree" ? (
+                <div className="editor__side-tree" data-testid="side-tab-tree-content">
+                  <TextField
+                    label="行为树名称"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="如：登录流程"
+                  />
+                  <DocInterfaceEditor doc={doc} readonly={selectedPreview !== null} onUpdate={setDoc} />
+                </div>
+              ) : null}
+            </div>
+          </aside>
         </div>
       ) : null}
     </section>

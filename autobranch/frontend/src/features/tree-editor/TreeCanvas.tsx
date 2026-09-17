@@ -220,7 +220,7 @@ export function TreeCanvas({
       ) : (
         <div className="canvas__empty" data-testid="canvas-empty">
           <p>画布为空</p>
-          <p className="canvas__drop-hint">从左侧节点面板添加节点构建行为树</p>
+          <p className="canvas__drop-hint">从「节点」面板添加节点构建行为树</p>
         </div>
       )}
     </main>

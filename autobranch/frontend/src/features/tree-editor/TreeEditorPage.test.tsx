@@ -83,7 +83,6 @@ describe("TreeEditorPage（统一槽位模型）", () => {
     mocks.getTree.mockResolvedValue(TREE);
     renderEditor("/editor/1");
 
-    expect(await screen.findByDisplayValue("冒烟流程")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId("node-card-n1")).toBeInTheDocument();
     });
@@ -139,6 +138,7 @@ describe("TreeEditorPage（统一槽位模型）", () => {
 
   it("新建：点击面板创建 Step 并自动附 Action", async () => {
     renderEditor("/editor");
+    fireEvent.click(screen.getByTestId("side-tab-nodes"));
     await screen.findByTestId("palette-Step");
     fireEvent.click(screen.getByTestId("palette-Step"));
 
@@ -152,7 +152,9 @@ describe("TreeEditorPage（统一槽位模型）", () => {
     mocks.createTree.mockResolvedValue({ id: 9, name: "新树", updated_at: "x" });
     renderEditor("/editor");
 
+    fireEvent.click(screen.getByTestId("side-tab-tree"));
     fireEvent.change(screen.getByPlaceholderText("如：登录流程"), { target: { value: "新树" } });
+    fireEvent.click(screen.getByTestId("side-tab-nodes"));
     fireEvent.click(screen.getByTestId("palette-Step"));
 
     // 把 Step(n2) 挂到 Root(n1).body
@@ -267,15 +269,39 @@ root: n1
     expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("展开");
   });
 
-  it("行为树级文档接口（入参/出参）与树名同区展示，且可编辑", async () => {
+  it("行为树级文档接口（入参/出参）在「树信息」Tab 可编辑", async () => {
     mocks.getTree.mockResolvedValue(TREE);
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
 
+    fireEvent.click(screen.getByTestId("side-tab-tree"));
     expect(screen.getByTestId("doc-interface")).toBeInTheDocument();
     expect(screen.getByText("树名：冒烟流程")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("doc-input-add"));
     expect(screen.getByTestId("doc-input-入参1")).toBeInTheDocument();
+  });
+
+  it("侧栏 Tab 切换：节点/树信息/属性仅显示当前项，选节点自动回属性", async () => {
+    mocks.getTree.mockResolvedValue(TREE);
+    renderEditor("/editor/1");
+    await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
+
+    expect(screen.getByText("未选中节点")).toBeInTheDocument();
+    expect(screen.queryByTestId("palette-Step")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("side-tab-tree-content")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("side-tab-nodes"));
+    expect(screen.getByTestId("palette-Step")).toBeInTheDocument();
+    expect(screen.queryByText("未选中节点")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("side-tab-tree"));
+    expect(screen.getByTestId("side-tab-tree-content")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("如：登录流程")).toBeInTheDocument();
+    expect(screen.queryByTestId("palette-Step")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("node-card-n3"));
+    expect(screen.getByTestId("node-props")).toBeInTheDocument();
+    expect(screen.queryByTestId("palette-Step")).not.toBeInTheDocument();
   });
 });
