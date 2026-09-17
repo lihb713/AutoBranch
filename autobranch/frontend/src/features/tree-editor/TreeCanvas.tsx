@@ -1,4 +1,5 @@
-﻿import { freeRoots, slotFields, type TreeDoc } from "./treeModel";
+﻿import { useRef, useState } from "react";
+import { freeRoots, slotFields, type TreeDoc } from "./treeModel";
 import { layoutDocument, prefixTree, NODE_H, NODE_W } from "./layout";
 import { NodeCard } from "./NodeCard";
 
@@ -29,6 +30,8 @@ export function TreeCanvas({
   onSelect,
   onSelectPreview,
 }: TreeCanvasProps) {
+  const [zoom, setZoom] = useState(1);
+  const canvasRef = useRef<HTMLElement | null>(null);
   const free = freeRoots(doc);
   // 预览子树并入主树布局（ref → 预览根 视作子节点，向下生长避免重叠）
   const layout = layoutDocument(doc.root, free, doc.nodes, refPreviews);
@@ -79,19 +82,39 @@ export function TreeCanvas({
 
   const hasRoot = doc.root in doc.nodes && Object.keys(doc.nodes).length > 0;
 
+  const zoomIn = () => setZoom((z) => Math.min(3, +Math.min(3, z + 0.1).toFixed(2)));
+  const zoomOut = () => setZoom((z) => Math.max(0.25, +(z - 0.1).toFixed(2)));
+  const zoomReset = () => setZoom(1);
+  const zoomFit = () => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const contentW = layout.width + 40;
+    const contentH = layout.height + 40;
+    const fit = Math.min(el.clientWidth / contentW, el.clientHeight / contentH, 1);
+    setZoom(Math.max(0.25, +fit.toFixed(2)));
+  };
+
+  const contentW = layout.width + 40;
+  const contentH = layout.height + 40;
+
   return (
-    <main className="canvas" data-testid="tree-canvas">
+    <main className="canvas" data-testid="tree-canvas" ref={canvasRef}>
       {hasRoot ? (
-        <div
-          className="canvas__scroll"
-          style={{ width: layout.width + 40, height: layout.height + 40 }}
-        >
-          <svg
-            className="canvas__edges"
-            width={layout.width + 40}
-            height={layout.height + 40}
-            data-testid="canvas-edges"
+        <>
+          <div
+            className="canvas__scroll"
+            style={{ width: contentW * zoom, height: contentH * zoom }}
           >
+            <div
+              className="canvas__zoom"
+              style={{ transform: `scale(${zoom})`, transformOrigin: "0 0" }}
+            >
+              <svg
+                className="canvas__edges"
+                width={contentW}
+                height={contentH}
+                data-testid="canvas-edges"
+              >
             {edges.map((e) => (
               <path
                 key={e.key}
@@ -152,7 +175,48 @@ export function TreeCanvas({
               </div>
             );
           })}
-        </div>
+            </div>
+          </div>
+          <div className="canvas__zoombar" data-testid="canvas-zoombar">
+            <button
+              type="button"
+              className="canvas__zoom-btn"
+              onClick={zoomOut}
+              data-testid="zoom-out"
+              aria-label="缩小"
+            >
+              −
+            </button>
+            <span className="canvas__zoom-level" data-testid="zoom-level">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              className="canvas__zoom-btn"
+              onClick={zoomIn}
+              data-testid="zoom-in"
+              aria-label="放大"
+            >
+              ＋
+            </button>
+            <button
+              type="button"
+              className="canvas__zoom-btn"
+              onClick={zoomFit}
+              data-testid="zoom-fit"
+            >
+              适应
+            </button>
+            <button
+              type="button"
+              className="canvas__zoom-btn"
+              onClick={zoomReset}
+              data-testid="zoom-reset"
+            >
+              100%
+            </button>
+          </div>
+        </>
       ) : (
         <div className="canvas__empty" data-testid="canvas-empty">
           <p>画布为空</p>

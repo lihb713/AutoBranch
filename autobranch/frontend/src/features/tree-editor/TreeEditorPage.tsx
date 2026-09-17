@@ -9,6 +9,7 @@ import { ErrorMessage } from "../../components/ErrorMessage";
 import { TextField } from "../../components/TextField";
 import type { CheckIssue } from "../../types/check";
 import { NodePalette } from "./NodePalette";
+import { DocInterfaceEditor } from "./DocInterfaceEditor";
 import { PropertyPanel } from "./PropertyPanel";
 import { TreeCanvas } from "./TreeCanvas";
 import {
@@ -370,6 +371,9 @@ export function TreeEditorPage() {
                 placeholder="如：登录流程"
               />
               <span className="canvas__drop-hint">节点间动作关联一律经槽位挂载；保存前即时校验</span>
+            </div>
+            <div className="doc-interface-bar">
+              <DocInterfaceEditor doc={doc} readonly={selectedPreview !== null} onUpdate={setDoc} />
             </div>
             <TreeCanvas
               doc={doc}

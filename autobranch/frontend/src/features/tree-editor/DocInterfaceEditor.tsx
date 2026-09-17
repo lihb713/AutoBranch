@@ -1,6 +1,5 @@
 import type { TreeDoc } from "./treeModel";
-
-const TYPE_TOKENS = ["str", "int", "float", "bool", "page_ref"];
+import { TYPE_TOKENS } from "./tokens";
 
 type DocInterfaceEditorProps = {
   doc: TreeDoc;

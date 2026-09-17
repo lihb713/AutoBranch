@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PropertyPanel } from "./PropertyPanel";
@@ -309,5 +310,84 @@ describe("PropertyPanel", () => {
     fireEvent.mouseDown(screen.getByRole("option"));
     const next = onUpdate.mock.calls[0][0] as TreeDoc;
     expect(next.nodes.fc1.function).toBe("compute.add");
+  });
+
+  it("FunctionCall：按函数签名自动罗列入参/返回值，无需手动添加", async () => {
+    functionMocks.listFunctions.mockResolvedValue([
+      {
+        full_name: "compute.add",
+        plugin: "compute",
+        name: "add",
+        description: "加法",
+        returns: ["result"],
+        parameters: {
+          type: "object",
+          properties: {
+            a: { type: "integer", description: "被加数" },
+            b: { type: "number", description: "加数" },
+          },
+          required: ["a", "b"],
+        },
+      },
+    ]);
+    const fc: TreeNode = {
+      id: "fc2",
+      type: "FunctionCall",
+      name: "求和",
+      fields: {},
+      function: "",
+      args: [],
+      returns: {},
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "fc2" },
+        fc2: fc,
+      },
+    };
+    const onUpdate = vi.fn();
+    const StatefulPanel = () => {
+      const [cur, setCur] = useState(doc);
+      return (
+        <PropertyPanel
+          doc={cur}
+          node={cur.nodes.fc2}
+          docNames={["主流程", "文档B", "文档C"]}
+          refMeta={{}}
+          refTargetsOf={() => []}
+          onUpdate={(next) => {
+            setCur(next);
+            onUpdate(next);
+          }}
+          onLoadRefMeta={() => {}}
+          onDeleteNode={() => {}}
+        />
+      );
+    };
+    render(<StatefulPanel />);
+    expect(screen.getByText("选择函数后自动列出参数")).toBeInTheDocument();
+
+    const input = screen.getByLabelText("函数名") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "compute.add" } });
+    await waitFor(() => expect(screen.getByRole("option")).toHaveTextContent("compute.add"));
+    fireEvent.mouseDown(screen.getByRole("option"));
+
+    expect(screen.getByText("入参 a（int）")).toBeInTheDocument();
+    expect(screen.getByText("入参 b（float）")).toBeInTheDocument();
+    expect(screen.getByText("返回值 result")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("接收参数名")).toHaveLength(1);
+    expect(screen.queryByText("添加实参")).not.toBeInTheDocument();
+    expect(screen.queryByText("添加返回值")).not.toBeInTheDocument();
+
+    const argInputs = screen.getAllByLabelText("入参 a（int）") as HTMLInputElement[];
+    fireEvent.change(argInputs[0], { target: { value: "x" } });
+    const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.fc2.args).toEqual(["x"]);
   });
 });

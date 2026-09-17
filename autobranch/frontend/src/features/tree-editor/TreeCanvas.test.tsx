@@ -181,4 +181,31 @@ describe("TreeCanvas", () => {
     renderCanvas({ doc: empty });
     expect(screen.getByText("画布为空")).toBeInTheDocument();
   });
+
+  it("缩放控件：默认 100%，放大/缩小/重置/适应生效", () => {
+    renderCanvas();
+    expect(screen.getByTestId("zoom-level")).toHaveTextContent("100%");
+    fireEvent.click(screen.getByTestId("zoom-in"));
+    expect(screen.getByTestId("zoom-level")).toHaveTextContent("110%");
+    fireEvent.click(screen.getByTestId("zoom-out"));
+    fireEvent.click(screen.getByTestId("zoom-out"));
+    expect(screen.getByTestId("zoom-level")).toHaveTextContent("90%");
+    fireEvent.click(screen.getByTestId("zoom-reset"));
+    expect(screen.getByTestId("zoom-level")).toHaveTextContent("100%");
+    fireEvent.click(screen.getByTestId("zoom-fit"));
+    expect(Number(screen.getByTestId("zoom-level").textContent?.replace("%", ""))).toBeGreaterThan(0);
+  });
+
+  it("缩放比例作用于内容容器 transform", () => {
+    const { container } = renderCanvas();
+    fireEvent.click(screen.getByTestId("zoom-in"));
+    const zoom = container.querySelector(".canvas__zoom") as HTMLElement;
+    expect(zoom.style.transform).toBe("scale(1.1)");
+  });
+
+  it("空画布不渲染缩放控件", () => {
+    const empty: TreeDoc = { ...DOC, root: "missing", nodes: {} };
+    renderCanvas({ doc: empty });
+    expect(screen.queryByTestId("canvas-zoombar")).not.toBeInTheDocument();
+  });
 });

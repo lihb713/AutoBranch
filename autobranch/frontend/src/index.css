@@ -972,3 +972,128 @@ body {
 .check-errors { border: 1px solid #fecaca; background: #fef2f2; padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
 .check-errors h3 { margin: 0 0 6px; font-size: 14px; color: #b91c1c; }
 .check-errors p { margin: 4px 0; font-size: 13px; color: #7f1d1d; }
+
+/* ---------- 行为树编辑器：整页布局 / 画布缩放 / 属性面板分组 ---------- */
+
+.editor-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 32px);
+  min-height: 0;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.editor__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: var(--space-3);
+}
+
+.canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.canvas__zoom {
+  position: relative;
+}
+
+.canvas__zoombar {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+}
+
+.canvas__zoom-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.canvas__zoom-btn:hover {
+  background: #e2e8f0;
+}
+
+.canvas__zoom-level {
+  font-size: 12px;
+  color: #475569;
+  min-width: 46px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 行为树级：文档接口区（工具栏下方） */
+.doc-interface-bar {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  padding: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.doc-interface-bar .property-panel__section {
+  border-top: none;
+  padding-top: 0;
+  min-width: 320px;
+}
+
+.doc-interface-bar .slot-row {
+  flex-direction: row;
+  align-items: flex-end;
+}
+
+/* 节点属性面板：整体容器 + 分组 */
+.node-props {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #f1f5f9;
+  padding: var(--space-3);
+}
+
+.prop-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.prop-group__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.property-panel__danger-zone {
+  margin-top: auto;
+}

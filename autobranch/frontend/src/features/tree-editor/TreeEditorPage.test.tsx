@@ -266,4 +266,16 @@ root: n1
     });
     expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("展开");
   });
+
+  it("行为树级文档接口（入参/出参）与树名同区展示，且可编辑", async () => {
+    mocks.getTree.mockResolvedValue(TREE);
+    renderEditor("/editor/1");
+    await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
+
+    expect(screen.getByTestId("doc-interface")).toBeInTheDocument();
+    expect(screen.getByText("树名：冒烟流程")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("doc-input-add"));
+    expect(screen.getByTestId("doc-input-入参1")).toBeInTheDocument();
+  });
 });
