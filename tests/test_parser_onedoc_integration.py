@@ -18,8 +18,8 @@ def test_parse_full_chain():
     """统一槽位 DSL → 基础树（Root→Sequence→Step(Action 子树)/ref）+ 校验通过。"""
     raw = {
         "tree": "主流程",
-        "inputs": {"起始订单": "str"},
-        "outputs": ["处理结果"],
+        "inputs": {"startOrder": "str"},
+        "outputs": ["result"],
         "nodes": {
             "n1": {"type": "Root", "name": "根", "body": "n2"},
             "n2": {"type": "Sequence", "name": "主流程", "actions": ["n3", "n4"]},
@@ -34,16 +34,16 @@ def test_parse_full_chain():
                 "type": "ref",
                 "name": "处理B",
                 "target": "文档B",
-                "args": ["起始订单"],
-                "returns": {"结果": "str"},
+                "args": ["Param.startOrder"],
+                "returns": {"NewParam.result": "str"},
             },
         },
         "root": "n1",
     }
     b_doc = {
         "tree": "文档B",
-        "inputs": {"起始订单": "str"},
-        "outputs": ["处理结果"],
+        "inputs": {"startOrder": "str"},
+        "outputs": ["result"],
         "nodes": {
             "n1": {"type": "Root", "name": "根", "body": "n2"},
             "n2": {
@@ -60,8 +60,8 @@ def test_parse_full_chain():
     resolver.add(DocumentSource(id="文档B", data=b_doc))
     result = _parse(raw, resolver=resolver)
     assert result.checks.ok, result.checks.issues
-    assert result.decl_inputs == {"起始订单": "str"}
-    assert result.decl_outputs == ["处理结果"]
+    assert result.decl_inputs == {"startOrder": "str"}
+    assert result.decl_outputs == ["result"]
     assert result.tree.name == "主流程"
     # Step 展开为 Sequence(ActionNode, ConditionNode)；action 槽位子树含 Action
     seq = result.tree.root
@@ -69,7 +69,7 @@ def test_parse_full_chain():
 
 
 def test_parse_with_undeclared_get_fails():
-    """[[get:this/x]] 读取未定义变量 → 校验失败（scope.get_undeclared）。"""
+    """Param.x 读取未定义变量 → 校验失败（scope.get_undeclared）。"""
     raw = {
         "tree": "主流程",
         "nodes": {
@@ -78,7 +78,7 @@ def test_parse_with_undeclared_get_fails():
             "n3": {
                 "type": "Action",
                 "name": "a",
-                "description": "填 [[get:this/未定义]]",
+                "description": "填 Param.undefinedVar",
             },
         },
         "root": "n1",
@@ -86,3 +86,33 @@ def test_parse_with_undeclared_get_fails():
     result = _parse(raw)
     assert not result.checks.ok
     assert any(i.code == "scope.get_undeclared" for i in result.checks.issues)
+
+
+def test_parse_with_deprecated_syntax_fails():
+    """旧语法 [[get:...]] 残留 → 校验失败（syntax.deprecated）。"""
+    raw = {
+        "tree": "主流程",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
+            "n2": {"type": "Action", "name": "a", "description": "填 [[get:amount]]"},
+        },
+        "root": "n1",
+    }
+    result = _parse(raw)
+    assert not result.checks.ok
+    assert any(i.code == "syntax.deprecated" for i in result.checks.issues)
+
+
+def test_parse_with_unclosed_backtick_fails():
+    """未闭合反引号 → 校验失败（syntax.unclosed_backtick）。"""
+    raw = {
+        "tree": "主流程",
+        "nodes": {
+            "n1": {"type": "Root", "name": "根", "body": "n2"},
+            "n2": {"type": "Action", "name": "a", "description": "写 `Param"},
+        },
+        "root": "n1",
+    }
+    result = _parse(raw)
+    assert not result.checks.ok
+    assert any(i.code == "syntax.unclosed_backtick" for i in result.checks.issues)

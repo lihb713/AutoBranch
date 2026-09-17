@@ -331,14 +331,14 @@ def _check_param_syntax(ctx: ExpandContext, text: str | None, loc: Loc | None) -
             "反引号未闭合，`Param`/`NewParam` 需成对出现",
             loc,
         )
-    for m in _DEPRECATED_TMPL.finditer(text):
+    for _m in _DEPRECATED_TMPL.finditer(text):
         ctx.add_issue(
             "syntax",
             "syntax.deprecated",
             "旧语法已废弃，请改用 Param.x / NewParam.x[:type]",
             loc,
         )
-    for m in _INVALID_NAME_TMPL.finditer(text):
+    for _m in _INVALID_NAME_TMPL.finditer(text):
         ctx.add_issue(
             "syntax",
             "syntax.invalid_name",

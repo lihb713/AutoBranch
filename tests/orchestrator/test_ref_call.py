@@ -334,7 +334,12 @@ class TestRefCall:
         main_tree = seq(RefNode(ref_target="登录", args=("Param.pageVar",)))
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         space = ctx.space
-        space.write(space._current, "this/pageVar", PageRef(page_id="p1", url="https://x"), "page_ref")
+        space.write(
+            space._current,
+            "this/pageVar",
+            PageRef(page_id="p1", url="https://x"),
+            "page_ref",
+        )
         ctx.leaf_executor = _space_leaf(space, extra={"激活 Param.page": activate})
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 子帧注入的是 PageRef 值（页面变量走 args 传递）

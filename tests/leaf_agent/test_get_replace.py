@@ -201,7 +201,9 @@ def test_open_save_to_must_be_declared(llm_config, space):
     )
     engine = MockRegistry()
     engine.register("browser.open", output_param="save_to")
-    engine.results["browser.open"] = OpResult(True, detail={"page_ref": "p", "var": "undeclaredPage"})
+    engine.results["browser.open"] = OpResult(
+        True, detail={"page_ref": "p", "var": "undeclaredPage"}
+    )
 
     def factory(cfg, system_prompt):
         return LLMSession(config=cfg, system_prompt=system_prompt, transport=transport)

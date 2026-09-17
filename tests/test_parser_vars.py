@@ -4,8 +4,8 @@ from autobranch.parser.expand import (
     ExpandContext,
     _check_param_syntax,
     _iter_get_paths,
-    _iter_set_decls,
     _iter_schema_paths,
+    _iter_set_decls,
 )
 
 

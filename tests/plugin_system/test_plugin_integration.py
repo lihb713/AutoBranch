@@ -142,7 +142,7 @@ def test_plugin_leaf_producing_write_variable():
         responses=[
             chat_response(tool_calls=[tool_call("use_capability", {"capability": "echo"})]),
             chat_response(
-                tool_calls=[tool_call("echo.produce", {"value": "hi", "target": "结果"})]
+                tool_calls=[tool_call("echo.produce", {"value": "hi", "target": "result"})]
             ),
             chat_response(text="结果: 成功"),
         ]
@@ -151,13 +151,13 @@ def test_plugin_leaf_producing_write_variable():
     frame = space.enter_frame("t", None)
     ctx = _leaf_ctx(fake, reg, space)
     node = ActionNode(
-        description="把 hi 写入变量结果 [[set:str:结果]]",
-        set_targets=("结果",),
-        set_decls=(("结果", "str"),),
+        description="把 hi 写入变量结果 NewParam.result:str",
+        set_targets=("result",),
+        set_decls=(("result", "str"),),
     )
     result = execute_leaf(node, ctx)
     assert result.status == "success"
-    assert space.read(frame, "结果") == "hi"
+    assert space.read(frame, "result") == "hi"
 
 
 def test_plugin_leaf_producing_undeclared_rejected():
