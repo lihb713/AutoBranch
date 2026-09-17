@@ -21,11 +21,11 @@
 - **THEN** 系统为 T、A、A' 分别建立帧，路径依次为 T/、T/登录/、T/登录/输入框/
 ### Requirement: 严格作用域——只读写自己的帧（单段寻址）
 
-每个块实例的读写 SHALL 严格限定在自己的 schema 帧内，路径为 `this/<名>` 单段；直接子块、祖先、兄弟、孙子帧一律不可见，越权访问必须被拒绝并产生校验错误。跨帧传参/接收输出经 ref 的 `args`/`returns`，不通过帧路径读写。
+每个块实例的读写 SHALL 严格限定在自己的 schema 帧内，用户层为**裸变量名**（ASCII 标识符）单段；直接子块、祖先、兄弟、孙子帧一律不可见，越权访问必须被拒绝并产生校验错误。跨帧传参/接收输出经 ref 的 `args`/`returns`，不通过帧路径读写。
 
 #### Scenario: 写自己的 schema 合法
 
-- **WHEN** 块对其自身路径执行 `[[set:this/amount]]` 写入声明
+- **WHEN** 块对其自身执行 `NewParam.amount` 写入声明
 - **THEN** 写入成功，变量存入该块自己的帧
 
 #### Scenario: ref args 注入子块帧
@@ -54,11 +54,11 @@
 - **THEN** 系统拒绝该读取并报告越权校验错误
 ### Requirement: 变量路径读写
 
-变量 SHALL 以带命名空间前缀的路径形式读写：写入使用 `[[set:类型:this/xxx]]`，读取使用 `[[get:this/xxx]]`；用户层路径为 `this/xxx` 单段，`this` 标识自身帧，跨块传参/接收输出经 ref 的 `args`/`returns`。
+变量 SHALL 以裸变量名读写：写入使用 `NewParam.xxx[:类型]`，读取使用 `Param.xxx`；用户层为 ASCII 裸变量名单段，跨块传参/接收输出经 ref 的 `args`/`returns`（旧语法 `[[get]]`/`[[set]]`/`this/` 已废弃）。
 
 #### Scenario: 路径写入与读取
 
-- **WHEN** 块执行 `[[set:this/amount]]` 写入金额值，随后以 `[[get:this/amount]]` 读取
+- **WHEN** 块执行 `NewParam.amount` 写入金额值，随后以 `Param.amount` 读取
 - **THEN** 读取结果等于写入的金额值
 
 #### Scenario: 读取未定义变量
@@ -72,12 +72,12 @@
 #### Scenario: 父块写直接子块传参
 
 - **WHEN** 主流程 T 经 ref `args` 将用户名注入直接子块登录的帧
-- **THEN** 登录块以 `[[get:this/username]]` 读取到该值
+- **THEN** 登录块以 `Param.username` 读取到该值
 
 #### Scenario: 逐层转发到孙块
 
 - **WHEN** 登录块需要向输入框块传值，经 ref `args` 将值注入输入框块的帧
-- **THEN** 输入框块以 `[[get:this/值]]` 读取到该值，且主流程 T 无法直接写入或读取该孙级路径
+- **THEN** 输入框块以 `Param.value` 读取到该值，且主流程 T 无法直接写入或读取该孙级路径
 ### Requirement: 取子块返回值
 
 调用方 SHALL 经 ref `returns` 获取子块返回值：M7 `_tick_ref` 在子块 SUCCESS 后读子帧输出（`this/<输出名>`）并按 `returns` 映射写入父帧；帧数据保留至运行结束（供黑板上报），激活帧控制访问。

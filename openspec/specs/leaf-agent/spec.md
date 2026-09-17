@@ -138,7 +138,7 @@ Action / Condition 叶子节点的 agent 式执行 SHALL 支持两级能力选�
 - **THEN** 不预取语义图，零浏览器开销
 ### Requirement: 变量写入落笔
 
-叶子执行器 SHALL 负责变量写入落笔：当 LLM 调用**产出型工具**（声明了单一变量目标参数）时，执行器 SHALL 拆出目标参数、调用插件函数、把返回值写入当前帧的目标变量；插件函数 SHALL NOT 直接写变量空间。目标变量 SHALL 在节点的 `[[set]]` 声明集内（= Action / Condition 描述文本中 `[[set:...]]` 标注的变量集合）；多返回值映射仅经 FunctionCall 节点 `returns` 完成。
+叶子执行器 SHALL 负责变量写入落笔：当 LLM 调用**产出型工具**（声明了单一变量目标参数）时，执行器 SHALL 拆出目标参数、调用插件函数、把返回值写入当前帧的目标变量；插件函数 SHALL NOT 直接写变量空间。目标变量 SHALL 在节点的 `NewParam.` 声明集内（= Action / Condition 描述文本中 `NewParam.x[:类型]` 标注的变量集合）；多返回值映射仅经 FunctionCall 节点 `returns` 完成。
 
 #### Scenario: 产出型工具返回值写入变量
 - **WHEN** LLM 调用产出型工具（如 `extract(ref, target=结果)`）

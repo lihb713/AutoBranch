@@ -17,16 +17,16 @@ const B_NAME = `e2e-refB-${STAMP}`;
 const B_YAML =
   "tree: " + B_NAME + "\n" +
   "inputs: {url: str}\n" +
-  "outputs: [url文本]\n" +
+  "outputs: [urlText]\n" +
   "nodes:\n" +
   "  n1:\n    type: Root\n    name: 根\n    body: n2\n" +
   "  n2:\n    type: Sequence\n    name: 打开页面\n    actions: [n3, n4]\n" +
   "  n3:\n    type: Step\n    name: 打开\n    action: n5\n    expect: 页面出现\"登录\"\n" +
   "  n5:\n    type: Action\n    name: 打开动作\n" +
-  "    description: 打开页面 [[get:this/url]] 存页签 [[set:page_ref:this/页签]]\n" +
+  "    description: 打开页面 Param.url 存页签 NewParam.tab:page_ref\n" +
   "  n4:\n    type: Step\n    name: 记录地址\n    action: n6\n    expect: url 非空\n" +
   "  n6:\n    type: Action\n    name: 记录\n" +
-  "    description: 记录当前页地址 [[set:str:this/url文本]]\n" +
+  "    description: 记录当前页地址 NewParam.urlText:str\n" +
   "root: n1\n";
 
 const A_YAML =
@@ -37,10 +37,10 @@ const A_YAML =
   "  n3:\n    type: ref\n    name: 打开页面\n" +
   "    target: " + B_NAME + "\n" +
   "    args: [\"http://127.0.0.1:8123/index.html\"]\n" +
-  "    returns: {url文本: str}\n" +
+  "    returns: {NewParam.urlText: str}\n" +
   "  n4:\n    type: Step\n    name: 校验\n    action: n5\n    expect: 页面出现\"AutoBranch 测试站\"\n" +
   "  n5:\n    type: Action\n    name: 校验动作\n" +
-  "    description: 校验当前页面出现\"AutoBranch 测试站\" [[get:this/url文本]]\n" +
+  "    description: 校验当前页面出现\"AutoBranch 测试站\" Param.urlText\n" +
   "root: n1\n";
 
 test.beforeAll(async () => {

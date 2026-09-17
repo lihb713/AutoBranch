@@ -107,18 +107,18 @@
 - **WHEN** 变量引用指向祖先、兄弟或孙子级别的 schema
 - **THEN** 校验失败，报告指明越作用域的变量引用位置
 
-#### Scenario: get 未定义变量被判失败
-- **WHEN** 块内 `[[get:this/x]]` 读取的变量既非本块 `inputs` 声明、也非块内 `[[set:...:this/x]]` 目标或 ref `returns` 目标
-- **THEN** 校验失败，报告含 `scope.get_undeclared`（output 声明不构成 get 源）
+#### Scenario: 读取未定义变量被判失败
+- **WHEN** 块内 `Param.x` 读取的变量既非本块 `inputs` 声明、也非块内 `NewParam.x` 目标或 ref `returns` 目标
+- **THEN** 校验失败，报告含 `scope.get_undeclared`（output 声明不构成读取源）
 ### Requirement: 清晰度校验（主块名强制与输出全赋值）
-系统 SHALL 校验主块名必须等于行为树名（文档名），不匹配时校验失败（`structure.missing_main_block`）；块声明的每个 `outputs` 名 MUST 在块体内存在赋值点（叶子 `[[set:...:this/<名>]]` 或本块 ref 的 `returns` 目标），否则校验失败（`ref.output_not_set`）。
+系统 SHALL 校验主块名必须等于行为树名（文档名），不匹配时校验失败（`structure.missing_main_block`）；块声明的每个 `outputs` 名 MUST 在块体内存在赋值点（叶子 `NewParam.<名>` 或本块 ref 的 `returns` 目标），否则校验失败（`ref.output_not_set`）。
 
 #### Scenario: 主块名不等于行为树名被判失败
 - **WHEN** 文档中主块名与行为树名不一致
 - **THEN** 校验失败，报告含 `structure.missing_main_block`
 
 #### Scenario: 输出未赋值被判失败
-- **WHEN** 块声明了 `outputs` 但块体内既无对应 `[[set:...:this/<输出>]]` 也无 ref `returns` 目标为其赋值
+- **WHEN** 块声明了 `outputs` 但块体内既无对应 `NewParam.<输出>` 也无 ref `returns` 目标为其赋值
 - **THEN** 校验失败，报告含 `ref.output_not_set`
 ### Requirement: 清晰度校验（可定位与验证条件）
 系统 SHALL 校验每条动作目标可定位（有 CSS 提示或有 LLM 可映射的自然语言描述）且每步有验证条件（Step/Branch 等的 expect/判断），否则该步成败无法判定。动作不可定位或缺少验证条件的文档 MUST 校验失败。

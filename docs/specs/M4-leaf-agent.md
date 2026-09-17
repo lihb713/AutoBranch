@@ -161,7 +161,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 5. **`terminator` 取值集合**：`round_limit`/`no_progress`/`timeout`/`budget`（LLM 侧终止）与 `fatal_error`/`llm_connection`/`llm_timeout`/`llm_error`（错误中断）；正常完成或决策不可解析为 `None`。
 6. **`LeafContext.registry` 注入**：M6 不构造插件，由 M7/后端注入共享注册表（M3 插件框架）；`session_factory` 供测试注入假传输，默认按 `config` + `session_timeout` 构建真实会话。
 7. **轮数语义**：`max_rounds` 指 LLM 工具调用轮数上限，第 `max_rounds+1` 轮请求即终止（前 `max_rounds` 轮完整执行并回填）。
-8. **提示词版本化**：`PROMPT_VERSION="1.4"`，变更提示词须递增版本号并通过回归测试（`tests/leaf_agent/test_regression.py` 金样本）。v1.1 起新增空间方位感知（结合语义图 `(页面方位)` 标注理解位置指令）与「何时获取最新语义图」的自主决策引导：操作可能改变页面布局/关键信息时操作前获取最新；操作或判断失败时重新获取最新；其余情况可复用当前语义图，不强制每次获取，引擎以 ref stale 兜底（M5）。v1.2 新增变量 get/set 语义：`[[get:...]]` 已被程序在叶子执行前替换为真实值（LLM 无需处理）；`[[set:...]]` 声明本动作可写变量集，LLM 提取值后调 extract 且 target 须取自声明集（未声明目标被拒）。v1.3 类型化 set 标注（`[[set:page_ref:...]]`/`[[set:str:...]]` 提示存页签/存文本、选 open(save_to)/get_url）。v1.4 类型标注并入 TYPE_REGISTRY 英文 token：`[[set:page_ref:...]]`（open save_to 存页签）、`[[set:str:...]]`（extract 或 get_url 存文本）、其余 token（int/float/bool）提示「提取并转换后存入」。
+8. **提示词版本化**：`PROMPT_VERSION="1.5"`，变更提示词须递增版本号并通过回归测试（`tests/leaf_agent/test_regression.py` 金样本）。v1.1 起新增空间方位感知（结合语义图 `(页面方位)` 标注理解位置指令）与「何时获取最新语义图」的自主决策引导：操作可能改变页面布局/关键信息时操作前获取最新；操作或判断失败时重新获取最新；其余情况可复用当前语义图，不强制每次获取，引擎以 ref stale 兜底（M5）。v1.2 新增变量 get/set 语义：`Param.x` 已被程序在叶子执行前替换为真实值（LLM 无需处理）；`NewParam.x[:类型]` 声明本动作可写变量集，LLM 提取值后调 extract 且 target 须取自声明集（未声明目标被拒）。v1.3 类型化标注（`NewParam.pageRef:page_ref`/`NewParam.url:str` 提示存页签/存文本、选 open(save_to)/get_url）。v1.4 类型标注并入 TYPE_REGISTRY 英文 token。v1.5 语法统一为 `Param.`/`NewParam.`（旧 `[[set]]`/`[[get]]` 彻底废弃）。
 
 
 ## 8. 插件两级能力选择与变量落笔（能力插件化新增，已实现）
@@ -177,7 +177,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 
 ### 8.2 变量写入落笔
 
-产出型工具（`output_param` 声明单一变量目标参数）：执行器拆出目标参数、调插件函数，按节点 `[[set:类型:名]]` 声明类型 **coerce** 后写入当前帧变量（声明 `[[set:int:苹果金额]]` → 存 int 120）；目标不在声明集内 → 拒绝并回传错误给 LLM。
+产出型工具（`output_param` 声明单一变量目标参数）：执行器拆出目标参数、调插件函数，按节点 `NewParam.名[:类型]` 声明类型 **coerce** 后写入当前帧变量（声明 `NewParam.appleAmount:int` → 存 int 120）；目标不在声明集内 → 拒绝并回传错误给 LLM。
 
 ### 8.3 截图收集
 

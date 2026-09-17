@@ -139,13 +139,13 @@ nodes:
     description: 打开测试页，输入 admin/secret，点击登录
   提取苹果:
     type: Action
-    description: 用 extract 提取"苹果"行金额，写入变量 苹果金额 [[set:int:苹果金额]]
+    description: 用 extract 提取"苹果"行金额，写入变量 appleAmount NewParam.appleAmount:int
   求和:
     type: FunctionCall
     function: compute.add
-    args: [苹果金额, 香蕉金额]
+    args: [Param.appleAmount, Param.bananaAmount]
     returns:
-      水果合计: int
+      NewParam.fruitTotal: int
 root: n1
 ```
 

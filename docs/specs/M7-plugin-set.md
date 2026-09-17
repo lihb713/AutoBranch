@@ -66,7 +66,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 - 不 import 其他插件 / `common` / 三方库；插件名小写字母/数字/`_`/`-`、不与预置同名。
 - `@engine_function` 显式注册对外函数；未标注不注册。
 - 函数只返回值（裸值或 `FunctionResult`）、不写变量（引擎落笔）。
-- `output_param`：产出型工具声明变量目标参数名，引擎按节点 `[[set:类型:名]]` 声明类型 coerce 后写入变量。
+- `output_param`：产出型工具声明变量目标参数名，引擎按节点 `NewParam.名[:类型]` 声明类型 coerce 后写入变量。
 - 删除插件会置空引用它的行为树 FunctionCall 引用。
 
 **使用方式**：

@@ -405,30 +405,34 @@ n9:
 
 变量通过**带层次结构的 schema（命名空间）**管理。每次文档引用产生一个独立的执行帧（schema，类似函数调用栈帧），参数写在各自的命名空间里，**同名不冲突**。
 
-**变量引用统一为前后有界的引用符号（与自然语言明确区分），用裸变量名**：
+**变量引用统一为前后有界的引用符号（与自然语言明确区分）**：
 
 ```
 变量引用统一为裸变量名（作用于当前文档执行帧）:
-  读取:  [[get:amount]]            （叶子执行前程序确定性替换为真实值）
-  写入声明: [[set:类型:amount]]     （声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref）
-  传参:   ref 处的 args: [值...]         （传实参给被引用文档）
-  取返回: ref 处的 returns: {名: 类型}    （接收被引用文档的输出）
+  读取:  Param.amount            （叶子执行前程序确定性替换为真实值）
+  写入声明: NewParam.amount[:类型]（声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref/object，可省略按动作推断）
+  传参:   ref 处的 args: [Param.x 或字面量...]  （传实参给被引用文档）
+  取返回: ref 处的 returns: {NewParam.名: 类型}  （接收被引用文档的输出，键=本树新建变量）
 ```
 
-> 参数**无层级概念**（一文档一树）：get/set 均针对当前文档执行帧，裸变量名即可；
-> 旧式 `裸变量名` 前缀为兼容写法（M3 内部仍接受）。
+> 参数**无层级概念**（一文档一树）：读/写均针对当前文档执行帧，裸变量名即可。
+> `Param.<名>`/`NewParam.<名>` 的 `<名>` 为 ASCII 标识符（`[A-Za-z_][A-Za-z0-9_]*`），
+> 边界 = 首个非 `[A-Za-z0-9_]` 字符（中文即边界，中文变量名已废弃）。
+> 反引号包裹（`` `Param` ``/`` `NewParam` ``）为纯文本，不替换。
+> 旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已彻底废弃，解析到 → `syntax.deprecated`。
 
 **机制**：
-- **读取（get）确定性**：`[[get:xxx]]` 出现在叶子描述中，引擎在叶子执行前从
+- **读取（Param.）确定性**：`Param.xxx` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
   读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
-- **get 变量静态校验**：`[[get:x]]` 读取的变量必须是**本文档 inputs 声明**（调用方
-  经 ref args 传入）、**本文档内 `[[set:...:x]]` 声明**或 **ref 的 returns 目标变量**；
+- **读取变量静态校验**：`Param.x` 读取的变量必须是**本文档 inputs 声明**（调用方
+  经 ref args 传入）、**本文档内 `NewParam.x` 声明**或 **ref 的 returns 目标变量**；
   未定义即读取 → 清晰度校验报 `scope.get_undeclared`（解析期拦截）。output 声明不构成
-  get 源（输出是本文档返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
-  也须配 `[[set:...]]` 标注才能被 get。
-- **写入（set）声明**：`[[set:类型:xxx]]` 声明本动作的可写变量集。LLM 决定何时调用
-  extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**（未声明路径拒绝）。
+  读取源（输出是本文档返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
+  也须配 `NewParam.x` 标注才能被读取。
+- **写入（NewParam.）声明**：`NewParam.类型:xxx`（类型可省略）声明本动作的可写变量集。
+  LLM 决定何时调用 extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**
+  （未声明路径拒绝）。
 
 #### 5.3.1 schema 的层级结构
 
@@ -512,8 +516,8 @@ TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRe
 
 ```
 示例:
-  n3: {type: Step, action: n4, expect: [[get:amount]] 是数字 且 在 0~100000 之间}
-  n4: {type: Action, description: 提取"订单金额" [[set:floatamount]]}
+  n3: {type: Step, action: n4, expect: Param.amount 是数字 且 在 0~100000 之间}
+  n4: {type: Action, description: 提取"订单金额" NewParam.amount:float}
 
 页面引用类型 (见 §5.10):
   open("https://.../login", save_to="登录页")   ← 类型: page_ref
@@ -705,12 +709,12 @@ ref 节点:
 
 ```
 nodes:
-  n3: {type: ref, name: 去登录, target: 登录, args: [账号], returns: {登录结果: bool}}
+  n3: {type: ref, name: 去登录, target: 登录, args: [Param.账号], returns: {NewParam.loginResult: bool}}
 ```
 
 **参数绑定**（沿用 §5.3 schema 机制）：
-- `args` 按序对应被引文档 `inputs`；每个元素优先匹配本树已有变量名（`裸变量名`，命中即变量引用），未命中则作为字面量（str/int/float/bool）传入。
-- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量名**，值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `[[get:<接收名>]]` 引用。
+- `args` 按序对应被引文档 `inputs`；每个元素为 `Param.x`（读本树变量）或字面量（str/int/float/bool）。
+- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量**（`NewParam.名`，内联 `:类型` 兼容），值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `Param.<接收名>` 引用。
 
 **绑定契约（严格执行）**：
 - `args` 数量 ≠ 被引文档 inputs 数量 → `ref.args_mismatch`；`returns` 数量 ≠ outputs 数量 → `ref.returns_mismatch`；接收名与本树 inputs 重名 → `ref.name_conflict`。
@@ -758,13 +762,13 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 登录, actions: [n3, n4, n5, n6]}
   n3: {type: Step, name: 填账号, action: n3a, expect: 输入成功}
-  n3a: {type: Action, name: 填账号, description: 填 [[get:username]]}
+  n3a: {type: Action, name: 填账号, description: 填 Param.username}
   n4: {type: Step, name: 填密码, action: n4a, expect: 输入成功}
-  n4a: {type: Action, name: 填密码, description: 填 [[get:password]]}
+  n4a: {type: Action, name: 填密码, description: 填 Param.password}
   n5: {type: Step, name: 点登录, action: n5a, expect: 出现"工作台"}
   n5a: {type: Action, name: 点登录, description: 点"登录"}
   n6: {type: Step, name: 记录状态, action: n6a, expect: 非空}
-  n6a: {type: Action, name: 记录状态, description: 提取登录状态 [[set:boollogin_success]]}
+  n6a: {type: Action, name: 记录状态, description: 提取登录状态 NewParam.login_success:bool}
 root: n1
 
 导出.yaml:
@@ -775,22 +779,22 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 导出, actions: [n3, n4]}
   n3: {type: ref, name: 去登录, target: 登录,
-       args: [username, password], returns: {登录结果: bool}}   ← 引入登录文档
+       args: [Param.username, Param.password], returns: {NewParam.loginResult: bool}}   ← 引入登录文档
   n4: {type: Step, name: 导出, action: n4a, expect: 出现"下载成功"}
-  n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 [[get:登录结果]]）}
+  n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 Param.loginResult）}
 root: n1
 
 主流程.yaml:
 tree: 主流程
-inputs: {账号: str, 密码: str}
+inputs: {account: str, password: str}
 nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 主流程, actions: [n3]}
   n3: {type: ref, name: 去导出, target: 导出,
-       args: [账号, 密码], returns: {导出结果: str}}
+       args: [Param.account, Param.password], returns: {NewParam.exportResult: str}}
 root: n1
 ```
-> 注：ref 用 `args: [...]` 按序传实参、`returns: {本树接收名: 类型}` 按序接收输出；叶子内变量读写用裸变量名 `[[get:...]]` / `[[set:类型:...]]`（旧式 `this/` 前缀兼容）。
+> 注：ref 用 `args: [Param.x 或字面量...]` 按序传实参、`returns: {NewParam.接收名: 类型}` 按序接收输出；叶子内变量读写用 `Param.x` / `NewParam.x[:类型]`（旧语法 `[[get]]`/`[[set]]`/`this/` 已废弃）。
 
 **Schema 流转路径追踪（主流程引用导出，导出引用登录）：**
 
@@ -928,10 +932,10 @@ ref 语义:
 
 调用入口: registry.call(name, arguments) — M4 叶子 / M5 编排器按函数名分发
   - 两级能力选择: 能力概览 + use_capability(name) → 加载插件、函数追加工具集
-  - 变量落笔: 产出型工具（output_param）由引擎拆目标、按 [[set:类型:名]] coerce 写变量
+  - 变量落笔: 产出型工具（output_param）由引擎拆目标、按 NewParam.名[:类型] coerce 写变量
 
 open(url) 变量名约定:
-  仅当动作描述含 [[set:object:...]] 声明时才经 save_to 显式命名变量（页面对象为泛型 object）;
+  仅当动作描述含 NewParam.名:object 声明时才经 save_to 显式命名变量（页面对象为泛型 object）;
   省略 save_to 不保存（当前活动页由浏览器插件维护）
 
 ref 映射 / semantic_graph / extract 类型来源 / wait/download 缺省:
@@ -1084,11 +1088,11 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
 
 ```
 1. 打开页签: open(url, save_to?) — 打开 url 新建页签并成为当前活动页；
-   **仅当动作描述含 [[set:page_ref页面A]] 声明时才填 save_to** 写入页面引用；
+   **仅当动作描述含 NewParam.pageRef:page_ref 声明时才填 save_to** 写入页面引用；
    省略 save_to 不保存任何变量（首次打开/访问即新建页签，无"获取页面变量"概念）
 2. 切回已存页签: activate(page_var) — 把已存页面变量指向的页签设为当前活动页
    （只切焦点，不新建）；描述如"切回/使用已打开的 X 页"时调用
-3. 取 URL 字符串: get_url(save_to) — 存当前活动页 url 为文本（[[set:str:...]]）
+3. 取 URL 字符串: get_url(save_to) — 存当前活动页 url 为文本（NewParam.url:str）
 4. 传递: 父文档经 ref args 传子文档, 和普通参数传递完全一致
    → 子文档要用某页面, 调用方在 ref 处用 args 传入对应页面变量 (无 LLM 推断)
 5. 操作绑定: 引擎函数作用于"当前活动页"
@@ -1097,13 +1101,13 @@ LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
    → 可能被子文档引用 / 作为返回值传给父文档, 故无法确定何时不再使用
 ```
 
-**类型化 set 语法**：`[[set:page_ref:变量]]` = 存页签引用（blackboard 存 PageRef）；
-`[[set:str:变量]]` = 存 url 文本。**标注即类型契约**——open 产物恒为 PageRef、
+**类型化 NewParam. 语法**：`NewParam.变量:page_ref` = 存页签引用（blackboard 存 PageRef）；
+`NewParam.变量:str` = 存 url 文本。**标注即类型契约**——open 产物恒为 PageRef、
 get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函数保证。
 
 **帧内变量单段限制**（M3 强约束）：路径在目标帧之后必须恰好一段变量名（如 `amount`）；含 `/` 或多段的路径（如 `a/b`）被拒绝——传参逐层进行（§5.3.2），不存在帧内子路径。
 
-**LLM 视角**：LLM 每次只面对**当前活动页**的语义图（一页），跨页数据走变量、不跨页记忆。多标签页并存由 `[[set:page_ref:...]]` 命名的页面变量承载；**切换由行为树描述显式表达**（"切回 X 页"→ activate、新开/访问 → open），LLM 按描述选函数，引擎保证活动页切换确定性。
+**LLM 视角**：LLM 每次只面对**当前活动页**的语义图（一页），跨页数据走变量、不跨页记忆。多标签页并存由 `NewParam.变量:page_ref` 命名的页面变量承载；**切换由行为树描述显式表达**（"切回 X 页"→ activate、新开/访问 → open），LLM 按描述选函数，引擎保证活动页切换确定性。
 
 ---
 
@@ -2366,7 +2370,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 
 - **`@engine_function` 显式注册**对外函数；未标注的函数 / 类不注册。
 - **只返回值、不写变量**：可返回裸值（str / int / list…）或 `FunctionResult`（携带报告附加信息）。
-- **产出型工具**（`output_param` 声明变量目标参数名，如 `"target"`）：LLM 调用时填该参数为目标变量名，引擎把返回值按节点 `[[set:类型:名]]` 声明类型 **coerce** 后写入该变量；目标须在声明集内。
+- **产出型工具**（`output_param` 声明变量目标参数名，如 `"target"`）：LLM 调用时填该参数为目标变量名，引擎把返回值按节点 `NewParam.名[:类型]` 声明类型 **coerce** 后写入该变量；目标须在声明集内。
 - **多返回值**：`returns` 声明返回值名列表；FunctionCall 节点按序回收进 `returns` 的接收名。
 
 ### 13.4 在「插件管理」页新增
