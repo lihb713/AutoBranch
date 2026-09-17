@@ -19,6 +19,10 @@
    - **E2E 重点**：前端**执行**行为树并在前端**查看执行结果**是否符合预期（执行/轮询/报告渲染）。编辑器拖拽构建等复杂 UI 操作不是测试重点，可由组件测试覆盖，E2E 中用 API 预置数据，**不必模拟拖拽**。
 4. **全程使用中文**：对话交流与文档编写一律使用中文。
 5. **端口约定**：本机 **8000 与 5173 端口被 NexusOps 项目占用，禁止使用**。AutoBranch 使用独立端口组：**M9b 后端本地开发用 8001**（`uvicorn ... --port 8001`），**前端 Vite 开发用 5174**（`autobranch/frontend/vite.config.ts` 已固定 `strictPort: true`）。一键启动见项目根 `dev-restart.ps1`。
+6. **远端即时同步**：任何代码或文档修改完成后，必须**即时提交并推送**到远程 GitHub 仓库（`origin` = `git@github.com:lihb713/AutoBranch.git`，分支 `master`）。规则：
+   - 提交前先运行相关测试与静态检查（`pytest`、`ruff`、前端 `typecheck/lint/test`）确认改动无误；
+   - 敏感文件不提交（`autobranch.config.json`、`data/`、`reports/`、`node_modules/` 等，见 `.gitignore`）；
+   - 每次功能或文档改动后执行：`git add -A && git commit -m "<中文描述>" && git push`；提交信息用中文、概括改动内容；若 `git push` 因认证/远端问题失败，须向用户报告并给出解决方案，不能静默跳过。
 
 ## 核心构建命令
 
