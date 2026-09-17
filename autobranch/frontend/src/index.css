@@ -1179,6 +1179,7 @@ body {
 .hl-field__input {
   width: 100%;
   box-sizing: border-box;
+  font-family: inherit;
   background: transparent;
   color: transparent;
   -webkit-text-fill-color: transparent;
@@ -1192,11 +1193,11 @@ body {
 .hl-param {
   color: #2563eb;
   -webkit-text-fill-color: #2563eb;
-  font-weight: 600;
+  font-weight: inherit;
 }
 
 .hl-newparam {
   color: #15803d;
   -webkit-text-fill-color: #15803d;
-  font-weight: 600;
+  font-weight: inherit;
 }
