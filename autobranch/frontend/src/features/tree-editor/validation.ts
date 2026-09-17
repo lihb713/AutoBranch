@@ -61,33 +61,39 @@ function literalMatches(typ: string, value: string): boolean {
   return true;
 }
 
-const SET_TMPL = /\[\[\s*set:(?:(str|int|float|bool|page_ref|object):)?\s*(?:this\/)?([^[\]:]+?)\s*\]\]/g;
+const SET_TMPL = /(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object))?/g;
 
-function bareName(path: string): string {
-  return path.replace(/^(?:this\/|\$this\/)/, "");
+const DEPRECATED_RX = /\[\[\s*(?:get|set)\s*:|(?<![\w$])this\//;
+const INVALID_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)/;
+
+/** returns 接收键 → 裸接收名（剥离 `NewParam.` 前缀与内联 `:type`）。 */
+export function stripReturnName(key: string): string {
+  let k = key.trim();
+  if (k.startsWith("NewParam.")) k = k.slice("NewParam.".length);
+  const colon = k.indexOf(":");
+  if (colon >= 0) k = k.slice(0, colon);
+  return k.trim();
 }
 
-/** 收集本树已声明变量：文档级 inputs + 各叶子 [[set:...]] 目标 + 各 ref returns 键。 */
+/** 收集本树已声明变量：文档级 inputs + 各叶子 NewParam. 目标 + ref/FunctionCall returns 接收名。 */
 export function collectDeclaredVars(doc: TreeDoc): Set<string> {
   const vars = new Set<string>(Object.keys(doc.inputs));
   for (const node of Object.values(doc.nodes)) {
     if (node.type === "ref" || node.type === "FunctionCall") {
-      for (const key of Object.keys(node.returns ?? {})) vars.add(key);
+      for (const key of Object.keys(node.returns ?? {})) vars.add(stripReturnName(key));
     } else {
       for (const desc of Object.values(node.fields)) {
-        for (const m of desc.matchAll(SET_TMPL)) vars.add(bareName(m[2]));
+        for (const m of desc.matchAll(SET_TMPL)) vars.add(m[1]);
       }
     }
   }
   return vars;
 }
 
-/** args 元素是否为本树变量引用（`this/<名>` 或裸名命中已声明变量）。 */
+/** args 元素是否为本树变量引用（`Param.x` 命中已声明变量）。 */
 export function exprIsVariable(doc: TreeDoc, expr: string): boolean {
-  const parts = expr.trim().split("/").filter((p) => p);
-  if (parts.length === 2 && parts[0] === "this") return collectDeclaredVars(doc).has(parts[1]);
-  if (parts.length === 1) return collectDeclaredVars(doc).has(parts[0]);
-  return false;
+  const m = expr.trim().match(/^Param\.([A-Za-z_][A-Za-z0-9_]*)$/);
+  return m ? collectDeclaredVars(doc).has(m[1]) : false;
 }
 
 /** 子树中是否存在引用环（DFS 灰白黑）。 */
@@ -182,8 +188,20 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
     }
   }
 
-  // 必填（槽位 + 标量）+ Branch 分支 + ref
+  // 必填（槽位 + 标量）+ Branch 分支 + ref + 语法校验
   for (const n of Object.values(doc.nodes)) {
+    // 参数语法：旧语法废弃 / 未闭合反引号 / 非法变量名（作用于全部标量字段）
+    for (const [f, text] of Object.entries(n.fields)) {
+      if (text.split("`").length % 2 === 0) {
+        issues.push({ code: "syntax.unclosed_backtick", message: "反引号未闭合，`Param`/`NewParam` 需成对出现", nodeId: n.id, field: f });
+      }
+      if (DEPRECATED_RX.test(text)) {
+        issues.push({ code: "syntax.deprecated", message: "旧语法已废弃，请改用 Param.x / NewParam.x[:type]", nodeId: n.id, field: f });
+      }
+      if (INVALID_NAME_RX.test(text)) {
+        issues.push({ code: "syntax.invalid_name", message: "变量名不能以数字开头", nodeId: n.id, field: f });
+      }
+    }
     const mounts = slotFields(n);
     for (const field of REQUIRED_SLOT_FIELDS[n.type] ?? []) {
       const has = mounts.some((m) => m.field === field && m.childId);
@@ -232,8 +250,9 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
           issues.push({ code: "returns_mismatch", message: `returns 数量 ${retCount} ≠ 出参 ${meta.outputs.length}`, nodeId: n.id });
         }
         for (const key of Object.keys(n.returns ?? {})) {
-          if (key in doc.inputs) {
-            issues.push({ code: "name_conflict", message: `接收参数「${key}」与本树入参重名`, nodeId: n.id });
+          const recv = stripReturnName(key);
+          if (recv in doc.inputs) {
+            issues.push({ code: "name_conflict", message: `接收参数「${recv}」与本树入参重名`, nodeId: n.id });
           }
         }
         (n.args ?? []).forEach((expr, i) => {

@@ -11,7 +11,7 @@ import {
 } from "./validation";
 
 const DOC_YAML = `tree: 订单流程
-inputs: {起始订单: str}
+inputs: {startOrder: str}
 nodes:
   n1:
     type: Root
@@ -34,8 +34,8 @@ nodes:
     type: ref
     name: 处理B
     target: 文档B
-    args: [起始订单]
-    returns: {结果: str}
+    args: [Param.startOrder]
+    returns: {NewParam.result: str}
 root: n1
 `;
 
@@ -43,7 +43,7 @@ function ctx(overrides?: Partial<ValidateContext>): ValidateContext {
   return {
     docNames: ["订单流程", "文档B"],
     refMeta: {
-      文档B: { inputs: { 起始订单: "str" }, outputs: ["处理结果"] },
+      文档B: { inputs: { startOrder: "str" }, outputs: ["处理结果"] },
     },
     refTargetsOf: () => [],
     ...overrides,
@@ -177,10 +177,10 @@ root: n1
 
   it("collectDeclaredVars 收集 set 目标与 returns 键", () => {
     const doc = parseDoc(DOC_YAML);
-    expect(collectDeclaredVars(doc)).toEqual(new Set(["起始订单", "结果"]));
-    expect(exprIsVariable(doc, "起始订单")).toBe(true);
-    expect(exprIsVariable(doc, "结果")).toBe(true);
-    expect(exprIsVariable(doc, "不存在")).toBe(false);
+    expect(collectDeclaredVars(doc)).toEqual(new Set(["startOrder", "result"]));
+    expect(exprIsVariable(doc, "Param.startOrder")).toBe(true);
+    expect(exprIsVariable(doc, "Param.result")).toBe(true);
+    expect(exprIsVariable(doc, "Param.missing")).toBe(false);
   });
 
   it("字面量类型不匹配报错", () => {
