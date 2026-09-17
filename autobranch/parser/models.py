@@ -112,10 +112,10 @@ class ActionNode(Node):
     """动作叶子：自然语言描述 + 可选 CSS 提示（§5.2）。
 
     LLM 介入（agent 式执行）。可定位性 = 有 CSS 或有可映射的自然语言。
-    ``set_targets`` 记录描述中声明的可写变量路径（``[[set:this/param]]``，
+    ``set_targets`` 记录描述中声明的可写变量路径（``NewParam.x``，
     供 M6 注入提示词与 M5 校验写入目标）。``set_decls`` 携带类型标注
-    ``(path, type)``，type ∈ TYPE_REGISTRY token/""（``[[set:page_ref:页面A]]``
-    存页签引用、``[[set:str:url]]`` 存文本）。
+    ``(path, type)``，type ∈ TYPE_REGISTRY token/""（``NewParam.pageRef:int``
+    存页签引用、``NewParam.url:str`` 存文本）。
     """
 
     description: str = ""

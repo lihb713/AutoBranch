@@ -35,14 +35,20 @@ from autobranch.parser.models import (
     make_issue,
 )
 
-#: ``[[get:path]]`` 读取引用（叶子执行前程序替换为真实值）；path 为裸变量名（兼容 this/名）
-_GET_TMPL = re.compile(r"\[\[\s*get:\s*((?:this/)?[^\[\]]+?)\s*\]\]")
-#: ``[[set[:type]:path]]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略），path 裸名（兼容 this/名）
+#: ``Param.<name>`` 读取引用（叶子执行前程序替换为真实值）；name 为 ASCII 标识符。
+#: ``(?<![A-Za-z0-9_])`` ASCII 词边界防护：``NewParam.x`` 内嵌的 ``Param.x`` 不被误判为读取；
+#: 中文不是 ASCII 字字符，故 ``到Param.x`` 正常匹配（中文即边界）。
+_GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
+#: ``NewParam.<name>[:type]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略）
 _SET_TMPL = re.compile(
-    r"\[\[\s*set:(?:(str|int|float|bool|page_ref|object):)?\s*((?:this/)?[^\[\]:]+?)\s*\]\]"
+    r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object))?"
 )
-#: 裸 ``this/path``（兼容旧写法；用于 scope 检查）
-_PLAIN_PATH = re.compile(r"(?<![\w$])this/([^\s{}|>]+)")
+#: 数字开头的非法变量名（``Param.2x`` → 校验错误 syntax.invalid_name）
+_INVALID_NAME_TMPL = re.compile(r"(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)")
+#: 旧语法残留（``[[get:/[[set:`` 或用户可见 ``this/``）→ 校验错误 syntax.deprecated
+_DEPRECATED_TMPL = re.compile(r"\[\[\s*(?:get|set)\s*:|(?<![\w$])this/")
+#: 反引号转义段（`` `Param` `` → 纯文本，不收集/不替换）
+_BACKTICK = re.compile(r"`([^`]*)`")
 
 
 def _bare_name(path: str) -> str:
@@ -59,40 +65,29 @@ def _bare_name(path: str) -> str:
 def _iter_set_decls(text: str) -> list[tuple[str, str]]:
     """提取写入声明 ``(裸变量名, type)``（type ∈ TYPE_REGISTRY token/空串）。"""
     decls: list[tuple[str, str]] = []
-    for m in _SET_TMPL.finditer(text):
-        type_name = (m.group(1) or "").strip()
-        path = _bare_name(m.group(2) or "")
+    for m in _SET_TMPL.finditer(_BACKTICK.sub("", text)):
+        type_name = m.group(2) or ""
+        path = m.group(1)
         if path:
             decls.append((path, type_name))
     return decls
 
 
 def _iter_get_paths(text: str) -> list[str]:
-    """提取描述中的全部读取变量名（``[[get:...]]`` → 裸名）。"""
-    names: list[str] = []
-    for m in _GET_TMPL.finditer(text):
-        name = _bare_name(m.group(1))
-        if name:
-            names.append(name)
-    return names
+    """提取描述中的全部读取变量名（``Param.x`` → 裸名）。"""
+    return [m.group(1) for m in _GET_TMPL.finditer(_BACKTICK.sub("", text)) if m.group(1)]
 
 
 def _iter_set_paths(text: str) -> list[str]:
-    """提取描述中的全部写入变量名（``[[set:...]]`` → 裸名）。"""
+    """提取描述中的全部写入变量名（``NewParam.x`` → 裸名）。"""
     return [path for path, _ in _iter_set_decls(text)]
 
 
 def _iter_schema_paths(text: str) -> list[str]:
-    """从自然语言描述中提取全部变量路径（读引用/写声明/裸 this/ 兼容）。"""
+    """从自然语言描述中提取全部变量路径（读引用/写声明，转义段除外）。"""
     paths: list[str] = []
-    rest = _GET_TMPL.sub("", text)
-    rest = _SET_TMPL.sub("", rest)
     paths.extend(_iter_get_paths(text))
     paths.extend(_iter_set_paths(text))
-    for m in _PLAIN_PATH.finditer(rest):
-        p = m.group(1).strip()
-        if p:
-            paths.append(p)
     return paths
 
 
@@ -325,6 +320,33 @@ def _scope_check_texts(ctx: ExpandContext, loc: Loc | None, *texts: str | None) 
             _check_schema_path(ctx, p, loc)
 
 
+def _check_param_syntax(ctx: ExpandContext, text: str | None, loc: Loc | None) -> None:
+    """新语法/转义/废弃校验：反引号闭合、旧语法废弃、非法变量名。"""
+    if not text:
+        return
+    if text.count("`") % 2 != 0:
+        ctx.add_issue(
+            "syntax",
+            "syntax.unclosed_backtick",
+            "反引号未闭合，`Param`/`NewParam` 需成对出现",
+            loc,
+        )
+    for m in _DEPRECATED_TMPL.finditer(text):
+        ctx.add_issue(
+            "syntax",
+            "syntax.deprecated",
+            "旧语法已废弃，请改用 Param.x / NewParam.x[:type]",
+            loc,
+        )
+    for m in _INVALID_NAME_TMPL.finditer(text):
+        ctx.add_issue(
+            "syntax",
+            "syntax.invalid_name",
+            "变量名不能以数字开头",
+            loc,
+        )
+
+
 def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
     if depth > ctx.max_depth:
         at = node.loc.path if node.loc else "?"
@@ -341,6 +363,7 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
         return rule(node, ctx, depth)
     if kind == "Action":
         _scope_check_texts(ctx, node.loc, node.description)
+        _check_param_syntax(ctx, node.description, node.loc)
         decls = _iter_set_decls(node.description or "")
         set_targets = tuple(_display_path(p) for p, _ in decls)
         set_decls = tuple((_display_path(p), t) for p, t in decls)
@@ -353,6 +376,7 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
         )
     if kind == "Condition":
         _scope_check_texts(ctx, node.loc, node.description, node.target, node.predicate)
+        _check_param_syntax(ctx, node.description, node.loc)
         return ConditionNode(
             description=node.description or "",
             target=node.target,
