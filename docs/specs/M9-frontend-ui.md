@@ -84,6 +84,7 @@ GET    /api/reports/{path}     # 截图/报告文件
 - **删除/修改语义**：删槽位=解引用（子节点回游离区）；删单节点=各槽位子节点各自成游离树；删子树=连带后代；改槽位=旧节点回游离区、新节点入主树；删 ref 仅解除引用，被引用文档不受影响。删除/删除子树操作位于**属性面板**（节点卡片上不提供，避免重复），按钮文案无括号描述（「删除此节点」「删除子树」）。
 - **节点属性面板（三段式 + 两级分组）**：第一段**节点信息**（类型徽章 + id、名称输入框）；第二段**节点内部属性**以「整体容器 → 属性分组」两级展示（`.node-props` 整体容器包裹，内部分组卡片 + 组标题；组名按语义统一命名，槽位组一律叫「槽位」）：Root/Sequence 槽位；Step 验证条件+槽位；Action 操作描述；IfThenElse 判断条件+槽位；Branch 前置操作+分支；Retry 重试参数+槽位；LoopUntil 循环参数+槽位；ref 引用目标+入参+出参；FunctionCall 函数+入参+返回值。第三段**操作区**（删除按钮）。
 - **即时校验**：节点必填字段（Action `description`、Step `action` 槽位+`expect`、IfThenElse `if`+`then`+`else`、Branch `action`+至少一分支、LoopUntil `until`+`action`+`max`、Retry `body`+`max`、ref `target`）红框标记；保存时汇总校验（单根、主树与各游离树无环、槽位引用存在且无重复引用、ref 目标存在）并经后端 `/check` 权威兜底。
+- **参数记号高亮**：参数读写统一用 `Param.x`（读取）/`NewParam.x[:类型]`（新建）记号（详见 `docs/contract.md` §5.3 与参数语法重构设计文档）；属性面板的描述/条件（Action description、Step expect、IfThenElse if、LoopUntil until、Branch when）与 ref/FunctionCall 的入参、出参/返回值接收名等输入框均用**高亮输入框**（`HighlightedField`）渲染：`Param.x` 蓝色、`NewParam.x[:类型]` 绿色（**纯颜色高亮，不改字重/字体**，保证叠加层与输入框文本布局一致、光标对齐）；反引号转义段（`` `Param` ``/`` `NewParam` ``）不高亮。
 - **节点标识**：`id` 文档内唯一（自动生成 n1/n2...、**文档导入保留原 id**，仅 `[A-Za-z0-9_-]`、≤64）；`name` 用户自定义画布显示名（≤64，不强制唯一，空则显示类型名）。
 
 **实现说明（已落地）**：
