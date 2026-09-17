@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from fake_transport import chat_response
 
-from webops.llm.errors import LLMBudgetExceeded
-from webops.llm.session import LLMSession
+from autobranch.llm.errors import LLMBudgetExceeded
+from autobranch.llm.session import LLMSession
 
 
 def make_session(config, fake, budget=None):

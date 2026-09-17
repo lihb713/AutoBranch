@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from webops.leaf_agent.prompts import (
+from autobranch.leaf_agent.prompts import (
     PROMPT_VERSION,
     DecisionError,
     build_system_prompt,
     build_user_message,
     parse_final_decision,
 )
-from webops.parser.models import ActionNode, ConditionNode
+from autobranch.parser.models import ActionNode, ConditionNode
 
 
 def test_prompt_render_is_deterministic():

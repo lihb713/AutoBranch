@@ -1,9 +1,9 @@
 """类型系统收敛测试：TypeSpec 注册表 + isinstance 校验 + coerce。"""
 import pytest
 
-from webops.schema.errors import SchemaTypeError
-from webops.schema.models import PageRef
-from webops.schema.types import (
+from autobranch.schema.errors import SchemaTypeError
+from autobranch.schema.models import PageRef
+from autobranch.schema.types import (
     TYPE_REGISTRY,
     check_type,
     coerce,
@@ -13,7 +13,7 @@ from webops.schema.types import (
 
 
 def test_registry_has_english_tokens():
-    assert set(TYPE_REGISTRY) == {"str", "int", "float", "bool", "page_ref"}
+    assert set(TYPE_REGISTRY) == {"str", "int", "float", "bool", "page_ref", "object"}
 
 
 def test_py_types_mapped():

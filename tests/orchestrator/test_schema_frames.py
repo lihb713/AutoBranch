@@ -12,9 +12,9 @@ from orchestrator_helpers import (
     seq,
 )
 
-from webops.orchestrator import FAILURE, SUCCESS
-from webops.orchestrator.traverser import Traverser
-from webops.parser.models import ActionNode, RefNode
+from autobranch.orchestrator import FAILURE, SUCCESS
+from autobranch.orchestrator.traverser import Traverser
+from autobranch.parser.models import ActionNode, RefNode
 
 
 class TestFrameLifecycle:
@@ -135,7 +135,7 @@ class TestConfigInheritance:
         """未注入全局 timeout 时 resolve_config 返回 None（无超时检测）。"""
         from orchestrator_helpers import make_run_context
 
-        from webops.orchestrator import RunConfig
+        from autobranch.orchestrator import RunConfig
 
         ctx = make_run_context(RunConfig(report_dir=config.report_dir, timeout=None))
         node = seq(action("叶子"))

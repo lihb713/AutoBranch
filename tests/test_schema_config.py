@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.schema import FrameDecl, SchemaSpace
+from autobranch.schema import FrameDecl, SchemaSpace
 
 
 @pytest.fixture

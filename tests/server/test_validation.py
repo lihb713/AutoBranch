@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from webops.parser.models import DocumentSource
-from webops.parser.parser import BehaviorTreeParser
-from webops.parser.refs import MappingResolver
-from webops.server.errors import CheckValidationError
-from webops.server.services.validation import CheckReportBuilder, validate_document
+from autobranch.parser.models import DocumentSource
+from autobranch.parser.parser import BehaviorTreeParser
+from autobranch.parser.refs import MappingResolver
+from autobranch.server.errors import CheckValidationError
+from autobranch.server.services.validation import CheckReportBuilder, validate_document
 
 from .conftest import INVALID_LOOP_YAML, INVALID_REF_YAML, VALID_YAML
 

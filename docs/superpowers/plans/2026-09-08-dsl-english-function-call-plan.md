@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 全程中文对话与文档，但 DSL 关键字/类型 token 用英文。
-- conda 环境 `webops`：`conda run -n webops --no-capture-output python -m pytest ...`。前端命令在 `webops/frontend` 用 `npm.cmd ...`。
+- conda 环境 `autobranch`：`conda run -n autobranch --no-capture-output python -m pytest ...`。前端命令在 `autobranch/frontend` 用 `npm.cmd ...`。
 - 类型 token 唯一来源 `TYPE_REGISTRY` 键：`str/int/float/bool/page_ref`（Plan ① 已落地）。
 - 新 DSL 关键字（唯一拼写）：块前缀 `block `；声明键 `inputs`/`outputs`；ref 子键 `args`/`returns`。**废除**：`操作块 `、`输入`/`输出`、`写入`、`$this/块/名` 三段路径、`{{ }}` 变量分隔、旧 `$` 前缀。
 - 变量语法（唯一形态）：读取 `[[get:this/<名>]]`；写入 `[[set:<类型>:this/<名>]]`（类型必填——设计 §变量语法形态；**但注意 Plan ① 阶段 set 类型是可选**，本 plan 是否强制必填见 Task 决策，默认保持可选、空类型按动作推断，强制必填属 Plan ③/④ 语法收紧）。
@@ -27,7 +27,7 @@
 ### Task 1: parser 模型与语法解析改造（document.py + models.py）
 
 **Files:**
-- Modify: `webops/parser/models.py:178-194`（BlockDecl.inputs 类型化）、`webops/parser/document.py:46-51`（常量）、`:137-179`（parse_structure）、`:182-274`（_parse_block_body/_parse_decl_list）、`:81-107`（IRNode 加 args/returns）、`:314-353`（_parse_node_entry）、`:356-413`（_parse_ref）
+- Modify: `autobranch/parser/models.py:178-194`（BlockDecl.inputs 类型化）、`autobranch/parser/document.py:46-51`（常量）、`:137-179`（parse_structure）、`:182-274`（_parse_block_body/_parse_decl_list）、`:81-107`（IRNode 加 args/returns）、`:314-353`（_parse_node_entry）、`:356-413`（_parse_ref）
 - Test: `tests/test_parser_document.py`、`tests/test_parser_models.py`、`tests/test_parser_refs.py`（本任务迁移这三个文件的语法样例）
 
 **Interfaces:**
@@ -49,12 +49,12 @@
 - `{{get:...}}`/`{{set:...}}` → `[[get:...]]`/`[[set:...]]`（Task 2 的正则才接受；此处测试断言先写新语法，Task 2 实现正则）
 - `$this/块/名` → 单段 `this/名`
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py -q`
 Expected: FAIL（语法未实现）
 
 - [ ] **Step 2: 改 models.py BlockDecl 与 IRNode**
 
-`webops/parser/models.py`：
+`autobranch/parser/models.py`：
 ```python
 @dataclass(frozen=True)
 class BlockDecl:
@@ -115,7 +115,7 @@ def _parse_decl_list(
             result.append((s, ""))
     return tuple(result)
 ```
-> 说明：inputs 的 dict 形态产出 `(名, 类型)`；outputs 及非 dict 的 inputs 产出 `(名, "")`（空类型=未声明，与 set_decls 无类型约定一致）。`from webops.schema.types import TYPE_REGISTRY` 在 document.py 顶部引入。
+> 说明：inputs 的 dict 形态产出 `(名, 类型)`；outputs 及非 dict 的 inputs 产出 `(名, "")`（空类型=未声明，与 set_decls 无类型约定一致）。`from autobranch.schema.types import TYPE_REGISTRY` 在 document.py 顶部引入。
 > 调用点 194/195 处 outputs 变量仍是 `tuple[tuple[str,str],...]`，BlockDecl 构造（190/225-232/239-246）自动适配新字段类型。
 
 - [ ] **Step 4: 改 ref 解析（args/returns，废除写入）**
@@ -133,17 +133,17 @@ def _parse_ref(doc_id, path, target, args=None, returns=None, issues=None):
 
 - [ ] **Step 5: 运行确认通过**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py -q`
 Expected: PASS（注意：task 里仍含 `写入`/`{{ }}` 的旧样例此时会失败——见 Step 6 说明）
 
 - [ ] **Step 6: 处理仍失败的内联旧语法**
 
-其余测试文件（test_parser_expand/checks/integration/vars、test_parser_fixtures、server 等）的旧语法样例**暂不迁移**，此时会因新前缀/键而报错。本任务只保证上述 3 个文件绿。Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py -q` 确认这三个绿，其余红是 Task 5 迁移范围。
+其余测试文件（test_parser_expand/checks/integration/vars、test_parser_fixtures、server 等）的旧语法样例**暂不迁移**，此时会因新前缀/键而报错。本任务只保证上述 3 个文件绿。Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py -q` 确认这三个绿，其余红是 Task 5 迁移范围。
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add webops/parser/models.py webops/parser/document.py tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py
+git add autobranch/parser/models.py autobranch/parser/document.py tests/test_parser_document.py tests/test_parser_models.py tests/test_parser_refs.py
 git commit -m "feat(parser): english DSL syntax (block/inputs/outputs/args/returns)"
 ```
 
@@ -152,7 +152,7 @@ git commit -m "feat(parser): english DSL syntax (block/inputs/outputs/args/retur
 ### Task 2: [[ ]] 变量语法 + 最低运行时同步
 
 **Files:**
-- Modify: `webops/parser/expand.py:40-47`（正则）、`webops/leaf_agent/executor.py:69`（_GET_TMPL）、`webops/leaf_agent/prompts.py`（示例）、`webops/engine/tools.py`（示例）
+- Modify: `autobranch/parser/expand.py:40-47`（正则）、`autobranch/leaf_agent/executor.py:69`（_GET_TMPL）、`autobranch/leaf_agent/prompts.py`（示例）、`autobranch/engine/tools.py`（示例）
 - Test: `tests/test_parser_vars.py`、`tests/leaf_agent/test_get_replace.py`
 
 **Interfaces:**
@@ -166,7 +166,7 @@ git commit -m "feat(parser): english DSL syntax (block/inputs/outputs/args/retur
 
 迁移 `tests/test_parser_vars.py`（13 用例）与 `tests/leaf_agent/test_get_replace.py` 的占位符：`{{get:this/x}}`→`[[get:this/x]]`、`{{set:type:this/x}}`→`[[set:type:this/x]]`。断言值不变。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_vars.py tests/leaf_agent/test_get_replace.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_vars.py tests/leaf_agent/test_get_replace.py -q`
 Expected: FAIL
 
 - [ ] **Step 2: 改 expand.py 正则**
@@ -175,7 +175,7 @@ Expected: FAIL
 
 - [ ] **Step 3: 改 executor.py 正则**
 
-`webops/leaf_agent/executor.py:69` 的 `_GET_TMPL` 同步为 `\[\[...\]\]` 版。
+`autobranch/leaf_agent/executor.py:69` 的 `_GET_TMPL` 同步为 `\[\[...\]\]` 版。
 
 - [ ] **Step 4: 同步 prompts/tools 示例**
 
@@ -183,13 +183,13 @@ Expected: FAIL
 
 - [ ] **Step 5: 运行确认通过**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_vars.py tests/leaf_agent/test_get_replace.py tests/leaf_agent/test_prompts.py tests/leaf_agent/test_regression.py tests/engine/test_engine.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_vars.py tests/leaf_agent/test_get_replace.py tests/leaf_agent/test_prompts.py tests/leaf_agent/test_regression.py tests/engine/test_engine.py -q`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add webops/parser/expand.py webops/leaf_agent/executor.py webops/leaf_agent/prompts.py webops/engine/tools.py tests/
+git add autobranch/parser/expand.py autobranch/leaf_agent/executor.py autobranch/leaf_agent/prompts.py autobranch/engine/tools.py tests/
 git commit -m "feat(dsl): [[ ]] variable delimiters with runtime get sync"
 ```
 
@@ -198,7 +198,7 @@ git commit -m "feat(dsl): [[ ]] variable delimiters with runtime get sync"
 ### Task 3: 静态校验（args/returns/inputs 必填/output 全赋值/单段作用域）
 
 **Files:**
-- Modify: `webops/parser/expand.py`（_expand_ref 校验、新增 output 全赋值校验、_check_schema_path 单段化）、`webops/parser/models.py:19-28`（RULE_BY_PREFIX 加新错误码前缀）
+- Modify: `autobranch/parser/expand.py`（_expand_ref 校验、新增 output 全赋值校验、_check_schema_path 单段化）、`autobranch/parser/models.py:19-28`（RULE_BY_PREFIX 加新错误码前缀）
 - Test: `tests/test_parser_expand.py`、`tests/test_parser_checks.py`（新校验用例）
 
 **Interfaces:**
@@ -223,7 +223,7 @@ def test_outputs_must_be_assigned():
 ```
 （test helper：用现有 `tests/parser_fixtures.py`/conftest 的解析入口，参照现有测试写法。）
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_expand.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_expand.py -q`
 Expected: FAIL（校验未实现）
 
 - [ ] **Step 2: 改 _expand_ref 校验逻辑**
@@ -246,13 +246,13 @@ Expected: FAIL（校验未实现）
 
 - [ ] **Step 5: 运行确认通过**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_expand.py tests/test_parser_checks.py tests/test_parser_vars.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_expand.py tests/test_parser_checks.py tests/test_parser_vars.py -q`
 Expected: PASS（旧测试若含跨帧 `this/子块/变量` 则需迁移为单段——见 Task 5）
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add webops/parser/expand.py webops/parser/models.py tests/test_parser_expand.py tests/test_parser_checks.py
+git add autobranch/parser/expand.py autobranch/parser/models.py tests/test_parser_expand.py tests/test_parser_checks.py
 git commit -m "feat(parser): function-call static validation (args/returns/output-set/single-segment)"
 ```
 
@@ -261,7 +261,7 @@ git commit -m "feat(parser): function-call static validation (args/returns/outpu
 ### Task 4: typed inputs 注入 schema_decl + 运行期类型感知
 
 **Files:**
-- Modify: `webops/orchestrator/context.py:66`（一行）
+- Modify: `autobranch/orchestrator/context.py:66`（一行）
 - Test: `tests/orchestrator/test_models.py:119`（若断言 `inputs == {}` 则迁移）
 
 **Interfaces:**
@@ -276,7 +276,7 @@ git commit -m "feat(parser): function-call static validation (args/returns/outpu
 
 `tests/orchestrator/test_models.py:119`（断言 M3 decl `inputs == {}` 处）：若其构造的 ParserBlockDecl 现在带类型，断言改 `== {"username": "str"}` 之类。运行 `tests/orchestrator` 相关用例，修到绿。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/orchestrator/test_models.py tests/orchestrator/test_schema_frames.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/orchestrator/test_models.py tests/orchestrator/test_schema_frames.py -q`
 Expected: PASS
 
 > 说明：`_declared_type`（engine.py:498）因此从 `""` 变真实类型——运行期 extract 对声明类型输入的 coerce 开始生效（Plan ① 已接线）。这是期望行为；动态传参的运行时注入在 Plan ③。
@@ -284,7 +284,7 @@ Expected: PASS
 - [ ] **Step 3: Commit**
 
 ```bash
-git add webops/orchestrator/context.py tests/orchestrator/test_models.py
+git add autobranch/orchestrator/context.py tests/orchestrator/test_models.py
 git commit -m "feat(orchestrator): inject typed block inputs into schema frames"
 ```
 
@@ -293,7 +293,7 @@ git commit -m "feat(orchestrator): inject typed block inputs into schema frames"
 ### Task 5: 全量测试/前端/E2E/文档迁移
 
 **Files:**
-- Modify: `tests/parser_fixtures.py`、`tests/test_parser_expand.py`、`tests/test_parser_checks.py`、`tests/test_parser_integration.py`、`tests/test_parser_vars.py`、`tests/server/conftest.py`、`tests/server/test_validation.py`、`tests/server/test_integration.py`、`tests/e2e/flows/订单审批.yaml`、`webops/frontend/src/features/tree-editor/model.ts:365-369`、`webops/frontend/src/features/tree-editor/yaml.test.ts:92-99`、`webops/frontend/e2e/workflow.spec.ts:20`
+- Modify: `tests/parser_fixtures.py`、`tests/test_parser_expand.py`、`tests/test_parser_checks.py`、`tests/test_parser_integration.py`、`tests/test_parser_vars.py`、`tests/server/conftest.py`、`tests/server/test_validation.py`、`tests/server/test_integration.py`、`tests/e2e/flows/订单审批.yaml`、`autobranch/frontend/src/features/tree-editor/model.ts:365-369`、`autobranch/frontend/src/features/tree-editor/yaml.test.ts:92-99`、`autobranch/frontend/e2e/workflow.spec.ts:20`
 - Test: 全量
 
 **Interfaces:**
@@ -303,19 +303,19 @@ git commit -m "feat(orchestrator): inject typed block inputs into schema frames"
 - [ ] **Step 1: 迁移剩余测试 fixture 与内联样例**
 
 按 Task 1 Step 1 的映射迁移全部剩余文件（parser_fixtures.py 的 LOGIN/EXPORT/MAIN、test_parser_expand/checks/integration/vars 内联、server conftest/validation/integration、`订单审批.yaml`、e2e workflow.spec.ts）。`tests/test_parser_integration.py:73` 的 `LOGIN_YAML.replace("操作块 登录", ...)` 改为 replace `"block 登录"`。
-`webops/frontend/src/features/tree-editor/model.ts:365-369`：`startsWith("操作块 ")` → `startsWith("block ")`；报错文案同步；yaml.test.ts 断言同步。
+`autobranch/frontend/src/features/tree-editor/model.ts:365-369`：`startsWith("操作块 ")` → `startsWith("block ")`；报错文案同步；yaml.test.ts 断言同步。
 
-Run: `conda run -n webops --no-capture-output python -m pytest -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest -q`
 Expected: PASS（全量，原 772+ 附近）
 
 - [ ] **Step 2: 前端回归**
 
-Run（`webops/frontend`）: `npm.cmd test -- --run; npm.cmd run lint; npm.cmd run typecheck`
+Run（`autobranch/frontend`）: `npm.cmd test -- --run; npm.cmd run lint; npm.cmd run typecheck`
 Expected: 全绿
 
 - [ ] **Step 3: E2E 验证**
 
-Run（`webops/frontend`）: `npm.cmd run test:e2e`
+Run（`autobranch/frontend`）: `npm.cmd run test:e2e`
 Expected: PASS（AGENTS 要求前端 E2E 必跑；workflow.spec.ts 已迁移新语法）
 
 - [ ] **Step 4: 文档同步**
@@ -328,8 +328,8 @@ Expected: PASS（AGENTS 要求前端 E2E 必跑；workflow.spec.ts 已迁移新�
 
 - [ ] **Step 5: lint + 全量回归**
 
-Run: `conda run -n webops --no-capture-output python -m ruff check webops tests`
-Run（`webops/frontend`）: `npm.cmd run lint`
+Run: `conda run -n autobranch --no-capture-output python -m ruff check autobranch tests`
+Run（`autobranch/frontend`）: `npm.cmd run lint`
 Expected: 全绿
 
 - [ ] **Step 6: Commit**

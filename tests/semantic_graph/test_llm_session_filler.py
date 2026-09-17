@@ -9,20 +9,20 @@ from __future__ import annotations
 import json
 
 import pytest
+from autobranch.semantic_graph.errors import LlmStageError
 from fake_transport import FakeTransport, chat_response
 from snapshot_factory import login_snapshot
 
-from webops.llm.config import LLMConfig
-from webops.llm.session import LLMSession
-from webops.semantic_graph import LLMSessionFiller, generate_semantic_graph, run_programmatic
-from webops.semantic_graph.errors import LlmStageError
+from autobranch.llm.config import LLMConfig
+from autobranch.llm.session import LLMSession
+from autobranch.semantic_graph import LLMSessionFiller, generate_semantic_graph, run_programmatic
 
 
 def _session(responses: list) -> tuple[LLMSession, FakeTransport]:
     transport = FakeTransport(responses=responses)
     session = LLMSession(
         LLMConfig(base_url="https://api.test.example/v1", api_key="test-key", model="test-model"),
-        system_prompt="你是 WebOps 页面语义分析器。",
+        system_prompt="你是 AutoBranch 页面语义分析器。",
         transport=transport,
     )
     return session, transport

@@ -1,6 +1,6 @@
 ﻿## 1. 工程脚手架与基础配置
 
-- [x] 1.1 在 `webops/frontend/` 初始化 Vite + React 18 + TypeScript 工程，配置 `package.json` 脚本（dev/build/lint/typecheck/test/test:e2e）（验证：`npm install` 成功、`npm run build` 产出 dist、`npm run typecheck` 通过）
+- [x] 1.1 在 `autobranch/frontend/` 初始化 Vite + React 18 + TypeScript 工程，配置 `package.json` 脚本（dev/build/lint/typecheck/test/test:e2e）（验证：`npm install` 成功、`npm run build` 产出 dist、`npm run typecheck` 通过）
 - [x] 1.2 配置 ESLint 与 tsc（`npm run lint`、`npm run typecheck`）（验证：两命令均无错误退出）
 - [x] 1.3 引入 Vitest + React Testing Library + fake timers，配置 jsdom 测试环境与 MSW 或 mock fetch 基础设施（验证：`npm test` 可运行一个最小冒烟测试通过）
 - [x] 1.4 建立 `src/` 目录骨架（api/components/features/hooks/types）与设计 token（`src/styles/tokens.css`，SUCCESS/FAILURE/RUNNING 三色）（验证：目录存在、`npm run typecheck` 通过）

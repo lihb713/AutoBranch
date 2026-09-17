@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from fake_transport import chat_response
 
-from webops.llm.models import ToolResult, ToolSpec
-from webops.llm.session import LLMSession
+from autobranch.llm.models import ToolResult, ToolSpec
+from autobranch.llm.session import LLMSession
 
 
 def make_session(config, fake, system="你是助手"):

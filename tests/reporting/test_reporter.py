@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from reporting.factories import make_action_report, make_composite_report, make_condition_report
 
-from webops.reporting import Reporter
+from autobranch.reporting import Reporter
 
 
 class TestRecordNode:

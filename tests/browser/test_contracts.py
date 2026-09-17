@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError, asdict
 
 import pytest
+from autobranch.browser.http import HttpRecorder, url_matches
 
-from webops.browser import (
+from autobranch.browser import (
     BrowserError,
     ElementRef,
     ErrorCode,
@@ -17,7 +18,6 @@ from webops.browser import (
     PageRef,
     PageRefError,
 )
-from webops.browser.http import HttpRecorder, url_matches
 
 
 class TestOpResult:

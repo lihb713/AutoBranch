@@ -9,7 +9,7 @@ from orchestrator_helpers import (
     seq,
 )
 
-from webops.parser.models import BehaviorTree
+from autobranch.parser.models import BehaviorTree
 
 
 def _tree() -> BehaviorTree:

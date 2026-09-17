@@ -1,6 +1,6 @@
 ## Context
 
-WebOps 目前仅有引擎层（M0~M8）的 Python 代码与命令行工具；M9b 需要在此基础上新增一个可被 M9a 前端消费的后端服务。现状约束：
+AutoBranch 目前仅有引擎层（M0~M8）的 Python 代码与命令行工具；M9b 需要在此基础上新增一个可被 M9a 前端消费的后端服务。现状约束：
 
 - 引擎（M7）作为 Python 库可直接 import，`engine.run()` 为同步入口，`get_exec_state()` 提供可查询执行状态（契约 §12.3）。
 - M2 解析器提供 `BehaviorTreeParser.parse()`，返回 `ParseResult`（含 `CheckReport`），可直接复用做清晰度校验。
@@ -70,7 +70,7 @@ service 内封装 `validate_document(content)` → 调 M2 `BehaviorTreeParser.pa
 ## Migration Plan
 
 - 全新模块，无既有数据迁移。开发期用 SQLAlchemy `create_all()` 建库（`database-rules.md` §5）；进入稳定期后引入 Alembic 基线。
-- 回滚：删除 `webops/server/` 与数据库文件即可整体移除；API 无既有消费者，不破坏兼容。
+- 回滚：删除 `autobranch/server/` 与数据库文件即可整体移除；API 无既有消费者，不破坏兼容。
 
 ## Open Questions
 

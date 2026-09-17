@@ -5,10 +5,10 @@ fixture 断言各状态字段与 select 选项实时读取（§8.3 ④、§9.5 �
 
 from __future__ import annotations
 
+from autobranch.semantic_graph.values import read_state
 from snapshot_factory import SnapshotBuilder, login_snapshot
 
-from webops.semantic_graph import run_programmatic
-from webops.semantic_graph.values import read_state
+from autobranch.semantic_graph import run_programmatic
 
 
 class TestReadState:

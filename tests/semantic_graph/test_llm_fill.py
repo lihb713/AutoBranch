@@ -7,10 +7,10 @@ mock 填充器注入后可跑通生成流水线；断言 purpose 写入正确、
 from __future__ import annotations
 
 import pytest
+from autobranch.semantic_graph.errors import LlmStageError
 from snapshot_factory import SnapshotBuilder, login_snapshot
 
-from webops.semantic_graph import MockFiller, generate_semantic_graph, run_programmatic
-from webops.semantic_graph.errors import LlmStageError
+from autobranch.semantic_graph import MockFiller, generate_semantic_graph, run_programmatic
 
 
 def _element_by_dom(graph, node_id):

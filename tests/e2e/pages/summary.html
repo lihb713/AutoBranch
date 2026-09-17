@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>销售汇总</title>
+</head>
+<body>
+  <h1>销售数据汇总</h1>
+  <div id="login-box">
+    <form id="login-form">
+      <p>
+        <label>用户名 <input id="username" type="text" placeholder="admin"></label>
+      </p>
+      <p>
+        <label>密码 <input id="password" type="password" placeholder="secret"></label>
+      </p>
+      <button id="login-btn" type="submit">登录</button>
+    </form>
+  </div>
+  <div id="table-box" style="display:none">
+    <h2>销售数据表</h2>
+    <table id="sales-table" border="1" cellpadding="6">
+      <thead>
+        <tr><th>产品</th><th>数量</th><th>金额</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>苹果</td><td>10</td><td class="amount">120</td></tr>
+        <tr><td>香蕉</td><td>5</td><td class="amount">35</td></tr>
+        <tr><td>橙子</td><td>8</td><td class="amount">56</td></tr>
+      </tbody>
+    </table>
+    <p id="summary-line">金额合计：<span id="total">211</span></p>
+  </div>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      document.getElementById('login-box').style.display = 'none';
+      document.getElementById('table-box').style.display = 'block';
+    });
+  </script>
+</body>
+</html>

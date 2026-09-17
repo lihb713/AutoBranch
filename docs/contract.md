@@ -1,15 +1,15 @@
-# WebOps —— 自然语言驱动的 Web 自动化工具
+# AutoBranch —— 自然语言驱动的 Web 自动化工具
 
-> 本文件是 WebOps 的产品介绍与文档语法契约初稿（v1.9）。
+> 本文件是 AutoBranch 的产品介绍与文档语法契约初稿（v2.0：能力插件化重构）。
 > 它是后续一切功能实现的地基：**先定义清楚产品的使用方式，再谈页面理解与实现细节**。
 
 ---
 
 ## 1. 产品定位
 
-WebOps 是一个基于自然语言的 Web 自动化工具。用户编写一份**行为树文档**（结构化书写流程，叶子内容用自然语言描述"要在网页上做什么"），WebOps 借助大语言模型（LLM）理解页面、执行节点、并输出操作日志与页面截图供回溯。
+AutoBranch 是一个基于自然语言的 Web 自动化工具。用户编写一份**行为树文档**（结构化书写流程，叶子内容用自然语言描述"要在网页上做什么"），AutoBranch 借助大语言模型（LLM）理解页面、执行节点、并输出操作日志与页面截图供回溯。
 
-一句话概括：**你写流程，WebOps 替你跑网页。**
+一句话概括：**你写流程，AutoBranch 替你跑网页。**
 
 ### 1.1 核心价值
 
@@ -29,7 +29,7 @@ WebOps 是一个基于自然语言的 Web 自动化工具。用户编写一份**
 
 ## 2. 设计哲学（最高原则）
 
-WebOps 的一切设计围绕一条最高原则：
+AutoBranch 的一切设计围绕一条最高原则：
 
 > **流程节点之间的流转过程是确定的，不允许 LLM 自由发挥。**
 > **每个叶子节点由 LLM 驱动，负责页面理解、动作执行与结果判断。**
@@ -68,7 +68,7 @@ WebOps 的一切设计围绕一条最高原则：
 
 ### 2.2 失败即止（无逃生通道）
 
-这是与"智能代理"方案的关键区别。**执行中遇到任何意外**（弹窗遮挡、断言失败、定位失败、超时），WebOps **不会让 LLM 自由接管绕路**，而是：
+这是与"智能代理"方案的关键区别。**执行中遇到任何意外**（弹窗遮挡、断言失败、定位失败、超时），AutoBranch **不会让 LLM 自由接管绕路**，而是：
 
 1. 记录完整日志 + 截图
 2. 终止当前流程
@@ -80,7 +80,7 @@ WebOps 的一切设计围绕一条最高原则：
 
 ## 3. 整体工作流
 
-WebOps 分两个阶段运行：
+AutoBranch 分两个阶段运行：
 
 ```
 ┌─────── 阶段一: 书写行为树文档（用户在场）────────────┐
@@ -155,8 +155,26 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | Retry | 反复执行直到成功 | `body` | `max` |
 | LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
+| FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`returns` |
 
 **Condition 是概念性节点**（用户不可感知独立类型），内嵌为自有字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。
+
+**FunctionCall 节点**（能力插件化新增）：确定性调用插件框架注册的函数，不经 LLM（与 ref 同构的"函数版"）：
+
+```
+type: FunctionCall
+function: compute.multiply # 全名：插件名.函数名（跨插件可同名）
+args: [a, b]              # 实参列表（本树裸变量名或字面量，按序对应函数入参）
+returns:
+  结果: int               # 接收名 → 类型（按序对应函数多返回值）
+```
+
+- 函数不存在 / 实参求值失败（变量未定义）/ 执行失败 → 该节点 FAILURE，失败原因含函数全名与错误。
+- 实参从当前帧求值；返回值按 `returns` 回收写父帧（按声明类型 coerce）。
+- `function` 指向的能力来自插件集（M7）；引擎核心不感知具体能力（能力经插件框架 M3 分发）。
+- **函数标识 = 全名 `插件名.函数名`**（如 `compute.add`）：同一插件内函数名唯一，**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）。
+- **LLM 工具名转义**：对 LLM 暴露的工具名为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），叶子分发时按转义名反查回全名。
+- **保存/执行前校验**：服务端保存（`/api/trees`）与执行前，经共享插件注册表校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐；函数不存在 / 参数不匹配时保存被 422 拒绝。
 
 ### 4.2 配置参数（工具定义名称语义, 用户可覆盖）
 
@@ -321,7 +339,7 @@ n9:
 
 ## 5. 两层结构：书写层与执行层
 
-**关键区分：用户书写（结构）≠ 引擎执行（节点）。** WebOps 是自然语言驱动的工具，但**结构完全由用户控制**：
+**关键区分：用户书写（结构）≠ 引擎执行（节点）。** AutoBranch 是自然语言驱动的工具，但**结构完全由用户控制**：
 
 ```
 ┌── 书写层（用户可见, 结构化行为树文档）──────────────┐
@@ -900,53 +918,35 @@ ref 语义:
   (否则页面请求的响应读不到)
 ```
 
-**M5 落地细节（引擎函数层已实现）：**
+**插件模式落地细节（能力插件化）：**
 
 ```
-EngineFunctions (暴露给 LLM 的 15 个函数, ENGINE_TOOLS 注册表驱动):
-  构造注入: browser / filler / schema_space / current_frame
-    (+ 可选 probe / graph_generator / budget_limit / page_var / download_dir / wait_timeout_ms)
-  调用入口: call(name, arguments) — M6 按注册表分发
+插件框架 (M3) + 插件集 (M7):
+  - 预置插件位于 autobranch/plugins/（browser/compute/ssh/file + common 共享库）
+  - 浏览器插件自包含：driver/（浏览器驱动）+ semantic_graph/（语义图）+ probe/refmap
+  - 引擎核心不感知具体能力；经 registry.call(name, args) 分发
+
+调用入口: registry.call(name, arguments) — M4 叶子 / M5 编排器按函数名分发
+  - 两级能力选择: 能力概览 + use_capability(name) → 加载插件、函数追加工具集
+  - 变量落笔: 产出型工具（output_param）由引擎拆目标、按 [[set:类型:名]] coerce 写变量
 
 open(url) 变量名约定:
-  仅当动作描述含 [[set:page_ref:...]] 声明时才经 save_to 显式命名变量;
-  省略 save_to 不保存任何页面变量（浏览器活动页由 M1 维护）
-  → 契约 §5.10 的 "open(url, save_to=...)" 由上层用变量机制显式命名
+  仅当动作描述含 [[set:object:...]] 声明时才经 save_to 显式命名变量（页面对象为泛型 object）;
+  省略 save_to 不保存（当前活动页由浏览器插件维护）
 
-ref 映射 (§7.8 策略 B 落地):
-  选择器优先级 = #dom_id → tag:has-text("文本") (无id有文本的链接/按钮)
-                → 快照树标签路径兜底 (中间被过滤节点致路径不精确, 已知限制)
-  semantic_graph 刷新作废旧 ref; 页面 URL 与快照 URL 不一致 (导航) 即过期
-  拒绝区分 "无效(从未出现)" 与 "过期(历史快照出现过)"
+ref 映射 / semantic_graph / extract 类型来源 / wait/download 缺省:
+  均由浏览器插件实现（见 docs/specs/M7-plugin-set.md）
 
-extract 类型来源:
-  目标变量声明类型按 outputs→inputs→declared 查找, 未声明按值推断,
-  再经 M3 check_type 强校验
-
-wait/download 缺省: wait_timeout_ms=30000, download_dir="."
-
-页面绑定错误码: 无当前活动页（尚未打开任何页面）→ ok=False + detail["code"]=INVALID_REF;
-  首次打开/访问网址是正常初始状态, LLM 直接 open 新建页签即可
-
-语义图失败分类:
-  ProgramStageError → ok=False (NOT_FOUND)
-  LlmStageError / 预算超限 → ok=False (UNKNOWN)
-  FatalBrowserError → 上抛终止流程
-
-类型复用: OpResult/FatalBrowserError 复用 M1, ToolSpec 复用 M0 (不重复定义)
+类型: FunctionResult（业务值 + 报告附加信息）；插件只返回值、不写变量
 ```
 
-**M5 与 M7 集成接线要求（端到端实测确认）**：
+**插件与编排器接线**：
 
 ```
-M5 EngineFunctions 与 M7 Engine 必须共享同一个 SchemaSpace:
-  M7 Engine.run 默认每次新建 SchemaSpace (space_factory)
-  M5 的 schema_space 与 current_frame 是外部注入的
-  → 若两者不同实例, M5 的 open() 写页面引用时报"当前帧不可用"
-  → 接线: Engine(browser=..., space_factory=lambda: schema_space) 与
-    EngineFunctions(schema_space=schema_space,
-                    current_frame=lambda: schema_space._current)
-    必须指向同一 schema_space 实例
+M5 编排器 Engine 构造时注入共享 PluginRegistry 与 plugins_dir：
+  Engine(registry=registry, plugins_dir="autobranch/plugins",
+         browser=..., space_factory=lambda: schema_space, llm_filler=...)
+浏览器插件经 runtime.browser_factory 复用 Engine 的浏览器实例（同一实例）
 ```
 
 #### 5.8.2 HTTP 接口（两种形态）
@@ -1123,21 +1123,21 @@ get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函�
 - 输入：行为树文档 + LLM 配置
 - 输出：执行情况报告（每节点结果 + 截图）+ 回溯报告（执行详情 + LLM 推理）
 
-### 6.3 统一配置管理（webops/config.py）
+### 6.3 统一配置管理（autobranch/config.py）
 
 **工具侧配置集中管理**（非用户行为树文档）。配置来源优先级：
 
 ```
-① 代码内默认值（webops.config.py 中定义）
-② 配置文件 webops.config.json（项目根；可用 --config 或 WEB_OPS_CONFIG 指定）
-③ 环境变量覆盖（WEB_OPS_LLM_API_KEY 用于密钥安全注入）
+① 代码内默认值（autobranch.config.py 中定义）
+② 配置文件 autobranch.config.json（项目根；可用 --config 或 AUTOBRANCH_CONFIG 指定）
+③ 环境变量覆盖（AUTOBRANCH_LLM_API_KEY 用于密钥安全注入）
 ```
 
-**api_key 配置**：`api_key` 可直接写入配置文件 `webops.config.json` 的
-`llm.api_key`（本工具内部使用，简单优先）；环境变量 `WEB_OPS_LLM_API_KEY`
+**api_key 配置**：`api_key` 可直接写入配置文件 `autobranch.config.json` 的
+`llm.api_key`（本工具内部使用，简单优先）；环境变量 `AUTOBRANCH_LLM_API_KEY`
 存在时优先于配置文件（便于 CI/临时注入）。两种方式二选一即可，无需同时配置。
 
-配置文件结构（`webops.config.json`）：
+配置文件结构（`autobranch.config.json`）：
 
 ```json
 {
@@ -1149,15 +1149,15 @@ get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函�
 }
 ```
 
-加载接口：`WebOpsConfig.load(path=None)` → `to_llm_config()` /
+加载接口：`AutoBranchConfig.load(path=None)` → `to_llm_config()` /
 `to_browser_config()` / `to_run_config(**overrides)`，供 CLI/服务/M9b 统一接线。
 
 **报告目录**：`run.report_dir`（默认 `reports`，相对项目根解析），每次 run
 写入 `<report_dir>/<run_id>/`（截图 + `exec_report.md` + `trace_report.md`）。
 
 **端口约定**：本机 **8000 与 5173 端口被 NexusOps 项目占用，禁止使用**。
-WebOps 使用独立端口组：M9b 后端本地开发用 **8001**（`uvicorn webops.server.main:app --port 8001`），
-前端 Vite dev 固定 **5174**（`webops/frontend/vite.config.ts` 已设 `strictPort: true`），
+AutoBranch 使用独立端口组：M9b 后端本地开发用 **8001**（`uvicorn autobranch.server.main:app --port 8001`），
+前端 Vite dev 固定 **5174**（`autobranch/frontend/vite.config.ts` 已设 `strictPort: true`），
 `vite.config.ts` 的 `/api` 代理 target 指向 `http://127.0.0.1:8001`。
 一键启动：项目根 `dev-restart.ps1`（`powershell -ExecutionPolicy Bypass -File .\dev-restart.ps1`）。
 
@@ -1802,7 +1802,7 @@ LOD (Level of Detail): 语义图的精细程度
 
 ```
 接口签名: semantic_graph(page_ref, scope, lod, *, probe, filler, budget_limit=None)
-  probe/filler/budget_limit 由 M5 引擎函数层接线注入
+  probe/filler/budget_limit 由浏览器插件（autobranch/plugins/browser）接线注入
 
 两阶段失败语义:
   爬取失败 (M1 DOM 快照) → ProgramStageError (程序侧, 可重试)
@@ -2068,7 +2068,7 @@ LOD-3 (全量):  全部展开
 
 ## 10. 待解决：页面理解（后续单独讨论）
 
-本契约已定义的**"双形式定位 + 变量提取 + 断言"**都依赖 WebOps 的核心能力 —— **LLM 对页面的理解**。语义图的**内容模型**（§7）、**生成方案**（§8）、**执行模型与元素定位**（§9）、**行为树编排**（§5.7）已定义，剩余待解决项如下。
+本契约已定义的**"双形式定位 + 变量提取 + 断言"**都依赖 AutoBranch 的核心能力 —— **LLM 对页面的理解**。语义图的**内容模型**（§7）、**生成方案**（§8）、**执行模型与元素定位**（§9）、**行为树编排**（§5.7）已定义，剩余待解决项如下。
 
 ### 10.1 待办清单（涉及页面理解，需在后续方案中解决）
 
@@ -2090,161 +2090,136 @@ LOD-3 (全量):  全部展开
 ## 11. 命令形态（规划）
 
 ```
-webops check 文档.yaml    # 阶段一: 解析行为树文档, 清晰度校验, 交互式修正
-webops run   文档.yaml    # 阶段二: 批处理执行, 输出执行报告 + 回溯报告
+autobranch check 文档.yaml    # 阶段一: 解析行为树文档, 清晰度校验, 交互式修正
+autobranch run   文档.yaml    # 阶段二: 批处理执行, 输出执行报告 + 回溯报告
 ```
 
 ---
 
 ## 12. 模块划分与架构（分模块实施依据）
 
-> 本章定义 WebOps 的模块划分、各模块功能、依赖关系与实施顺序，**作为后续分模块实现的依据**。每个模块可独立实现与测试。
+> 本章定义 AutoBranch 的模块划分、各模块功能、依赖关系与实施顺序，**作为后续分模块实现的依据**。每个模块可独立实现与测试。
 
 ### 12.1 模块总览
 
 ```
-M0  LLM 客户端          无依赖           最早实现
-M1  浏览器驱动           无依赖           独立
-M2  行为树文档解析器      纯逻辑           易测
-M3  schema 命名空间      纯逻辑           易测
-M4  语义图生成           M1+M0
-M5  引擎函数层           M1+M4+M3
-M6  叶子 agent 执行      M0+M5
-M7  编排器 + 遍历器      M2+M3+M6+M8
-M8  报告机制             M1 + 可查询执行状态
-M9a 前端 UI             M9b
-M9b 行为树管理系统后端    M2+M7+M8 (内嵌引擎)
+M0  LLM 客户端          无依赖
+M1  行为树解析器         无依赖（含 FunctionCall 节点、泛型 object 类型）
+M2  变量空间            无依赖（泛型对象类型）
+M3  插件框架            无依赖（注册/懒装配/use_capability/分发/报告接口）
+M4  叶子 agent          M0+M2+M3（两级能力选择 + 变量落笔）
+M5  编排器              M1+M2+M4+M6（FunctionCall 节点/插件分发/资源释放）
+M6  报告机制            M3（引擎基础 + 插件附加，插件驱动）
+M7  插件集              M3（browser/compute/ssh/file + 自定义插件）
+M8  管理后端            M1+M5+M6+M3+M7+DB（文档/运行/插件 API）
+M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 ```
+
+> 原 **M1 浏览器驱动 / M4 语义图 / M5 引擎函数层** 已并入 **M7 插件集**（浏览器插件内部实现），不再作为独立模块。
 
 ### 12.2 模块功能与依赖
 
 #### M0 LLM 客户端
 ```
-功能:
-  封装 OpenAI 兼容接口 (base_url/api_key/模型名 配置)
-  提供统一的 agent 会话调用 (多轮工具调用)
-  管理 LLM 上下文 / token
+功能: 封装 OpenAI 兼容接口; agent 会话（多轮工具调用）; 上下文/token 管理
 依赖: 无
-测试: mock HTTP 响应 / 连接真实 API 均可独立测
 ```
 
-#### M1 浏览器驱动
+#### M1 行为树解析器
 ```
-功能:
-  context/page 管理 (每次 run 全新 context, §5.9)
-  操作函数: open/click/type/select/check/scroll/wait (§5.8.1)
-  文件函数: download/upload
-  HTTP 监听: clear_requests/get_response (§5.8.2 形态A)
-  截图能力 (§5.8.3)
-  页面变量 → page 的绑定 (§5.10)
+功能: yaml/dict 解析（一文档一树）; 复合节点展开; ref 引用解析;
+     FunctionCall 节点解析（function/args/returns）+ 函数存在/参数校验（经插件注册表）;
+     泛型 object 类型 token; 清晰度校验
+依赖: 无（纯逻辑; 函数存在校验可选依赖插件注册表）
+```
+
+#### M2 变量空间
+```
+功能: 帧模型/严格作用域（裸变量名单段，跨帧经 ref args/returns）;
+     配置参数继承（向上查找）; 变量类型 TYPE_REGISTRY (str/int/float/bool/page_ref/object)
+依赖: 无（纯逻辑）
+```
+
+#### M3 插件框架
+```
+功能: 插件类（FunctionDef/PluginBase/@engine_function）; 注册表（全名 `插件名.函数名`；
+     同插件内唯一，跨插件可同名）;
+     双路径加载（预置插件文件系统 + 自定义插件 DB 源码 compile+exec）;
+     懒装配（init/释放）; use_capability 两级能力选择;
+     统一分发与产出型工具落笔; 统一报告接口; 运行上下文 PluginRuntime
 依赖: 无
-测试: 真实浏览器, 独立于其他模块
 ```
 
-#### M2 行为树文档解析器
+#### M4 叶子 agent
 ```
-功能:
-  yaml/dict 解析 (§4)
-  复合节点展开为基础节点 (§4.3)
-  文档引用解析 (ref: 文档名, §5.7.3)
-  schema 变量绑定声明提取 (§5.3)
-  清晰度校验 (§4.4)
-依赖: 无 (纯逻辑)
-测试: 输入文档 → 输出内部行为树对象, 纯函数测试
+功能: Action/Condition agent 式执行; 两级能力选择（能力概览 + use_capability + 工具集动态增长）;
+     变量写入落笔（产出型工具 target → 当前帧变量，须在 [[set]] 声明集内）;
+     引擎兜底终止条件（轮数/无进展/超时）; 无强制语义图预取（提示词强调 LLM 自行获取）
+依赖: M0 + M2 + M3
 ```
 
-#### M3 schema 命名空间
+#### M5 编排器
 ```
-功能:
-  帧模型: 文档执行帧的独立命名空间 (§5.7.4)，ref 运行期动态调用建帧
-  严格作用域: 读/写自己（裸变量名 单段，跨帧经 ref args/returns）(§5.3.2)
-  配置参数继承: 向上查找 (§5.3.4)
-  页面变量机制 (§5.10)
-  变量类型: TYPE_REGISTRY (str/int/float/bool/page_ref) (§5.3.5)
-依赖: 无 (纯逻辑)
-测试: 纯数据结构操作, 作用域/继承规则单测
+功能: 行为树遍历（阻塞式 SUCCESS/FAILURE）; 组合节点聚合/短路; ref 动态调用;
+     FunctionCall 节点确定性执行（实参求值 → 插件分发/懒装配 → returns 回收）;
+     运行结束统一释放重资源（finally）; 维护可查询执行状态（供 M8 轮询）
+依赖: M1 + M2 + M4 + M6
 ```
 
-#### M4 语义图生成
+#### M6 报告机制
 ```
-功能:
-  候选元素筛选规则 (§8.4)
-  程序化阶段: DOM 爬取 + 结构 + 几何 + 程序化值 (§8.3)
-  LLM 填充阶段: purpose + related-to 打分 (§8.5/8.6)
-  语义图接口 semantic_graph(范围, LOD) (§8.8)
-  序列化: 引擎对象模型 (§7.5) → LLM 层次树文本 (§7.6)
-依赖: M1(浏览器/DOM) + M0(LLM填充)
-测试: 程序化阶段可独立测, LLM 填充可 mock
+功能: 所有节点退出前记录执行情况; 报告 = 引擎基础字段 + 插件附加（按来源分组）;
+     截图由浏览器插件在 semantic_graph（看页面）时产出; 执行/回溯报告; 可查询执行状态
+依赖: M3（插件驱动）
 ```
 
-#### M5 引擎函数层
+#### M7 插件集
 ```
-功能:
-  暴露给 LLM 的函数集 (§5.8.1): 操作/文件/语义图/HTTP/提取
-  页面操作绑定: 当前页面变量 (§5.10)
-  函数可扩展: 随需求增减
-依赖: M1 + M4 + M3
-测试: 各函数独立测试 (mock 语义图/M3)
-```
-
-#### M6 叶子 agent 执行
-```
-功能:
-  Action/Condition 的 agent 式执行 (§5.7.2)
-  引擎兜底: 终止条件 (轮数/无进展/超时) (§5.7.2.1)
-  定位: 多轮语义图缩小/放大 (§9.6/9.7)
-  错误边界: 函数失败归 LLM / 致命错误归引擎 (§5.7.2.1)
-依赖: M0(LLM) + M5(引擎函数)
-测试: mock M5 函数, 验证 agent 决策/终止条件
+功能: 浏览器插件（驱动/语义图/页面对象自包含，open/click/extract/semantic_graph 等）;
+     计算插件（multiply/add/sum/sort/compare 纯函数）; SSH 插件（会话创建/远程执行）;
+     文件插件（读/写/对比）; 用户自定义插件（DB 源码，仅标准库）
+     ——浏览器插件健壮性：submit/button/reset 输入=button（标签在 value 并渲染）;
+       ref 选择器按 id→文本→input[value]→真实 DOM 索引路径（nth-of-type）生成;
+       open 用 domcontentloaded（不依赖可能永不触发的 load 事件）; 插件懒装配冷启动驱动
+依赖: M3
+实现位置: 预置插件位于 autobranch/plugins/（工具的一部分）——browser 插件自包含
+     浏览器驱动（driver/）与语义图生成（semantic_graph/）; autobranch.browser /
+     autobranch.semantic_graph 为兼容转发层（物理实现在浏览器插件内）
 ```
 
-#### M7 编排器 + 遍历器
+#### M8 管理后端
 ```
-功能:
-  行为树遍历 (阻塞式, §5.7.7): SUCCESS/FAILURE 聚合, 短路
-  组合节点: Sequence/Selector/Repeat
-  失败传播 + 超时
-  触发叶子执行 (M6) + 记录报告 (M8)
-  维护可查询的执行状态 (供 M9b 轮询, §12.4)
-依赖: M2(树) + M3(schema) + M6(叶子) + M8(报告)
-测试: mock 叶子执行, 验证遍历/聚合/传播逻辑
+功能: 行为树文档 CRUD + 清晰度校验; 执行触发/状态轮询; 报告/截图存储与提供;
+     插件管理 API（CRUD/校验/关联查询/删除置空）+ plugin 表（builtin/custom）;
+     函数清单 API `GET /api/functions`（全名 + 插件 + 结构化定义，跨插件聚合）;
+     引擎内嵌（§12.3）
+依赖: M1 + M5 + M6 + M3 + M7
 ```
 
-#### M8 报告机制
+#### M9 前端 UI
 ```
-功能:
-  所有节点退出前记录执行情况 (§5.8.3)
-  Action/Condition 返回前截图
-  执行报告: 每节点结果 + 截图
-  回溯报告: 执行详情 + LLM 推理 (不含截图)
-  维护可查询的执行状态 (进度/当前节点/已完成报告)
-依赖: M1(截图) + 叶子执行数据
-测试: mock 节点执行数据, 验证报告生成
+功能: 行为树编辑器（画布/槽位/ref 展开/删除语义）; 行为树管理;
+     执行报告页（轮询渲染）; 插件管理页（列表标记预置/自定义 + CodeMirror 6 编辑器
+     + 保存校验提示 + 删除关联弹窗）;
+     可搜索下拉（Combobox）：函数名选择器（罗列全名 + 描述，支持过滤）、
+     ref 目标文档、槽位 / 分支子节点（类型下拉保持原生 select）
+依赖: M8
 ```
 
-#### M9a 前端 UI
+### 12.2.1 新增：FunctionCall 节点与插件能力
+
+行为树新增 **FunctionCall 叶子节点**（确定性调用插件函数，不经 LLM）：
+
 ```
-功能:
-  行为树编辑器: 真实画布节点（节点对象池 + 槽位引用）编辑行为树文档
-    主树区 + 游离区自动布局（根在上、向下生长、兄弟水平均布）；容器槽位下拉只列游离树根；
-    ref 节点下拉选目标文档、自动加载其 inputs/outputs 生成 args/returns 表单；ref 展开（只读预览）/收缩；
-    删除语义（删槽位=解引用回游离区；删单节点=各槽位子节点各自成游离树；删子树=连带后代）
-  行为树管理: 列表/查看/修改/删除 (CRUD)
-  执行报告页: 轮询执行状态, 实时渲染节点进度 + 截图
-依赖: M9b (纯前端)
+type: function
+function: compute.add          # 全名：插件名.函数名（跨插件可同名）
+args: [a, b]                # 实参列表（本树裸变量名或字面量，按序对应函数入参）
+returns: {结果: int}         # 接收名 → 类型（按序对应函数多返回值）
 ```
 
-#### M9b 行为树管理系统后端
-```
-功能:
-  行为树文档 CRUD API (存储/管理)
-  清晰度校验 (保存时, 复用 M2)
-  执行触发: 调引擎.run (M7)
-  执行状态查询 API: 返回进度/已完成节点/截图 (供前端轮询)
-  截图/报告存储与提供
-依赖: M2 + M7 + M8 (引擎作为库内嵌, §12.3)
-测试: mock M7 执行, 验证 API 与文档管理
-```
+- 引擎核心不感知具体能力；能力全部经插件框架（M3）调用。
+- 插件只返回值（业务值 + 报告附加信息），变量写入由引擎落笔。
+- 泛型 `object` 类型承载插件对象（页面对象/会话等）。
 
 ### 12.3 引擎内嵌形态
 
@@ -2326,33 +2301,148 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 ### 12.6 依赖关系图
 
 ```
-        ┌──── M0 LLM ────┐
-        │                ▼
-M2 文档解析   M6 叶子agent  ◄─── M5 引擎函数 ◄─── M4 语义图生成
-        │         │                       ▲          ▲
-        ▼         ▼                       │          │
-M3 schema ◄─── M7 编排器 ────► M8 报告 ◄───┘          │
-        ▲         │                       M1 浏览器 ───┘
-        └─────────┘
-                 │
-                 ▼
-        ┌──────────────┐
-        │  M9b 后端服务  │ ◄── M9a 前端 UI
-        │  (内嵌引擎)   │
-        └──────────────┘
+引擎核心:    M0 LLM ─┐
+            M1 解析 ─┼─► M4 叶子 ──► M5 编排器 ──► M6 报告
+            M2 变量 ─┘      │              │
+                           │ 分发          │ 注册
+插件框架:    M3 插件框架 ◄──┴──────────────┘
+                ▲
+                │ 加载
+插件集:      M7 插件集（browser/compute/ssh/file + 自定义）
+                │
+管理系统:    M8 管理后端 ◄── M9 前端 UI
+            (内嵌引擎 + 插件 API)
 ```
 
 ### 12.7 实施顺序
 
 ```
-阶段1 (无依赖, 可并行):  M0 LLM / M1 浏览器 / M2 解析器 / M3 schema
-阶段2 (依赖M1):         M4 语义图生成 / M8 报告
-阶段3 (依赖M0+M4+M3):   M5 引擎函数层
-阶段4 (依赖M0+M5):      M6 叶子执行
-阶段5 (整合):           M7 编排器 (串联一切)
-阶段6 (前端):           M9a 前端 UI + M9b 后端服务
+1. 引擎核心基础: M0 / M1 / M2 / M3（可并行）
+2. 插件集: M7（依赖 M3）
+3. 叶子/编排/报告: M4 / M5 / M6
+4. 管理系统: M8 / M9（依赖引擎 + 插件）
 ```
+
+
 
 ---
 
-*本文档为 v1.9 契约初稿，供进一步讨论修订。*
+## 13. 自定义插件开发指南
+
+自定义插件为行为树扩展**能力**（可调用函数），与预置插件（浏览器 / 计算 / SSH / 文件）同机制：插件只返回值、不写变量；变量写入由引擎落笔。
+
+### 13.1 形态与约束
+
+- **单文件 Python 脚本**，源码保存在系统（DB），在「插件管理」页编写。
+- **仅可使用 Python 标准库**；不 import 其他插件 / `common` / 三方库。
+- **直接使用内置注入的名字** `PluginBase` / `engine_function` / `FunctionResult`（无需 import `autobranch`）。
+- 插件名：小写字母 / 数字 / `_` / `-`，且**不得与预置插件同名**（browser/compute/ssh/file）。
+
+### 13.2 插件模板
+
+```python
+class MyPlugin(PluginBase):
+    name = "my_plugin"           # 插件名（须与提交名一致）
+    description = "我的自定义插件"  # 能力说明（供能力概览 / 管理页）
+
+    @engine_function(
+        name="hello",             # 插件内函数名（全名 my_plugin.hello；跨插件可同名）
+        description="返回问候语",  # 函数说明（供 LLM 工具 schema）
+        parameters={
+            "type": "object",
+            "properties": {"who": {"type": "string", "description": "问候对象"}},
+            "required": ["who"],
+        },
+        returns=("message",),      # 多返回值名（按序；FunctionCall 按此回收）
+        output_param=None,         # 产出型工具：变量目标参数名（None=非产出型）
+    )
+    def hello(self, who="world"):
+        return f"hello {who}"
+
+plugin = MyPlugin()    # 必须以 plugin 变量导出实例
+```
+
+### 13.3 函数要点
+
+- **`@engine_function` 显式注册**对外函数；未标注的函数 / 类不注册。
+- **只返回值、不写变量**：可返回裸值（str / int / list…）或 `FunctionResult`（携带报告附加信息）。
+- **产出型工具**（`output_param` 声明变量目标参数名，如 `"target"`）：LLM 调用时填该参数为目标变量名，引擎把返回值按节点 `[[set:类型:名]]` 声明类型 **coerce** 后写入该变量；目标须在声明集内。
+- **多返回值**：`returns` 声明返回值名列表；FunctionCall 节点按序回收进 `returns` 的接收名。
+
+### 13.4 在「插件管理」页新增
+
+1. 打开「插件管理」页 → 新增插件。
+2. 填插件名 + 源码（Python 编辑器）。
+3. 保存 → 后端校验（语法 + 仅标准库 + 可加载），失败返回**行号 / 列号 / 类型 / 约束**错误；通过即**保存并重载生效**。
+4. 列表出现自定义徽标与函数名；内置插件只读（可查看源码）。
+
+### 13.5 在行为树中使用
+
+**FunctionCall 节点**（确定性调用，不经 LLM）：
+
+```yaml
+tree: 问候示例
+nodes:
+  n1: {type: Root, body: n2}
+  n2: {type: Sequence, actions: [n3]}
+  n3:
+    type: FunctionCall
+    function: hello
+    args: [世界]            # 本树裸变量名或字面量，按序对应函数入参
+    returns:
+      问候: str              # 接收名 → 类型（按序对应函数多返回值）
+root: n1
+```
+
+**Action / Condition 叶子**（LLM 驱动）：LLM 经 `use_capability` 加载插件能力后调用其函数（两级能力选择）。
+
+### 13.6 完整示例：可求和的计算插件
+
+```python
+class MyCalcPlugin(PluginBase):
+    name = "my_calc"
+    description = "我的计算插件：加法 / 求和"
+
+    @engine_function(
+        name="my_add",
+        description="两个数相加",
+        parameters={
+            "type": "object",
+            "properties": {
+                "a": {"type": "number", "description": "加数 a"},
+                "b": {"type": "number", "description": "加数 b"},
+            },
+            "required": ["a", "b"],
+        },
+        returns=("result",),
+    )
+    def my_add(self, a, b):
+        return a + b
+
+    @engine_function(
+        name="my_sum",
+        description="对数值列表求和",
+        parameters={
+            "type": "object",
+            "properties": {
+                "values": {"type": "array", "items": {"type": "number"}, "description": "数值列表"},
+            },
+            "required": ["values"],
+        },
+        returns=("total",),
+    )
+    def my_sum(self, values):
+        return sum(values)
+
+plugin = MyCalcPlugin()
+```
+
+### 13.7 约束与限制
+
+- 仅标准库；不提供依赖自动识别 / 安装（需要三方库请作为预置插件由开发者提前安装）。
+- 删除插件会**置空**引用它的行为树 FunctionCall 引用（持久化修改文档）。
+- 自定义插件由开发者 / 管理员编写；对普通行为树用户只读。
+
+---
+
+*本文档为 v2.0（能力插件化重构）契约，供进一步讨论修订。*

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.browser import DomProbe, ElementRef, LODSpec, PageRef, PageRefError
+from autobranch.browser import DomProbe, ElementRef, LODSpec, PageRef, PageRefError
 
 pytestmark = pytest.mark.integration
 
@@ -24,7 +24,7 @@ class TestCrawlStructure:
         ref = open_page(f"{server_url}/basic.html")
         snapshot = DomProbe(driver).crawl(ref)
         assert snapshot.url.endswith("/basic.html")
-        assert snapshot.title == "WebOps 基础操作测试页"
+        assert snapshot.title == "AutoBranch 基础操作测试页"
         assert snapshot.root is not None
         assert snapshot.root.role == "document"
         assert len(snapshot.elements) > 0
@@ -46,6 +46,49 @@ class TestCrawlStructure:
         role_select = _by_dom_id(snapshot, "role")
         assert role_select.options == ["管理员", "普通用户", "访客"]
         assert role_select.selected == "管理员"
+
+    def test_input_submit_role_is_button(self, driver, server_url, open_page):
+        ref = open_page(f"{server_url}/basic.html")
+        snapshot = DomProbe(driver).crawl(ref)
+        submit = _by_dom_id(snapshot, "submit-btn")
+        assert submit is not None
+        assert submit.role == "button"
+        assert submit.value == "Sign in"
+
+    def test_deep_submit_input_selector_locates_element(
+        self, driver, server_url, open_page, page_handle
+    ):
+        """深嵌套 submit 输入框：索引化路径选择器在真实 DOM 中恰好命中。
+
+        回归保护：旧标签路径在中间容器（div）被过滤后生成 ``body > form > input``
+        之类匹配不到真实 DOM 的选择器；现爬取端携带真实 ``nth-of-type`` 路径。
+        """
+        from autobranch.plugins.browser.refmap import EngineRefMap
+        from autobranch.plugins.browser.semantic_graph import MockFiller, generate_semantic_graph
+
+        ref = open_page(f"{server_url}/github_login.html")
+        snapshot = DomProbe(driver).crawl(ref, LODSpec.from_level(3))
+        graph = generate_semantic_graph(
+            snapshot, scope="full", filler=MockFiller(purposes={}, region_labels={})
+        )
+        refmap = EngineRefMap()
+        refmap.refresh(graph, snapshot)
+        submit = next(
+            (el for el in graph.elements if el.tag == "input" and el.state.value == "Sign in"),
+            None,
+        )
+        assert submit is not None
+        status, resolution = refmap.resolve(submit.ref, current_url=snapshot.url)
+        assert status == "valid"
+        handle = page_handle(ref)
+        count = handle._page.evaluate(
+            f"() => document.querySelectorAll({resolution.selector!r}).length"
+        )
+        assert count == 1, f"选择器 {resolution.selector!r} 应唯一命中，实际命中 {count}"
+        kind = handle._page.evaluate(
+            f"() => document.querySelector({resolution.selector!r})?.getAttribute('type')"
+        )
+        assert kind == "submit"
 
     def test_text_and_bounds(self, driver, server_url, open_page):
         ref = open_page(f"{server_url}/basic.html")

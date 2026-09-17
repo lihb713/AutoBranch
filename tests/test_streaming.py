@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from webops.llm.errors import LLMProtocolError
-from webops.llm.protocols import parse_chat_stream
-from webops.llm.session import LLMSession
+from autobranch.llm.errors import LLMProtocolError
+from autobranch.llm.protocols import parse_chat_stream
+from autobranch.llm.session import LLMSession
 
 
 def make_sse_stream(parts: list[str]) -> bytes:

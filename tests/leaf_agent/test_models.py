@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-from webops.leaf_agent.models import LeafResult, ToolCallRecord
-from webops.reporting.models import LeafTrace
-from webops.reporting.models import ToolCallRecord as M8Call
+from autobranch.leaf_agent.models import LeafResult, ToolCallRecord
+from autobranch.reporting.models import LeafTrace
+from autobranch.reporting.models import ToolCallRecord as M8Call
 
 
 def test_tool_call_record_fields():

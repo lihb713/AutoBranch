@@ -1,6 +1,6 @@
 ## Why
 
-WebOps 目前只有引擎层（M0~M8），用户必须以命令行方式书写行为树文档并本地执行，缺少一个供 M9a 前端消费的管理后端。M9b 作为系统阶段 6 的后端服务，负责行为树文档的持久化管理、清晰度校验、执行触发与状态查询、报告/截图提供，是引擎能力对外可用的必要入口；引擎以 Python 库内嵌同进程（契约 §12.3），无需进程间通信，实现简单且共享内存。
+AutoBranch 目前只有引擎层（M0~M8），用户必须以命令行方式书写行为树文档并本地执行，缺少一个供 M9a 前端消费的管理后端。M9b 作为系统阶段 6 的后端服务，负责行为树文档的持久化管理、清晰度校验、执行触发与状态查询、报告/截图提供，是引擎能力对外可用的必要入口；引擎以 Python 库内嵌同进程（契约 §12.3），无需进程间通信，实现简单且共享内存。
 
 ## What Changes
 
@@ -22,7 +22,7 @@ WebOps 目前只有引擎层（M0~M8），用户必须以命令行方式书写�
 
 ## Impact
 
-- **新增代码**：`webops/server/`（FastAPI 应用、routers、schemas、services、models、db）、执行任务管理（异步后台运行引擎）、报告文件服务。
+- **新增代码**：`autobranch/server/`（FastAPI 应用、routers、schemas、services、models、db）、执行任务管理（异步后台运行引擎）、报告文件服务。
 - **API 面**：新增 `/api/trees`、`/api/trees/{id}/check`、`/api/trees/{id}/run`、`/api/runs/{run_id}/state|report|trace`、`/api/reports/{path}` 一组 REST 接口，供 M9a 前端消费。
 - **依赖模块**：M2（解析器，清晰度校验）、M7（引擎，执行触发/状态查询）、M8（报告/截图机制），三者作为 Python 库同进程依赖。
 - **被依赖模块**：M9a 前端 UI（消费全部 API）。

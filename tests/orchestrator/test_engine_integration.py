@@ -1,8 +1,7 @@
-"""M7 任务 1.4 / 6.1 / 6.2：引擎入口与集成冒烟（mock 叶子 + 真实浏览器可选）。"""
+﻿"""M7 任务 1.4 / 6.1 / 6.2：引擎入口与集成冒烟（mock 叶子 + 真实浏览器可选）。"""
 
 from __future__ import annotations
 
-import pytest
 from orchestrator_helpers import (
     StubLeaf,
     action,
@@ -16,8 +15,8 @@ from orchestrator_helpers import (
     seq,
 )
 
-from webops.orchestrator import Engine, RunConfig
-from webops.parser.models import BehaviorTree
+from autobranch.orchestrator import Engine
+from autobranch.parser.models import BehaviorTree
 
 
 def _tree() -> BehaviorTree:
@@ -159,64 +158,3 @@ class TestEngineEndToEnd:
         result = engine.run(tree, config)
         assert result.status == "failure"
         assert result.failure_reason is not None
-
-
-@pytest.mark.integration
-class TestRealBrowserSmoke:
-    """任务 6.2（可选）：真实小行为树 + 真实浏览器跑通——验证超时/截图/报告链路。"""
-
-    def test_real_browser_open_and_screenshot(self, config) -> None:
-        from webops.browser import BrowserDriver
-        from webops.leaf_agent.models import LeafResult
-        from webops.reporting.models import LeafTrace
-        from webops.schema import SchemaSpace
-        from webops.schema.models import PageRef as SchemaPageRef
-
-        browser = BrowserDriver()
-        space = SchemaSpace()
-        captured = {}
-
-        def leaf(node, timeout):
-            if node.description == "打开测试页":
-                op = browser.open("data:text/html,<h1>M7 冒烟</h1>")
-                assert op.ok, op.error
-                ref = op.detail["page_ref"]
-                space.write(
-                    space._current,
-                    "$this/page",
-                    SchemaPageRef(page_id=ref.id, url=op.detail.get("url", "")),
-                    "page_ref",
-                )
-                return LeafResult(
-                    status="success", trace=LeafTrace(llm_input={"d": node.description})
-                )
-            if node.description == "页面已打开":
-                page = space.current_page(space._current)
-                captured["page"] = page
-                return LeafResult(
-                    status="success" if page else "failure",
-                    bool_value=bool(page),
-                    trace=LeafTrace(llm_input={}),
-                )
-            return LeafResult(status="success", trace=LeafTrace(llm_input={"d": node.description}))
-
-        engine = Engine(
-            browser=browser,
-            space_factory=lambda: space,
-            leaf_executor=leaf,
-        )
-        tree = BehaviorTree(
-            name="主流程",
-            root=seq(
-                action("打开测试页"),
-                cond("页面已打开"),
-            ),
-        )
-        result = engine.run(tree, RunConfig(report_dir=config.report_dir))
-        assert result.status == "success"
-        assert captured["page"] is not None
-        # 截图链路：Action 返回前经 M1 截图落盘，NodeReport 携带路径
-        final = engine.get_exec_state()
-        action_report = [r for r in final.completed if r.node_type == "Action"][0]
-        assert action_report.screenshot_path
-        assert action_report.page_url

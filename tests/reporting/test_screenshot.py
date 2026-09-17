@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 
+from autobranch.browser.models import PageRef
 from reporting.factories import make_action_report, make_condition_report
 
-from webops.browser.models import PageRef
-from webops.reporting import Reporter
+from autobranch.reporting import Reporter
 
 
 class TestCaptureScreenshot:

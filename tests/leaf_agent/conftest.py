@@ -8,10 +8,10 @@
 from __future__ import annotations
 
 import pytest
-from leaf_agent_helpers import StubEngine
+from leaf_agent_helpers import MockRegistry
 
 
 @pytest.fixture
-def stub_engine() -> StubEngine:
+def stub_engine() -> MockRegistry:
     """假 M5 引擎：默认返回失败结果，测试内按函数名配置返回序列。"""
-    return StubEngine()
+    return MockRegistry()

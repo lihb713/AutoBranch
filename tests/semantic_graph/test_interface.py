@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 import pytest
+from autobranch.browser.models import PageRef
+from autobranch.semantic_graph.errors import LlmStageError, ProgramStageError
 from snapshot_factory import SnapshotBuilder, login_snapshot
 
-from webops.browser.models import PageRef
-from webops.semantic_graph import MockFiller, semantic_graph
-from webops.semantic_graph.errors import LlmStageError, ProgramStageError
+from autobranch.semantic_graph import MockFiller, semantic_graph
 
 
 class StubProbe:

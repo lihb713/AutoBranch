@@ -34,8 +34,8 @@
 
 ## Impact
 
-- **前端** `webops/frontend/src/features/tree-editor/`：重写 CanvasTree（画布布局 + SVG 连线 + 主树/游离区）；model.ts 重构（节点对象池/槽位引用/id+name）；ref args/returns 编辑（修复数据丢失）；BlockListPanel 移除；属性面板（ref 参数、节点字段）。
-- **M2 parser** `webops/parser/`：新 DSL 解析（tree/nodes/root）；删多块解析。
-- **M7 执行器** `webops/orchestrator/`：ref 按文档名加载；blocks_tree → 文档名→树。
-- **后端 API** `webops/server/`：按名查文档 API；DB-backed resolver；文档导入。
+- **前端** `autobranch/frontend/src/features/tree-editor/`：重写 CanvasTree（画布布局 + SVG 连线 + 主树/游离区）；model.ts 重构（节点对象池/槽位引用/id+name）；ref args/returns 编辑（修复数据丢失）；BlockListPanel 移除；属性面板（ref 参数、节点字段）。
+- **M2 parser** `autobranch/parser/`：新 DSL 解析（tree/nodes/root）；删多块解析。
+- **M7 执行器** `autobranch/orchestrator/`：ref 按文档名加载；blocks_tree → 文档名→树。
+- **后端 API** `autobranch/server/`：按名查文档 API；DB-backed resolver；文档导入。
 - **文档** `docs/contract.md`（§4.1 文档格式、§5.7 块引用/帧模型）、各模块 spec 需同步。

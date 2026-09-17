@@ -9,9 +9,9 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from webops.server.db import session_factory
-from webops.server.models import Run, Tree
-from webops.server.services.reports import ReportService
+from autobranch.server.db import session_factory
+from autobranch.server.models import Run, Tree
+from autobranch.server.services.reports import ReportService
 
 # ------------------------------------------------------------- trees（2.1/2.3）
 

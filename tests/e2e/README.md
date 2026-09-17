@@ -1,4 +1,4 @@
-# WebOps 端到端真实验证
+# AutoBranch 端到端真实验证
 
 本目录是一次性端到端验证工具：真实接线 M0~M8 跑通完整链路
 （行为树解析 → 引擎冷启动 → 遍历 → 叶子 agent 执行 → 报告），验证系统
@@ -12,18 +12,18 @@
 | `pages/index.html` | 本地测试页面：登录表单 + 订单列表（批准按钮），前端 JS 模拟登录/批准 |
 | `flows/订单审批.yaml` | 真实业务行为树：打开页面 → 登录 → 提取订单号 → 点击批准 → 验证状态 |
 | `run_e2e.py` | 端到端执行脚本（真实浏览器 + 真实 LLM agent 决策，统一配置加载） |
-| `webops.config.json`（项目根） | 统一配置：llm / browser / run（api_key 留空，环境变量注入） |
+| `autobranch.config.json`（项目根） | 统一配置：llm / browser / run（api_key 留空，环境变量注入） |
 
 ## 运行
 
 ```bash
-# 1) 配置：项目根 webops.config.json（api_key 留空，由环境变量注入）
+# 1) 配置：项目根 autobranch.config.json（api_key 留空，由环境变量注入）
 #    或拷贝并修改：--config <path> 指定
 # 2) 注入真实 LLM 密钥（opencode Go 订阅端点，或任意 OpenAI 兼容端点）
-$env:WEB_OPS_LLM_API_KEY="sk-..."
-#    （可选覆盖端点/模型：webops.config.json 的 llm.base_url / llm.model）
+$env:AUTOBRANCH_LLM_API_KEY="sk-..."
+#    （可选覆盖端点/模型：autobranch.config.json 的 llm.base_url / llm.model）
 
-conda run -n webops python tests/e2e/run_e2e.py [--config webops.config.json]
+conda run -n autobranch python tests/e2e/run_e2e.py [--config autobranch.config.json]
 ```
 
 脚本输出执行状态、报告路径与执行进度；`engine.get_exec_state()` 返回
@@ -31,7 +31,7 @@ conda run -n webops python tests/e2e/run_e2e.py [--config webops.config.json]
 
 ## 报告位置
 
-报告固定写入项目根 **`reports/`** 目录（`webops.config.json` 的
+报告固定写入项目根 **`reports/`** 目录（`autobranch.config.json` 的
 `run.report_dir`，默认 `reports`，相对项目根解析）。每次运行生成一个
 子目录 `<reports>/<run_id>/`：
 
@@ -84,4 +84,4 @@ reports/<run_id>/
 ## 回归
 
 端到端验证不修改任何库代码。常规测试套件完整：
-`conda run -n webops python -m pytest` → 646 passed（含真实浏览器集成）。
+`conda run -n autobranch python -m pytest` → 646 passed（含真实浏览器集成）。

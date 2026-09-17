@@ -101,7 +101,7 @@ block 主流程:
 **原理**：set/get/blackboard 使用同一套类型名；类型即真实存储类型；校验统一 `isinstance`。
 
 ```python
-# webops/schema/types.py（重构）
+# autobranch/schema/types.py（重构）
 @dataclass
 class TypeSpec:
     token: str                  # DSL 引用名：str/int/float/bool/page_ref

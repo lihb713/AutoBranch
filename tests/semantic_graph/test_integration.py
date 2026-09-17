@@ -7,11 +7,11 @@ M4 两阶段流水线生成语义图，断言对象模型与序列化文本符�
 from __future__ import annotations
 
 import pytest
+from autobranch.semantic_graph.errors import LlmStageError
+from autobranch.semantic_graph.llm_fill import RelatedScore
 
-from webops.browser import DomProbe, ElementRef
-from webops.semantic_graph import MockFiller, semantic_graph, serialize
-from webops.semantic_graph.errors import LlmStageError
-from webops.semantic_graph.llm_fill import RelatedScore
+from autobranch.browser import DomProbe, ElementRef
+from autobranch.semantic_graph import MockFiller, semantic_graph, serialize
 
 pytestmark = pytest.mark.integration
 
@@ -147,7 +147,7 @@ class TestIntegrationFailure:
     """真实浏览器下失败语义（§9.4：程序侧/LLM 侧可区分）。"""
 
     def test_program_stage_crawl_failure(self, sg_driver):
-        from webops.browser import PageRef
+        from autobranch.browser import PageRef
 
         with pytest.raises(Exception) as exc_info:
             semantic_graph(
@@ -155,7 +155,7 @@ class TestIntegrationFailure:
                 probe=DomProbe(sg_driver),
                 filler=FirstPairFiller(),
             )
-        from webops.semantic_graph.errors import ProgramStageError
+        from autobranch.semantic_graph.errors import ProgramStageError
 
         assert isinstance(exc_info.value, ProgramStageError)
 

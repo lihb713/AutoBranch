@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.browser import ElementRef, ErrorCode
+from autobranch.browser import ElementRef, ErrorCode
 
 pytestmark = pytest.mark.integration
 

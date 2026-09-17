@@ -17,12 +17,12 @@ from orchestrator_helpers import (
     seq,
 )
 
-from webops.orchestrator import FAILURE, SUCCESS
-from webops.orchestrator.traverser import Traverser
-from webops.parser.models import DocumentSource, RefNode
-from webops.parser.parser import BehaviorTreeParser
-from webops.parser.refs import MappingResolver
-from webops.schema.models import PageRef
+from autobranch.orchestrator import FAILURE, SUCCESS
+from autobranch.orchestrator.traverser import Traverser
+from autobranch.parser.models import DocumentSource, RefNode
+from autobranch.parser.parser import BehaviorTreeParser
+from autobranch.parser.refs import MappingResolver
+from autobranch.schema.models import PageRef
 
 _GET_TMPL = re.compile(r"\[\[\s*get:\s*this/([^\[\]]+?)\s*\]\]")
 _SET_TMPL = re.compile(
@@ -368,7 +368,7 @@ class TestRefCall:
         """
         from orchestrator_helpers import make_engine
 
-        from webops.parser.models import BehaviorTree
+        from autobranch.parser.models import BehaviorTree
 
         login = _login_doc(body=["登录叶"])
         export = {

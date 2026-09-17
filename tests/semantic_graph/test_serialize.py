@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from snapshot_factory import login_snapshot, orders_snapshot
 
-from webops.semantic_graph import MockFiller, generate_semantic_graph, serialize
+from autobranch.semantic_graph import MockFiller, generate_semantic_graph, serialize
 
 
 def _login_form_graph():
@@ -137,6 +137,26 @@ class TestSerializationRules:
         text = serialize(_login_form_graph())
         assert 'CHECK [6] "记住我" checked' in text
         assert 'FIELD [2] textbox "用户名输入框" value=""' in text
+
+    def test_submit_input_button_renders_value(self):
+        """input[type=submit] 的登录按钮：role=button，标签在其 value 中须渲染。"""
+        from autobranch.semantic_graph.models import Element, ElementState, SemanticGraph
+
+        graph = SemanticGraph(
+            elements=[
+                Element(
+                    id="E1",
+                    ref="[1]",
+                    role="button",
+                    purpose="登录按钮",
+                    tag="input",
+                    state=ElementState(value="Sign in", text=""),
+                )
+            ]
+        )
+        text = serialize(graph)
+        assert "ACTOR [1]" in text
+        assert 'value="Sign in"' in text
 
     def test_id_and_bounds_not_in_text(self):
         text = serialize(_login_form_graph())

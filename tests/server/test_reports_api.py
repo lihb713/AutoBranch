@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from webops.server.models import Run
-from webops.server.services.reports import ReportService
+from autobranch.server.models import Run
+from autobranch.server.services.reports import ReportService
 
 from .conftest import create_tree
 
@@ -79,15 +79,15 @@ def test_report_file_missing_404(client, settings):
 @pytest.mark.parametrize(
     "path",
     [
-        "/api/reports/../webops.config.json",
-        "/api/reports/%2e%2e/%2e%2e/webops.config.json",
-        "/api/reports/1/../../webops.config.json",
+        "/api/reports/../autobranch.config.json",
+        "/api/reports/%2e%2e/%2e%2e/autobranch.config.json",
+        "/api/reports/1/../../autobranch.config.json",
     ],
 )
 def test_report_path_traversal_rejected(client, settings, path):
     resp = client.get(path)
     assert resp.status_code in (400, 404)
-    assert "webops" not in (resp.text or "")
+    assert "autobranch" not in (resp.text or "")
 
 
 def test_report_resolve_traversal_400(tmp_path):
@@ -137,8 +137,8 @@ def test_run_report_done(client, session, settings):
 
 def test_report_path_persisted_from_result(client, mock_engine, session, settings):
     """任务 7.1：执行结果携带报告路径 → 相对路径入库。"""
-    from webops.orchestrator.models import RunResult
-    from webops.reporting import ExecReport, TraceReport
+    from autobranch.orchestrator.models import RunResult
+    from autobranch.reporting import ExecReport, TraceReport
 
     tree = create_tree(client)
     _write_report_file(settings, 1, "exec_report.md", "# 执行报告")

@@ -5,12 +5,12 @@ fixture 断言 part-of/value-of 边及 origin=structural（§8.3 ②、§7.7）�
 
 from __future__ import annotations
 
+from autobranch.semantic_graph.enrich import derive_value_of_edges
+from autobranch.semantic_graph.models import normalize_role
+from autobranch.semantic_graph.selection import build_semantic_tree
 from snapshot_factory import login_snapshot, orders_snapshot
 
-from webops.semantic_graph import run_programmatic
-from webops.semantic_graph.enrich import derive_value_of_edges
-from webops.semantic_graph.models import normalize_role
-from webops.semantic_graph.selection import build_semantic_tree
+from autobranch.semantic_graph import run_programmatic
 
 
 class TestRoleNormalization:

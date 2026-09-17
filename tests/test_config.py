@@ -1,4 +1,4 @@
-"""配置加载模块测试（webops/config.py）。
+"""配置加载模块测试（autobranch/config.py）。
 
 覆盖：默认值、JSON 文件加载、字段映射、api_key 环境变量注入、
 to_llm_config/to_browser_config/to_run_config 构建。
@@ -10,12 +10,12 @@ import json
 
 import pytest
 
-from webops.config import LLMOptions, RunOptions, WebOpsConfig
+from autobranch.config import AutoBranchConfig, LLMOptions, RunOptions
 
 
 @pytest.fixture
 def config_file(tmp_path):
-    path = tmp_path / "webops.config.json"
+    path = tmp_path / "autobranch.config.json"
     path.write_text(
         json.dumps(
             {
@@ -39,9 +39,9 @@ def config_file(tmp_path):
 
 
 def test_defaults_when_no_file(tmp_path, monkeypatch):
-    monkeypatch.delenv("WEB_OPS_CONFIG", raising=False)
-    monkeypatch.chdir(tmp_path)  # 无 webops.config.json
-    cfg = WebOpsConfig.load()
+    monkeypatch.delenv("AUTOBRANCH_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)  # 无 autobranch.config.json
+    cfg = AutoBranchConfig.load()
     assert cfg.llm.base_url == "https://opencode.ai/zen/go/v1"
     assert cfg.llm.model == "deepseek-v4-flash"
     assert cfg.llm.api_key == ""
@@ -52,7 +52,7 @@ def test_defaults_when_no_file(tmp_path, monkeypatch):
 
 
 def test_load_from_file(config_file):
-    cfg = WebOpsConfig.load(config_file, apply_env=False)
+    cfg = AutoBranchConfig.load(config_file, apply_env=False)
     assert cfg.llm.base_url == "https://api.example.com/v1"
     assert cfg.llm.api_key == "from-file"
     assert cfg.llm.model == "my-model"
@@ -66,55 +66,55 @@ def test_load_from_file(config_file):
 
 
 def test_env_api_key_overrides_file(config_file, monkeypatch):
-    monkeypatch.setenv("WEB_OPS_LLM_API_KEY", "sk-env-secret")
-    cfg = WebOpsConfig.load(config_file, apply_env=True)
+    monkeypatch.setenv("AUTOBRANCH_LLM_API_KEY", "sk-env-secret")
+    cfg = AutoBranchConfig.load(config_file, apply_env=True)
     assert cfg.llm.api_key == "sk-env-secret"  # 环境变量优先
     assert cfg.llm.base_url == "https://api.example.com/v1"  # 文件字段保留
 
 
 def test_env_config_path(config_file, monkeypatch):
-    monkeypatch.setenv("WEB_OPS_CONFIG", str(config_file))
-    monkeypatch.delenv("WEB_OPS_LLM_API_KEY", raising=False)
-    cfg = WebOpsConfig.load(apply_env=False)
+    monkeypatch.setenv("AUTOBRANCH_CONFIG", str(config_file))
+    monkeypatch.delenv("AUTOBRANCH_LLM_API_KEY", raising=False)
+    cfg = AutoBranchConfig.load(apply_env=False)
     assert cfg.llm.model == "my-model"
 
 
 def test_empty_api_key_allowed_in_file(tmp_path, monkeypatch):
     """配置文件 api_key 留空合法（内部工具亦可直接写入 key，两种用法均支持）。"""
-    # 用临时空配置目录，避免依赖真实 webops.config.json 的内容
-    monkeypatch.delenv("WEB_OPS_CONFIG", raising=False)
-    monkeypatch.delenv("WEB_OPS_LLM_API_KEY", raising=False)
+    # 用临时空配置目录，避免依赖真实 autobranch.config.json 的内容
+    monkeypatch.delenv("AUTOBRANCH_CONFIG", raising=False)
+    monkeypatch.delenv("AUTOBRANCH_LLM_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
-    cfg = WebOpsConfig.load()
+    cfg = AutoBranchConfig.load()
     assert cfg.llm.api_key == ""
 
 
 def test_api_key_read_from_file(tmp_path, monkeypatch):
     """配置文件 api_key 直接写入时被加载（内部工具用法）。"""
-    path = tmp_path / "webops.config.json"
+    path = tmp_path / "autobranch.config.json"
     path.write_text(
         json.dumps({"llm": {"api_key": "sk-from-file"}}), encoding="utf-8"
     )
-    monkeypatch.delenv("WEB_OPS_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("AUTOBRANCH_LLM_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
-    cfg = WebOpsConfig.load()
+    cfg = AutoBranchConfig.load()
     assert cfg.llm.api_key == "sk-from-file"
 
 
 def test_to_llm_config_requires_key(config_file):
-    cfg = WebOpsConfig.load(config_file, apply_env=False)
+    cfg = AutoBranchConfig.load(config_file, apply_env=False)
     llm = cfg.to_llm_config()
     assert llm.base_url == "https://api.example.com/v1"
     assert llm.api_key == "from-file"
     assert llm.model == "my-model"
     # 空 key 构造应抛 ValueError
-    empty = WebOpsConfig()
+    empty = AutoBranchConfig()
     with pytest.raises(ValueError):
         empty.to_llm_config()
 
 
 def test_to_browser_config(config_file):
-    cfg = WebOpsConfig.load(config_file, apply_env=False)
+    cfg = AutoBranchConfig.load(config_file, apply_env=False)
     bc = cfg.to_browser_config()
     assert bc.browser_type == "firefox"
     assert bc.headless is False
@@ -122,7 +122,7 @@ def test_to_browser_config(config_file):
 
 
 def test_to_run_config(config_file):
-    cfg = WebOpsConfig.load(config_file, apply_env=False)
+    cfg = AutoBranchConfig.load(config_file, apply_env=False)
     rc = cfg.to_run_config(max_rounds=3)
     assert rc.timeout == 200.0
     assert rc.report_dir == "custom_reports"

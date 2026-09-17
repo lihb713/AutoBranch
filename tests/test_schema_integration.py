@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.schema import (
+from autobranch.schema import (
     FrameDecl,
     PageRef,
     SchemaScopeError,

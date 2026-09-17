@@ -10,9 +10,9 @@
 
 from __future__ import annotations
 
-from webops.parser.models import DocumentSource
-from webops.parser.parser import BehaviorTreeParser
-from webops.parser.refs import MappingResolver
+from autobranch.parser.models import DocumentSource
+from autobranch.parser.parser import BehaviorTreeParser
+from autobranch.parser.refs import MappingResolver
 
 #: 登录文档（yaml 文本形式，含配置覆盖 timeout: 30）
 LOGIN_YAML = """
@@ -142,7 +142,7 @@ def parse_doc(
 
 def walk_nodes(node):
     """先序遍历基础节点（集成测试断言仅含基础节点用）。"""
-    from webops.parser import models
+    from autobranch.parser import models
 
     yield node
     if isinstance(node, models.SequenceNode):

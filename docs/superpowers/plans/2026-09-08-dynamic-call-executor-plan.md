@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 全程中文对话与文档；代码标识符英文。
-- conda 环境 `webops`：`conda run -n webops --no-capture-output python -m pytest ...`。前端命令在 `webops/frontend` 用 `npm.cmd`。
+- conda 环境 `autobranch`：`conda run -n autobranch --no-capture-output python -m pytest ...`。前端命令在 `autobranch/frontend` 用 `npm.cmd`。
 - 已定关键决策（controller rulings，勿改）：
   - **blocks_tree**：`ParseResult.blocks_tree: dict[str, Node]`（每块预展开基础树）；`Engine.run(tree, blocks, config)` 签名**不变**，`RunContext` 新增 `blocks_tree` 字段；server 调用面不变（从 `result` 多取一个字段传入 Engine 或 RunContext）。
   - **帧生命周期**：帧对象保留到**整个行为树执行结束**才释放（每次 run 新建 SchemaSpace 已实现释放）；执行期间激活帧控制访问权限。
@@ -29,10 +29,10 @@
 ### Task 1: parser 改造——RefNode + blocks_tree + 每块独立预展开
 
 **Files:**
-- Modify: `webops/parser/models.py`（Node 去 frame、新增 RefNode、ParseResult 结构）
-- Modify: `webops/parser/expand.py`（_expand_ref 生成 RefNode；每块独立预展开；移除 FrameInfo/ParamBinding）
-- Modify: `webops/parser/parser.py`（ParseResult 构造）
-- Modify: `webops/parser/document.py`（若引用 frame 相关）
+- Modify: `autobranch/parser/models.py`（Node 去 frame、新增 RefNode、ParseResult 结构）
+- Modify: `autobranch/parser/expand.py`（_expand_ref 生成 RefNode；每块独立预展开；移除 FrameInfo/ParamBinding）
+- Modify: `autobranch/parser/parser.py`（ParseResult 构造）
+- Modify: `autobranch/parser/document.py`（若引用 frame 相关）
 - Test: `tests/test_parser_models.py`、`tests/test_parser_refs.py`、`tests/test_parser_integration.py`
 
 **Interfaces:**
@@ -63,12 +63,12 @@ def test_blocks_tree_contains_each_block():
     assert result.blocks_tree["主"] is result.tree.root   # 根块树与 tree.root 同一
 ```
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_refs.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_refs.py -q`
 Expected: FAIL（RefNode/blocks_tree 不存在）
 
 - [ ] **Step 2: models.py——Node 去 frame、新增 RefNode、ParseResult 重构**
 
-`webops/parser/models.py`：
+`autobranch/parser/models.py`：
 ```python
 @dataclass(frozen=True)
 class Node:
@@ -109,14 +109,14 @@ class RefNode(Node):
 - `tests/test_parser_integration.py:52-54/90`：`bindings`/`frames` 断言移除。
 - `tests/test_parser_expand.py`：若断言 frame 字符串则移除（多数不涉及）。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_refs.py tests/test_parser_models.py tests/test_parser_integration.py tests/test_parser_expand.py tests/test_parser_document.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_refs.py tests/test_parser_models.py tests/test_parser_integration.py tests/test_parser_expand.py tests/test_parser_document.py -q`
 Expected: PASS
 
 - [ ] **Step 6: ruff + Commit**
 
 ```bash
-conda run -n webops --no-capture-output python -m ruff check webops/parser tests/test_parser_refs.py tests/test_parser_models.py tests/test_parser_integration.py
-git add webops/parser/ tests/
+conda run -n autobranch --no-capture-output python -m ruff check autobranch/parser tests/test_parser_refs.py tests/test_parser_models.py tests/test_parser_integration.py
+git add autobranch/parser/ tests/
 git commit -m "feat(parser): RefNode + blocks_tree, remove static frame/bindings/frames"
 ```
 
@@ -125,7 +125,7 @@ git commit -m "feat(parser): RefNode + blocks_tree, remove static frame/bindings
 ### Task 2: schema 层单段化 + 帧语义
 
 **Files:**
-- Modify: `webops/schema/path.py`（resolve_target 单段）、`webops/schema/space.py`（exit_block docstring、snapshot 不变）
+- Modify: `autobranch/schema/path.py`（resolve_target 单段）、`autobranch/schema/space.py`（exit_block docstring、snapshot 不变）
 - Test: `tests/test_schema_scope.py`、`tests/test_schema_blackboard.py`、`tests/test_schema_integration.py`
 
 **Interfaces:**
@@ -144,7 +144,7 @@ def test_multisegment_rejected():
 ```
 > 现有 `test_schema_scope.py` 中含"直接子块写/读合法"的用例需迁移为拒绝。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_schema_scope.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_schema_scope.py -q`
 Expected: FAIL
 
 - [ ] **Step 2: path.py 单段化**
@@ -160,13 +160,13 @@ Expected: FAIL
 
 `tests/test_schema_scope.py` 中"父写/读直接子块"合法用例 → 改拒绝断言；`tests/test_schema_blackboard.py`（若含 `this/子块/` 路径快照）→ 若展示用则保留（snapshot 是递归展示，非寻址）；`tests/test_schema_integration.py` 若含多段写 → 迁移。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_schema_scope.py tests/test_schema_blackboard.py tests/test_schema_integration.py tests/test_schema_config.py tests/test_schema_page.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_schema_scope.py tests/test_schema_blackboard.py tests/test_schema_integration.py tests/test_schema_config.py tests/test_schema_page.py -q`
 Expected: PASS
 
 - [ ] **Step 5: ruff + Commit**
 
 ```bash
-git add webops/schema/ tests/test_schema_scope.py tests/test_schema_blackboard.py tests/test_schema_integration.py
+git add autobranch/schema/ tests/test_schema_scope.py tests/test_schema_blackboard.py tests/test_schema_integration.py
 git commit -m "feat(schema): single-segment resolve_target, frames live until run end"
 ```
 
@@ -175,10 +175,10 @@ git commit -m "feat(schema): single-segment resolve_target, frames live until ru
 ### Task 3: Traverser 动态调用执行器
 
 **Files:**
-- Modify: `webops/orchestrator/traverser.py`（tick/_dispatch/_tick_ref；移除 _sync_frame/node.frame）
-- Modify: `webops/orchestrator/context.py`（RunContext 加 blocks_tree）
-- Modify: `webops/orchestrator/engine.py`（Engine.run 传 blocks_tree；get_exec_state 不变）
-- Modify: `webops/server/services/engine.py`（run 传 blocks_tree）
+- Modify: `autobranch/orchestrator/traverser.py`（tick/_dispatch/_tick_ref；移除 _sync_frame/node.frame）
+- Modify: `autobranch/orchestrator/context.py`（RunContext 加 blocks_tree）
+- Modify: `autobranch/orchestrator/engine.py`（Engine.run 传 blocks_tree；get_exec_state 不变）
+- Modify: `autobranch/server/services/engine.py`（run 传 blocks_tree）
 - Test: `tests/orchestrator/`（helpers + 新 RefNode 用例）
 
 **Interfaces:**
@@ -216,7 +216,7 @@ blocks_tree = {"主": main_tree, "登录": login_tree}
 ```
 > 用测试 helper：`make_run_context` 需支持 `blocks_tree` 参数；StubLeaf 对 `[[get:this/username]]` 的替换走真实 executor（用 `make_default_leaf_executor(config, space)` 或简化：在测试里手工 `space.read` 断言）。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/orchestrator/test_ref_call.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/orchestrator/test_ref_call.py -q`
 Expected: FAIL
 
 - [ ] **Step 2: context.py 加 blocks_tree**
@@ -293,20 +293,20 @@ def _tick_ref(self, node: RefNode) -> NodeStatus:
 - `tests/orchestrator/test_schema_frames.py`：帧序列断言改为"用 RefNode 驱动的 `_tick_ref` 建帧/退帧"或用 `blocks_tree` + 手工 tick 断言 `space._current` 序列。`test_same_name_variables_isolated` 保留（隔离语义不变）。配置继承用例改用 blocks_tree 块声明。
 - `tests/leaf_agent`、`tests/engine`：确认不受影响（它们直接构造帧/space，不依赖 node.frame）。
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/orchestrator tests/leaf_agent tests/engine tests/server -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/orchestrator tests/leaf_agent tests/engine tests/server -q`
 Expected: PASS
 
 - [ ] **Step 6: 全量回归 + 前端**
 
-Run: `conda run -n webops --no-capture-output python -m pytest -q`
-Run（`webops/frontend`）: `npm.cmd test -- --run; npm.cmd run lint; npm.cmd run typecheck; npm.cmd run test:e2e`
+Run: `conda run -n autobranch --no-capture-output python -m pytest -q`
+Run（`autobranch/frontend`）: `npm.cmd test -- --run; npm.cmd run lint; npm.cmd run typecheck; npm.cmd run test:e2e`
 Expected: 全绿
 
 - [ ] **Step 7: ruff + Commit**
 
 ```bash
-conda run -n webops --no-capture-output python -m ruff check webops tests
-git add webops/orchestrator/ webops/server/services/engine.py tests/
+conda run -n autobranch --no-capture-output python -m ruff check autobranch tests
+git add autobranch/orchestrator/ autobranch/server/services/engine.py tests/
 git commit -m "feat(engine): dynamic ref call (RefNode → frame inject/returns/exit)"
 ```
 
@@ -337,8 +337,8 @@ git commit -m "feat(engine): dynamic ref call (RefNode → frame inject/returns/
 
 - [ ] **Step 4: 全量验证 + Commit**
 
-Run: `conda run -n webops --no-capture-output python -m pytest -q; conda run -n webops --no-capture-output python -m ruff check webops tests`
-Run（`webops/frontend`）: `npm.cmd test -- --run; npm.cmd run typecheck`
+Run: `conda run -n autobranch --no-capture-output python -m pytest -q; conda run -n autobranch --no-capture-output python -m ruff check autobranch tests`
+Run（`autobranch/frontend`）: `npm.cmd test -- --run; npm.cmd run typecheck`
 ```bash
 git add docs/ openspec/
 git commit -m "docs: sync dynamic ref-call executor and frame lifecycle (Plan ③)"

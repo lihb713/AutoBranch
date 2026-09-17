@@ -37,15 +37,15 @@
 
 ### 2.1 路由分层
 
-- 路由文件按资源组织：`webops/server/routers/trees.py`、`routers/runs.py`。
+- 路由文件按资源组织：`autobranch/server/routers/trees.py`、`routers/runs.py`。
 - 只做 HTTP 编排（参数校验 / 状态码 / 调用 service），业务逻辑放 service 层。
 
 ```python
-# webops/server/routers/trees.py
+# autobranch/server/routers/trees.py
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from webops.server.schemas.tree import TreeCreate, TreeOut, TreeUpdate
-from webops.server.services.trees import TreeService
+from autobranch.server.schemas.tree import TreeCreate, TreeOut, TreeUpdate
+from autobranch.server.services.trees import TreeService
 
 router = APIRouter(prefix="/api/trees", tags=["trees"])
 
@@ -86,7 +86,7 @@ def update_tree(tree_id: int, payload: TreeUpdate, service: TreeService = Depend
 每个资源三类 schema，分别用于创建 / 更新 / 输出：
 
 ```python
-# webops/server/schemas/tree.py
+# autobranch/server/schemas/tree.py
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -161,7 +161,7 @@ raise HTTPException(status_code=404, detail="tree not found")
 ### 5.3 业务异常 → 统一异常处理器
 
 ```python
-# webops/server/errors.py
+# autobranch/server/errors.py
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 

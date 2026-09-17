@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from webops.orchestrator.models import RunResult
-from webops.reporting import ActionCall, ExecState, NodeInfo, NodeReport
-from webops.server.db import configure_database, session_factory
-from webops.server.main import create_app
-from webops.server.models import Run, Tree
+from autobranch.orchestrator.models import RunResult
+from autobranch.reporting import ActionCall, ExecState, NodeInfo, NodeReport
+from autobranch.server.db import configure_database, session_factory
+from autobranch.server.main import create_app
+from autobranch.server.models import Run, Tree
 
 from .conftest import INVALID_REF_YAML, create_tree, make_tree_yaml
 
@@ -157,10 +157,10 @@ def test_state_contract_fields(client):
 def test_startup_marks_running_as_interrupted(tmp_path):
     from fastapi.testclient import TestClient
 
-    from webops.server.config import ServerConfig
-    from webops.server.services.engine import MockEngineService
+    from autobranch.server.config import ServerConfig
+    from autobranch.server.services.engine import MockEngineService
 
-    cfg = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    cfg = ServerConfig(db_path=tmp_path / "autobranch.db", report_root=tmp_path / "reports")
     configure_database(cfg.db_path)
     db = session_factory()()
     tree = Tree(name="重启用", content=make_tree_yaml("重启用"))

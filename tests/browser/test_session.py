@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.browser import ErrorCode
+from autobranch.browser import ErrorCode
 
 pytestmark = pytest.mark.integration
 
@@ -32,7 +32,7 @@ class TestSessionLifecycle:
         driver.stop()
 
     def test_open_without_start(self, server_url):
-        from webops.browser import BrowserDriver
+        from autobranch.browser import BrowserDriver
 
         fresh = BrowserDriver()
         result = fresh.open(f"{server_url}/basic.html")
@@ -45,7 +45,7 @@ class TestColdStart:
 
     def _read_cookie_and_storage(self, handle) -> tuple[str, str | None]:
         cookie = handle._page.evaluate("() => document.cookie")
-        storage = handle._page.evaluate("() => localStorage.getItem('webops_test_key')")
+        storage = handle._page.evaluate("() => localStorage.getItem('autobranch_test_key')")
         return cookie, storage
 
     def test_second_start_has_no_previous_state(
@@ -55,7 +55,7 @@ class TestColdStart:
         ref1 = open_page(f"{server_url}/cookie_page.html")
         handle1 = page_handle(ref1)
         cookie1, storage1 = self._read_cookie_and_storage(handle1)
-        assert "webops_test_cookie" in cookie1
+        assert "autobranch_test_cookie" in cookie1
         assert storage1 == "abc"
 
         # 重启会话（start 自动释放旧会话）
@@ -68,7 +68,7 @@ class TestColdStart:
         ref2 = open_page(f"{server_url}/basic.html")
         handle2 = page_handle(ref2)
         cookie2, storage2 = self._read_cookie_and_storage(handle2)
-        assert "webops_test_cookie" not in cookie2
+        assert "autobranch_test_cookie" not in cookie2
         assert storage2 is None
 
     def test_start_again_invalidates_old_ref(self, driver, server_url, open_page):
@@ -82,8 +82,8 @@ class TestColdStart:
         ref_a = open_page(f"{server_url}/cookie_page.html")
         ref_b = open_page(f"{server_url}/basic.html")
         handle_a = page_handle(ref_a)
-        assert "webops_test_cookie" in handle_a._page.evaluate("() => document.cookie")
+        assert "autobranch_test_cookie" in handle_a._page.evaluate("() => document.cookie")
         # 同 context 共享 cookie 空间：B 页也能读到 A 页写入的 cookie
         handle_b = page_handle(ref_b)
         cookie_b = handle_b._page.evaluate("() => document.cookie")
-        assert "webops_test_cookie" in cookie_b
+        assert "autobranch_test_cookie" in cookie_b

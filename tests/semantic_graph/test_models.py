@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
-from webops.browser.models import Bounds
-from webops.semantic_graph import (
+from autobranch.browser.models import Bounds
+
+from autobranch.semantic_graph import (
     Change,
     Edge,
     Element,

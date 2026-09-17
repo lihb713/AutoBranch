@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 全程中文（对话与文档），但代码标识符/DSL token 用英文。
-- conda 环境 `webops`（`conda run -n webops --no-capture-output python -m pytest ...`）。
+- conda 环境 `autobranch`（`conda run -n autobranch --no-capture-output python -m pytest ...`）。
 - 每任务 TDD：先写失败测试→运行确认失败→实现→运行确认通过。
 - 类型 token 唯一来源 `TYPE_REGISTRY` 的键：`str` / `int` / `float` / `bool` / `page_ref`。
 - 不得保留对中文类型名（`文本`/`整数`/`金额`/`订单号`/`URL`/`日期`/`布尔`/`数字`/`页面引用`）的引用，除了**历史 spec/设计文档**（那些是文档，不改）。
@@ -25,11 +25,11 @@
 ### Task 1: 重构 schema/types.py 为 TypeSpec 注册表
 
 **Files:**
-- Modify: `webops/schema/types.py`（全文重写）
+- Modify: `autobranch/schema/types.py`（全文重写）
 - Test: `tests/test_schema_types.py`（新建/覆盖）— 注意此文件名已存在且是旧中文类型测试，需重写
 
 **Interfaces:**
-- Consumes: `webops/schema/models.py` 的 `PageRef`, `Value`
+- Consumes: `autobranch/schema/models.py` 的 `PageRef`, `Value`
 - Produces:
   - `TypeSpec` dataclass: `token: str`, `py_type: type`, `cast: Callable | None`
   - `TYPE_REGISTRY: dict[str, TypeSpec]`（键 = `str/int/float/bool/page_ref`）
@@ -46,9 +46,9 @@
 """类型系统收敛测试：TypeSpec 注册表 + isinstance 校验 + coerce。"""
 import pytest
 
-from webops.schema.errors import SchemaTypeError
-from webops.schema.models import PageRef
-from webops.schema.types import (
+from autobranch.schema.errors import SchemaTypeError
+from autobranch.schema.models import PageRef
+from autobranch.schema.types import (
     TYPE_REGISTRY,
     check_type,
     coerce,
@@ -129,10 +129,10 @@ def test_infer_type_english():
 
 - [ ] **Step 2: 运行确认失败**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_schema_types.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_schema_types.py -q`
 Expected: FAIL（`SUPPORTED_TYPES` 不存在、import 错误等）
 
-- [ ] **Step 3: 重写 `webops/schema/types.py`**
+- [ ] **Step 3: 重写 `autobranch/schema/types.py`**
 
 ```python
 """M3 schema 命名空间：类型契约（契约 §5.3.5，收敛版）。
@@ -151,8 +151,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from webops.schema.errors import SchemaTypeError
-from webops.schema.models import PageRef, Value
+from autobranch.schema.errors import SchemaTypeError
+from autobranch.schema.models import PageRef, Value
 
 
 @dataclass(frozen=True)
@@ -262,14 +262,14 @@ def infer_type(value: Value) -> str:
 
 - [ ] **Step 4: 运行确认通过**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_schema_types.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_schema_types.py -q`
 Expected: PASS（全绿）
 
 - [ ] **Step 5: 更新 schema/__init__.py 导出**
 
-`webops/schema/__init__.py` 目前导出 `SUPPORTED_TYPES`。改为导出新符号（供各模块 import）。先确认当前导出清单再改：
+`autobranch/schema/__init__.py` 目前导出 `SUPPORTED_TYPES`。改为导出新符号（供各模块 import）。先确认当前导出清单再改：
 
-Run: `conda run -n webops --no-capture-output python -c "import webops.schema as s; print(s.__all__)"`
+Run: `conda run -n autobranch --no-capture-output python -c "import autobranch.schema as s; print(s.__all__)"`
 Expected: 输出包含 `SUPPORTED_TYPES` 等
 
 把 `SUPPORTED_TYPES` 从导出替换为 `TYPE_REGISTRY`（保留 `check_type/infer_type/validate_type_name` 导出）。若 `SUPPORTED_TYPES` 仍被别处 import，见 Task 2/3 一并清理。
@@ -277,7 +277,7 @@ Expected: 输出包含 `SUPPORTED_TYPES` 等
 - [ ] **Step 6: Commit**
 
 ```bash
-git add webops/schema/types.py webops/schema/__init__.py tests/test_schema_types.py
+git add autobranch/schema/types.py autobranch/schema/__init__.py tests/test_schema_types.py
 git commit -m "refactor(schema): type registry with isinstance+coerce, english tokens"
 ```
 
@@ -287,7 +287,7 @@ git commit -m "refactor(schema): type registry with isinstance+coerce, english t
 
 **Files:**
 - Modify: `tests/test_schema_models.py`、`tests/test_schema_blackboard.py`、`tests/test_schema_integration.py`、`tests/test_schema_config.py`、`tests/test_schema_scope.py`、`tests/test_schema_page.py`（及运行发现的其余 `tests/test_schema*.py`）
-- Test: `tests/test_schema*.py`（tests-only；`webops/` 源码不改——space.py 仅透传 token 无需迁移，engine/parser/prompts 消费点归 Task 3）
+- Test: `tests/test_schema*.py`（tests-only；`autobranch/` 源码不改——space.py 仅透传 token 无需迁移，engine/parser/prompts 消费点归 Task 3）
 
 **Interfaces:**
 - Consumes: `SchemaSpace.write/read/set_config`（不变，类型名实参改英文）、`PageRef`
@@ -310,7 +310,7 @@ Expected: 列出所有出现行（这些都要改成对应英文 token：文本�
 
 - [ ] **Step 3: 运行 schema 测试确认**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_schema_types.py tests/test_schema_models.py tests/test_schema_blackboard.py tests/test_schema_integration.py -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_schema_types.py tests/test_schema_models.py tests/test_schema_blackboard.py tests/test_schema_integration.py -q`
 Expected: PASS
 
 - [ ] **Step 4: Commit**
@@ -325,11 +325,11 @@ git commit -m "test(schema): migrate type names to english tokens"
 ### Task 3: 迁移 M5 引擎写库类型 + M6 提示到英文 token
 
 **Files:**
-- Modify: `webops/engine/engine.py:178,238,402`（`"页面引用"`→`"page_ref"`、`"文本"`→`"str"`）
-- Modify: `webops/engine/tools.py:34,36,61`（工具描述里 `{{set:page:xxx}}`/`{{set:string:xxx}}` 文案 → `page_ref`/`str`）
-- Modify: `webops/leaf_agent/executor.py`（若 set_decls 类型被比较则同步，见 grep）
-- Modify: `webops/leaf_agent/prompts.py:98-103`（`"page"`→`"page_ref"`、`"string"`→`"str"`）
-- Modify: `webops/parser/expand.py:42-44`（`_SET_TMPL` 正则 `page|string` → 接受通用 token）+ `webops/parser/models.py:85-87`（set_decls 注释）
+- Modify: `autobranch/engine/engine.py:178,238,402`（`"页面引用"`→`"page_ref"`、`"文本"`→`"str"`）
+- Modify: `autobranch/engine/tools.py:34,36,61`（工具描述里 `{{set:page:xxx}}`/`{{set:string:xxx}}` 文案 → `page_ref`/`str`）
+- Modify: `autobranch/leaf_agent/executor.py`（若 set_decls 类型被比较则同步，见 grep）
+- Modify: `autobranch/leaf_agent/prompts.py:98-103`（`"page"`→`"page_ref"`、`"string"`→`"str"`）
+- Modify: `autobranch/parser/expand.py:42-44`（`_SET_TMPL` 正则 `page|string` → 接受通用 token）+ `autobranch/parser/models.py:85-87`（set_decls 注释）
 - Test: `tests/test_parser_vars.py`、`tests/engine/test_engine.py`、`tests/leaf_agent/test_get_replace.py`、`tests/orchestrator/*`
 
 **Interfaces:**
@@ -343,7 +343,7 @@ git commit -m "test(schema): migrate type names to english tokens"
 
 - [ ] **Step 1: 改 parser 正则与注释**
 
-`webops/parser/expand.py:42-45`：
+`autobranch/parser/expand.py:42-45`：
 ```python
 #: ``{{set[:type]:path}}`` 写入声明；type ∈ TYPE_REGISTRY token（可省略）
 #: path 可带 this/ 或不带
@@ -352,13 +352,13 @@ _SET_TMPL = re.compile(
 )
 ```
 
-`webops/parser/models.py:84-87` 注释同步（`page_ref` 存页签引用、`str` 存文本）。
+`autobranch/parser/models.py:84-87` 注释同步（`page_ref` 存页签引用、`str` 存文本）。
 
 - [ ] **Step 2: 改 M5 引擎硬编码类型 + extract 写库 coerce**
 
-- `webops/engine/engine.py:178`: `"页面引用"` → `"page_ref"`
-- `webops/engine/engine.py:238`: `"文本"` → `"str"`
-- `webops/engine/engine.py` `extract`（389-417）：改 `type_name = self._declared_type(frame, target) or infer_type(value)` 处，使**声明了类型就 coerce**：
+- `autobranch/engine/engine.py:178`: `"页面引用"` → `"page_ref"`
+- `autobranch/engine/engine.py:238`: `"文本"` → `"str"`
+- `autobranch/engine/engine.py` `extract`（389-417）：改 `type_name = self._declared_type(frame, target) or infer_type(value)` 处，使**声明了类型就 coerce**：
 
 ```python
 type_name = self._declared_type(frame, target)
@@ -375,15 +375,15 @@ else:
         )
 ```
 
-并在 import 行加 `coerce`：`from webops.schema.types import coerce, infer_type`。
+并在 import 行加 `coerce`：`from autobranch.schema.types import coerce, infer_type`。
 
 确认无其他中文类型名字符串：
-Run: `rg -n '"页面引用"|"文本"|"整数"|"布尔"' webops/engine webops/leaf_agent`
+Run: `rg -n '"页面引用"|"文本"|"整数"|"布尔"' autobranch/engine autobranch/leaf_agent`
 Expected: 无输出（全清）
 
 - [ ] **Step 3: 改 M6 prompts 与工具描述**
 
-`webops/leaf_agent/prompts.py:98-103`：
+`autobranch/leaf_agent/prompts.py:98-103`：
 ```python
 if type_name == "page_ref":
     hints.append(f"{target}（页签：打开页面后调 open 的 save_to 存入）")
@@ -393,7 +393,7 @@ else:
     hints.append(f"{target}（{type_name}：提取并转换后存入）")
 ```
 
-`webops/engine/tools.py:34,36,61`：`{{set:page:xxx}}`→`{{set:page_ref:xxx}}`、`{{set:string:xxx}}`→`{{set:str:xxx}}`。
+`autobranch/engine/tools.py:34,36,61`：`{{set:page:xxx}}`→`{{set:page_ref:xxx}}`、`{{set:string:xxx}}`→`{{set:str:xxx}}`。
 
 - [ ] **Step 4: 迁移受影响测试的类型 token**
 
@@ -406,13 +406,13 @@ else:
 
 - [ ] **Step 5: 运行受影响测试**
 
-Run: `conda run -n webops --no-capture-output python -m pytest tests/test_parser_vars.py tests/engine/test_engine.py tests/leaf_agent/test_get_replace.py tests/orchestrator -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest tests/test_parser_vars.py tests/engine/test_engine.py tests/leaf_agent/test_get_replace.py tests/orchestrator -q`
 Expected: PASS。若失败是因 extract 类型校验语义（订单号校验谓词曾拒绝含空格；现在纯 str 校验更宽松），按新语义调整测试值。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add webops/parser/expand.py webops/parser/models.py webops/engine/engine.py webops/engine/tools.py webops/leaf_agent/prompts.py tests/
+git add autobranch/parser/expand.py autobranch/parser/models.py autobranch/engine/engine.py autobranch/engine/tools.py autobranch/leaf_agent/prompts.py tests/
 git commit -m "refactor(types): unify set-annotation and engine-stored tokens to registry tokens"
 ```
 
@@ -421,8 +421,8 @@ git commit -m "refactor(types): unify set-annotation and engine-stored tokens to
 ### Task 4: 迁移前端黑板断言 + 全量回归
 
 **Files:**
-- Modify: `webops/frontend/src/features/reports/BlackboardPanel.test.tsx`（12-34 行 type 断言：`"文本"`→`"str"`、`"金额"`→`"float"`、`"页面引用"`→`"page_ref"`）
-- Modify（如存在）: `webops/frontend/src/features/reports/BlackboardPanel.tsx` 无改动（type 纯透传）
+- Modify: `autobranch/frontend/src/features/reports/BlackboardPanel.test.tsx`（12-34 行 type 断言：`"文本"`→`"str"`、`"金额"`→`"float"`、`"页面引用"`→`"page_ref"`）
+- Modify（如存在）: `autobranch/frontend/src/features/reports/BlackboardPanel.tsx` 无改动（type 纯透传）
 - Test: 全量
 
 **Interfaces:**
@@ -431,41 +431,41 @@ git commit -m "refactor(types): unify set-annotation and engine-stored tokens to
 
 - [ ] **Step 1: 迁移前端测试断言**
 
-Run: `rg -n '"文本"|"金额"|"页面引用"|"整数"' webops/frontend/src --glob '*.ts*'`
+Run: `rg -n '"文本"|"金额"|"页面引用"|"整数"' autobranch/frontend/src --glob '*.ts*'`
 Expected: 列出 BlackboardPanel.test.tsx 等。将中文类型断言改英文 token。
 
 - [ ] **Step 2: 运行前端测试**
 
-Run: `npm.cmd test -- --run` （在 `webops/frontend`）
+Run: `npm.cmd test -- --run` （在 `autobranch/frontend`）
 Expected: PASS（71 附近）
 
 - [ ] **Step 3: 全量后端回归**
 
-Run: `conda run -n webops --no-capture-output python -m pytest -q`
+Run: `conda run -n autobranch --no-capture-output python -m pytest -q`
 Expected: PASS（原 769+，仅语义类型相关用例按新映射调整）
 
 - [ ] **Step 4: 清理残留中文 token 引用（生产代码）**
 
-Run: `rg -n '"文本"|"整数"|"金额"|"订单号"|"URL"|"日期"|"布尔"|"数字"|"页面引用"' webops/`
+Run: `rg -n '"文本"|"整数"|"金额"|"订单号"|"URL"|"日期"|"布尔"|"数字"|"页面引用"' autobranch/`
 Expected: 无输出（排除 docstring 中说明历史/文档引用可保留，但要确认无代码逻辑引用）
 
 - [ ] **Step 5: lint + typecheck**
 
-Run（backend）: `conda run -n webops --no-capture-output python -m ruff check webops tests`
-Run（frontend, `webops/frontend`）: `npm.cmd run lint; npm.cmd run typecheck`
+Run（backend）: `conda run -n autobranch --no-capture-output python -m ruff check autobranch tests`
+Run（frontend, `autobranch/frontend`）: `npm.cmd run lint; npm.cmd run typecheck`
 Expected: 全绿
 
 - [ ] **Step 6: 文档同步（代码相关部分）**
 
-- 更新 `webops/schema/types.py` 模块 docstring 已含（Task 1）。
-- `webops/leaf_agent/prompts.py` PROMPT_VERSION 提到新提示则 bump 到 `1.4`。
+- 更新 `autobranch/schema/types.py` 模块 docstring 已含（Task 1）。
+- `autobranch/leaf_agent/prompts.py` PROMPT_VERSION 提到新提示则 bump 到 `1.4`。
 - spec 文档 `docs/superpowers/specs/2026-09-08-*.md` 无需改（已是目标态）。
 - 若契约 `docs/contract.md` §5.3.5 类型表描述旧中文类型，记录到"待 Plan ②/③ 后统一文档同步"清单（本 plan 不展开契约大改）。
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add webops/frontend/src webops/leaf_agent/prompts.py
+git add autobranch/frontend/src autobranch/leaf_agent/prompts.py
 git commit -m "test+docs: english type tokens end to end"
 ```
 

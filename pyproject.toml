@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "webops"
+name = "autobranch"
 version = "0.1.0"
-description = "WebOps - 自然语言驱动的 Web 自动化工具"
+description = "AutoBranch - 自然语言驱动的 Web 自动化工具"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110",
@@ -22,7 +22,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["webops*"]
+include = ["autobranch*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

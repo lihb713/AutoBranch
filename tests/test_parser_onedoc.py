@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from webops.parser.models import DocumentSource
-from webops.parser.onedoc import parse_document
-from webops.parser.refs import MappingResolver
+from autobranch.parser.models import DocumentSource
+from autobranch.parser.onedoc import parse_document
+from autobranch.parser.refs import MappingResolver
 
 
 def _doc(raw: str | dict) -> DocumentSource:

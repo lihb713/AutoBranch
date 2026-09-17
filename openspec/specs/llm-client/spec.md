@@ -2,7 +2,7 @@
 
 ## Purpose
 
-为 WebOps 提供统一的 OpenAI 兼容 LLM 调用入口，覆盖 LLM 配置管理、多轮工具调用会话、上下文与 token 预算管理以及可分类的错误语义，供叶子 agent 执行（M6）与语义图生成（M4）复用，无依赖、可独立测试。
+为 AutoBranch 提供统一的 OpenAI 兼容 LLM 调用入口，覆盖 LLM 配置管理、多轮工具调用会话、上下文与 token 预算管理以及可分类的错误语义，供叶子 agent 执行（M6）与语义图生成（M4）复用，无依赖、可独立测试。
 
 ## Requirements
 

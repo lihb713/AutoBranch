@@ -10,8 +10,8 @@ from orchestrator_helpers import (
     make_run_context,
 )
 
-from webops.orchestrator import FAILURE, SUCCESS
-from webops.orchestrator.traverser import Traverser
+from autobranch.orchestrator import FAILURE, SUCCESS
+from autobranch.orchestrator.traverser import Traverser
 
 
 class TestActionTick:

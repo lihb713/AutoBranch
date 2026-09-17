@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from webops.browser import ElementRef, ErrorCode, http_request
+from autobranch.browser import ElementRef, ErrorCode, http_request
 
 pytestmark = pytest.mark.integration
 

@@ -5,10 +5,10 @@ fixture 断言候选集正确（§8.7 候选输入、D3 程序化给候选、LLM
 
 from __future__ import annotations
 
+from autobranch.semantic_graph.candidates import geometric_candidates
 from snapshot_factory import login_snapshot
 
-from webops.semantic_graph import run_programmatic
-from webops.semantic_graph.candidates import geometric_candidates
+from autobranch.semantic_graph import run_programmatic
 
 
 class TestGeometricCandidates:
@@ -85,7 +85,7 @@ class TestBareFunction:
     """geometric_candidates 单测（§8.7 预筛输入）。"""
 
     def test_elements_without_bounds_excluded(self):
-        from webops.semantic_graph import Element, ElementState
+        from autobranch.semantic_graph import Element, ElementState
 
         a = Element(id="E1", ref="[1]", role="span", state=ElementState(text="a"), bounds=None)
         b = Element(id="E2", ref="[2]", role="textbox", bounds=None)

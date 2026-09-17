@@ -8,11 +8,11 @@ from __future__ import annotations
 import os
 
 import pytest
+from autobranch.browser.models import PageRef
 from reporting.factories import make_action_report
 
-from webops.browser import BrowserConfig, BrowserDriver
-from webops.browser.models import PageRef
-from webops.reporting import Reporter
+from autobranch.browser import BrowserConfig, BrowserDriver
+from autobranch.reporting import Reporter
 
 pytestmark = pytest.mark.integration
 
@@ -23,7 +23,7 @@ def test_reporter_captures_real_browser_screenshot(tmp_path):
     driver = BrowserDriver()
     driver.start(BrowserConfig(timeout_ms=5000))
     try:
-        result = driver.open("data:text/html,<html><body><h1>WebOps</h1></body></html>")
+        result = driver.open("data:text/html,<html><body><h1>AutoBranch</h1></body></html>")
         assert result.ok, result.error
         page_ref = result.detail["page_ref"]
 

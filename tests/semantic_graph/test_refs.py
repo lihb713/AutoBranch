@@ -5,10 +5,10 @@ ref 解析归引擎、不依赖 LLM 猜测（§7.8 策略 B）。
 
 from __future__ import annotations
 
+from autobranch.semantic_graph.refs import build_ref_map
 from snapshot_factory import login_snapshot
 
-from webops.semantic_graph import run_programmatic
-from webops.semantic_graph.refs import build_ref_map
+from autobranch.semantic_graph import run_programmatic
 
 
 class TestRefAssignment:

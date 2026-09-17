@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from webops.parser.models import ActionNode, DocumentSource
-from webops.parser.parser import BehaviorTreeParser
-from webops.parser.refs import MappingResolver
+from autobranch.parser.models import ActionNode, DocumentSource
+from autobranch.parser.parser import BehaviorTreeParser
+from autobranch.parser.refs import MappingResolver
 
 
 def _parse(raw: dict, doc_id: str = "主流程", resolver=None):

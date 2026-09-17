@@ -18,7 +18,7 @@
 ### 2.1 目录与命名
 
 ```
-webops/
+autobranch/
 ├── m4_semantic_graph/
 │   ├── __init__.py
 │   └── ...
@@ -37,7 +37,7 @@ tests/
 # tests/test_m2_parser.py
 import pytest
 
-from webops.m2_parser import BehaviorTreeParser, ParseResult
+from autobranch.m2_parser import BehaviorTreeParser, ParseResult
 
 EXPAND_CASES = [
     # (复合节点文档, 期望展开的基础节点结构)

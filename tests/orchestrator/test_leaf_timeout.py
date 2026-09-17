@@ -13,9 +13,9 @@ from orchestrator_helpers import (
     seq,
 )
 
-from webops.orchestrator import FAILURE, SUCCESS
-from webops.orchestrator.traverser import Traverser
-from webops.reporting.models import LeafTrace
+from autobranch.orchestrator import FAILURE, SUCCESS
+from autobranch.orchestrator.traverser import Traverser
+from autobranch.reporting.models import LeafTrace
 
 
 class TestLeafTrigger:
@@ -72,7 +72,7 @@ class TestLeafTraceReport:
         assert report.llm_trace.llm_reasoning == ["推理步骤"]
 
     def test_condition_trace_in_report(self, config) -> None:
-        from webops.leaf_agent.models import LeafResult
+        from autobranch.leaf_agent.models import LeafResult
 
         ctx = make_run_context(config)
         trace = LeafTrace(llm_input={"desc": "条件"}, decision="结果: 真")
@@ -124,7 +124,7 @@ class TestGlobalTimeout:
     """任务 3.4：全局 timeout 在叶子层面生效，超时置 FAILURE 并沿树传播。"""
 
     def _cfg(self, config, timeout):
-        from webops.orchestrator import RunConfig
+        from autobranch.orchestrator import RunConfig
 
         return RunConfig(report_dir=config.report_dir, timeout=timeout)
 
@@ -156,7 +156,7 @@ class TestTimeoutInheritance:
     def test_block_override_and_inheritance(self, config) -> None:
         from orchestrator_helpers import make_doc_resolver
 
-        from webops.parser.models import RefNode
+        from autobranch.parser.models import RefNode
 
         login_doc = {
             "tree": "登录",
@@ -195,8 +195,8 @@ class TestTimeoutInheritance:
     def test_block_override_used_by_blocking_leaf(self, config) -> None:
         from orchestrator_helpers import make_doc_resolver
 
-        from webops.orchestrator import RunConfig
-        from webops.parser.models import RefNode
+        from autobranch.orchestrator import RunConfig
+        from autobranch.parser.models import RefNode
 
         login_doc = {
             "tree": "登录",

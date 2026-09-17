@@ -1,19 +1,19 @@
-"""WebOps 端到端真实验证（一次性验证工具，不纳入常规 pytest）。
+"""AutoBranch 端到端真实验证（一次性验证工具，不纳入常规 pytest）。
 
 真实接线 M0~M8 跑通完整链路：
   M2 解析行为树 → M7 Engine.run → 冷启动 M1 浏览器 → 遍历 →
   M6 叶子 agent（M0 LLM 会话 + M5 引擎函数）→ M4 语义图 → M8 报告。
 
-配置来源（webops/config.py 统一加载）：
-  - 项目根 ``webops.config.json``（或 ``--config <path>`` / ``WEB_OPS_CONFIG``）
-  - api_key 可留空，由环境变量 ``WEB_OPS_LLM_API_KEY`` 注入（安全）
+配置来源（autobranch/config.py 统一加载）：
+  - 项目根 ``autobranch.config.json``（或 ``--config <path>`` / ``AUTOBRANCH_CONFIG``）
+  - api_key 可留空，由环境变量 ``AUTOBRANCH_LLM_API_KEY`` 注入（安全）
 
 报告输出：固定写入项目 ``reports/`` 目录（``run.report_dir`` 配置项，
 默认 ``reports``），每个 run 一个子目录 ``reports/<run_id>/``。
 
 用法：
-  $env:WEB_OPS_LLM_API_KEY="sk-..."          # 密钥注入（必填）
-  conda run -n webops python tests/e2e/run_e2e.py [--config webops.config.json]
+  $env:AUTOBRANCH_LLM_API_KEY="sk-..."          # 密钥注入（必填）
+  conda run -n autobranch python tests/e2e/run_e2e.py [--config autobranch.config.json]
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ ROOT = HERE.parents[1]
 
 sys.path.insert(0, str(ROOT))
 
-from webops.config import WebOpsConfig  # noqa: E402
+from autobranch.config import AutoBranchConfig  # noqa: E402
 
 
 def _start_server() -> tuple[ThreadingHTTPServer, threading.Thread]:
@@ -46,26 +46,27 @@ def _start_server() -> tuple[ThreadingHTTPServer, threading.Thread]:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="WebOps 端到端真实验证")
-    parser.add_argument("--config", default=None, help="配置文件路径（默认 webops.config.json）")
+    parser = argparse.ArgumentParser(description="AutoBranch 端到端真实验证")
+    parser.add_argument(
+        "--config", default=None, help="配置文件路径（默认 autobranch.config.json）"
+    )
     return parser.parse_args()
 
 
 def main() -> int:
-    from webops.browser import BrowserDriver
-    from webops.engine import EngineFunctions
-    from webops.orchestrator import Engine
-    from webops.parser.models import DocumentSource
-    from webops.parser.parser import BehaviorTreeParser
-    from webops.parser.refs import MappingResolver
-    from webops.schema import SchemaSpace
+    from autobranch.browser import BrowserDriver
+    from autobranch.orchestrator import Engine
+    from autobranch.parser.models import DocumentSource
+    from autobranch.parser.parser import BehaviorTreeParser
+    from autobranch.parser.refs import MappingResolver
+    from autobranch.schema import SchemaSpace
 
     args = _parse_args()
-    cfg = WebOpsConfig.load(args.config)
+    cfg = AutoBranchConfig.load(args.config)
 
     if not cfg.llm.api_key:
-        print("[错误] 未配置 api_key：请在 webops.config.json 填入，或设置环境变量"
-              " WEB_OPS_LLM_API_KEY")
+        print("[错误] 未配置 api_key：请在 autobranch.config.json 填入，或设置环境变量"
+              " AUTOBRANCH_LLM_API_KEY")
         return 2
     llm_config = cfg.to_llm_config()
 
@@ -89,51 +90,33 @@ def main() -> int:
             return 3
         print(f"[2/6] 行为树解析通过，节点树: {result.tree.name}")
 
-        # ---- 装配（M1/M3/M4/M5）----
+        # ---- 装配（插件模式：浏览器/计算等预置插件）----
+        from autobranch.semantic_graph.llm_fill import MockFiller
+
+        from autobranch.plugin_system import PluginRegistry, load_builtin_plugins
+
         browser = BrowserDriver()
         schema_space = SchemaSpace()
 
-        def current_frame():
-            return schema_space._current
-
-        def graph_generator(
-            page_ref, scope="full", lod=2, probe=None, filler=None, budget_limit=None
-        ):
-            # 语义图生成：用 MockFiller 提供确定性语义（秒级），agent 决策用真实 LLM。
-            # 真实 LLM 语义图填充质量已单独验证（见 tests/e2e/README）。
-            from webops.browser.models import LODSpec
-            from webops.semantic_graph.llm_fill import MockFiller
-            from webops.semantic_graph.pipeline import generate_semantic_graph
-
-            snapshot = probe.crawl(page_ref, LODSpec.from_level(3))
-            mock = MockFiller(
-                purposes={
-                    "username": "用户名输入框",
-                    "password": "密码输入框",
-                    "login-btn": "登录按钮",
-                    "order-id-1": "订单号",
-                    "customer-1": "客户名",
-                    "amount-1": "金额",
-                    "status-1": "状态",
-                    "approve-btn-1": "批准按钮",
-                    "order-id-2": "订单号",
-                    "customer-2": "客户名",
-                    "amount-2": "金额",
-                    "status-2": "状态",
-                    "approve-btn-2": "批准按钮",
-                }
-            )
-            return generate_semantic_graph(
-                snapshot, scope=scope, lod=lod, filler=mock, budget_limit=budget_limit
-            )
-
-        engine_functions = EngineFunctions(
-            browser=browser,
-            filler=None,  # 被自定义 graph_generator 覆盖
-            schema_space=schema_space,
-            current_frame=current_frame,
-            graph_generator=graph_generator,
+        mock_filler = MockFiller(
+            purposes={
+                "username": "用户名输入框",
+                "password": "密码输入框",
+                "login-btn": "登录按钮",
+                "order-id-1": "订单号",
+                "customer-1": "客户名",
+                "amount-1": "金额",
+                "status-1": "状态",
+                "approve-btn-1": "批准按钮",
+                "order-id-2": "订单号",
+                "customer-2": "客户名",
+                "amount-2": "金额",
+                "status-2": "状态",
+                "approve-btn-2": "批准按钮",
+            }
         )
+        registry = PluginRegistry()
+        load_builtin_plugins(registry, "autobranch/plugins")
 
         # ---- 执行（M7 + M6 + M0）----
         # 报告固定写入项目根 reports/（配置项 run.report_dir，相对路径按项目根解析）
@@ -143,9 +126,14 @@ def main() -> int:
             timeout=600.0,
             report_dir=report_dir,  # 绝对路径，避免受工作目录影响
             llm_config=llm_config,
-            engine=engine_functions,
         )
-        engine = Engine(browser=browser, space_factory=lambda: schema_space)
+        engine = Engine(
+            browser=browser,
+            registry=registry,
+            plugins_dir="autobranch/plugins",
+            space_factory=lambda: schema_space,
+            llm_filler=mock_filler,
+        )
         print(f"[3/6] 开始执行行为树（真实浏览器 + 真实 LLM: {cfg.llm.model}）...")
         started = time.time()
         run_result = engine.run(

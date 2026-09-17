@@ -20,8 +20,8 @@ from orchestrator_helpers import (
     seq,
 )
 
-from webops.orchestrator import FAILURE, SUCCESS
-from webops.orchestrator.traverser import Traverser
+from autobranch.orchestrator import FAILURE, SUCCESS
+from autobranch.orchestrator.traverser import Traverser
 
 
 class TestSequence:

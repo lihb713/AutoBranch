@@ -8,10 +8,10 @@ from __future__ import annotations
 import pytest
 from fake_transport import chat_response
 
-from webops.llm.config import LLMConfig
-from webops.llm.errors import LLMAuthError, LLMBudgetExceeded
-from webops.llm.models import ToolResult, ToolSpec
-from webops.llm.session import LLMSession
+from autobranch.llm.config import LLMConfig
+from autobranch.llm.errors import LLMAuthError, LLMBudgetExceeded
+from autobranch.llm.models import ToolResult, ToolSpec
+from autobranch.llm.session import LLMSession
 
 
 @pytest.mark.integration

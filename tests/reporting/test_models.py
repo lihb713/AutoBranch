@@ -14,7 +14,7 @@ from reporting.factories import (
     make_trace,
 )
 
-from webops.reporting.models import ActionCall, ExecState, NodeInfo
+from autobranch.reporting.models import ActionCall, ExecState, NodeInfo
 
 
 class TestNodeReport:

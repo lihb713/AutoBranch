@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from webops.schema import PageRef, SchemaSpace
-from webops.schema.errors import SchemaScopeError
+from autobranch.schema import PageRef, SchemaSpace
+from autobranch.schema.errors import SchemaScopeError
 
 
 def _space() -> SchemaSpace:

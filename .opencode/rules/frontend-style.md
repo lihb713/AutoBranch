@@ -5,7 +5,7 @@
 ## 1. 技术栈与目录约定
 
 ```
-webops/frontend/
+autobranch/frontend/
 ├── src/
 │   ├── api/                  # 后端 API 客户端（fetch 封装 + 类型）
 │   ├── components/           # 通用 UI 组件（无业务状态）

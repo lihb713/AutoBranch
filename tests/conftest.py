@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from fake_transport import FakeTransport
 
-from webops.llm.config import LLMConfig
+from autobranch.llm.config import LLMConfig
 
 
 @pytest.fixture

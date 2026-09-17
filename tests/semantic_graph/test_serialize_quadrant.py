@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from snapshot_factory import build
 
-from webops.semantic_graph import MockFiller, generate_semantic_graph, serialize
+from autobranch.semantic_graph import MockFiller, generate_semantic_graph, serialize
 
 VIEWPORT = {"width": 900, "height": 600}
 

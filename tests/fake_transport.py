@@ -1,6 +1,6 @@
 """测试用 FakeTransport：拦截请求、返回预设响应序列（任务 1.4）。
 
-实现 ``webops.llm.transport.Transport`` 接口，可被协议/会话/预算逻辑
+实现 ``autobranch.llm.transport.Transport`` 接口，可被协议/会话/预算逻辑
 离线测试共用。记录所有发出的请求，供断言请求体格式。
 """
 
@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from webops.llm.errors import LLMConnectionError
-from webops.llm.transport import Transport, TransportResponse
+from autobranch.llm.errors import LLMConnectionError
+from autobranch.llm.transport import Transport, TransportResponse
 
 
 @dataclass

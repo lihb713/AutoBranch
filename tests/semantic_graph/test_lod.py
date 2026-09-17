@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from snapshot_factory import SnapshotBuilder
 
-from webops.semantic_graph import MockFiller, generate_semantic_graph
+from autobranch.semantic_graph import MockFiller, generate_semantic_graph
 
 
 def _nested_snapshot():
@@ -127,7 +127,7 @@ class TestLodDimensions:
             assert part_of  # 结构边始终保留（§9.5 ④ 只裁剪 related-to）
 
     def test_lod_spec_accepted(self):
-        from webops.browser.models import LODSpec
+        from autobranch.browser.models import LODSpec
 
         graph = generate_semantic_graph(
             _nested_snapshot(), lod=LODSpec.from_level(0), filler=_filler()
@@ -190,7 +190,7 @@ class TestDeepInteractiveKept:
                 assert {r.id for r in graph.regions} <= {"F1", "GS1"}
 
     def test_deep_text_in_serialized_graph(self):
-        from webops.semantic_graph import serialize
+        from autobranch.semantic_graph import serialize
 
         graph = self._graph(2)
         assert "Enterprise" in serialize(graph)

@@ -6,17 +6,17 @@
 
 - **SQLite**（开发期单文件库），通过 **SQLAlchemy 2.0 ORM** 访问（配合 FastAPI 的依赖注入）。
 - 不手写裸 SQL 拼字符串；复杂查询用 SQLAlchemy 表达式或参数化语句。
-- 数据库连接统一在 `webops/server/db.py` 管理（engine + session 依赖）。
+- 数据库连接统一在 `autobranch/server/db.py` 管理（engine + session 依赖）。
 
 ```python
-# webops/server/db.py
+# autobranch/server/db.py
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 engine = create_engine(
-    "sqlite:///./webops.db",
+    "sqlite:///./autobranch.db",
     connect_args={"check_same_thread": False},  # FastAPI 多线程共享
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -62,12 +62,12 @@ class TimestampMixin:
 ### 2.3 核心表（M9b）
 
 ```python
-# webops/server/models/tree.py
+# autobranch/server/models/tree.py
 from sqlalchemy import Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from webops.server.db import Base
-from webops.server.models.mixins import TimestampMixin
+from autobranch.server.db import Base
+from autobranch.server.models.mixins import TimestampMixin
 
 
 class Tree(Base, TimestampMixin):
@@ -81,7 +81,7 @@ class Tree(Base, TimestampMixin):
 ```
 
 ```python
-# webops/server/models/run.py
+# autobranch/server/models/run.py
 class Run(Base, TimestampMixin):
     """一次执行记录。"""
 

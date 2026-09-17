@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from webops.parser.models import DocumentSource
-from webops.parser.refs import RefNotFoundError
-from webops.server.models.tree import Tree
-from webops.server.services.doclib import DbResolver
+from autobranch.parser.models import DocumentSource
+from autobranch.parser.refs import RefNotFoundError
+from autobranch.server.models.tree import Tree
+from autobranch.server.services.doclib import DbResolver
 
 
 def test_resolve_by_name_found(session):

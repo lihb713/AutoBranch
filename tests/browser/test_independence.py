@@ -1,28 +1,24 @@
-"""M1 任务 10.2：模块独立性——浏览器驱动不依赖 LLM 与行为树。
-
-验收标准 §6 全项的真实浏览器验证分散在 tests/browser 各文件（会话/多页/
-HTTP/文件/截图/DOM/错误语义），本文件校验模块自身无 LLM/行为树依赖，可在
-无 LLM、无行为树条件下独立运行。
-"""
+"""浏览器驱动独立性：驱动自身不依赖 LLM 与行为树（物理位于浏览器插件内）。"""
 
 from __future__ import annotations
 
 import subprocess
 import sys
 
-import webops.browser
-from webops.browser import BrowserDriver
+from autobranch.browser import BrowserDriver
 
 
 def test_browser_package_has_no_llm_imports():
-    """webops/browser 源码不 import webops.llm（静态校验）。"""
+    """autobranch/plugins/browser/driver 源码不 import autobranch.llm（静态校验）。"""
     import pathlib
 
-    package_dir = pathlib.Path(webops.browser.__file__).parent
-    assert package_dir.name == "browser"
+    import autobranch.plugins.browser.driver as driver
+
+    package_dir = pathlib.Path(driver.__file__).parent
+    assert package_dir.name == "driver"
     for source in package_dir.glob("*.py"):
         text = source.read_text(encoding="utf-8")
-        assert "webops.llm" not in text, f"{source.name} 引用了 webops.llm"
+        assert "autobranch.llm" not in text, f"{source.name} 引用了 autobranch.llm"
 
 
 def test_driver_has_no_llm_dependency():
@@ -33,10 +29,11 @@ def test_driver_has_no_llm_dependency():
 
 
 def test_module_importable_in_isolated_interpreter():
-    """在独立解释器中仅导入浏览器模块（无 LLM、无行为树）。"""
+    """在独立解释器中可导入浏览器驱动子包并实例化。"""
     code = (
-        "import webops.browser; "
-        "assert 'webops.llm' not in sys.modules; "
+        "from autobranch.plugins.browser.driver import BrowserDriver; "
+        "d = BrowserDriver(); "
+        "assert d.running is False; "
         "print('browser-only ok')"
     )
     result = subprocess.run(

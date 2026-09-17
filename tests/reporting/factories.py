@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from webops.reporting.models import (
+from autobranch.reporting.models import (
     ActionCall,
     LeafTrace,
     NodeReport,

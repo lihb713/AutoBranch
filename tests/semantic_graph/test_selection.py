@@ -7,10 +7,10 @@
 
 from __future__ import annotations
 
+from autobranch.semantic_graph.selection import build_semantic_tree, classify
 from snapshot_factory import SnapshotBuilder, login_snapshot, orders_snapshot
 
-from webops.semantic_graph import run_programmatic
-from webops.semantic_graph.selection import build_semantic_tree, classify
+from autobranch.semantic_graph import run_programmatic
 
 
 def _tree(snapshot):

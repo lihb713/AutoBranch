@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from webops.llm.errors import (
+from autobranch.llm.errors import (
     LLMAuthError,
     LLMBudgetExceeded,
     LLMConnectionError,
     LLMError,
     LLMTimeoutError,
 )
-from webops.llm.session import LLMSession
+from autobranch.llm.session import LLMSession
 
 
 def test_connection_error_classified(config, fake):

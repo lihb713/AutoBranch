@@ -1,4 +1,4 @@
-"""M6 叶子 get 变量替换测试（§5.3 读取确定性替换）。
+﻿"""M6 叶子 get 变量替换测试（§5.3 读取确定性替换）。
 
 叶子执行前，[[get:this/path]] 被程序从 blackboard 读取替换为真实值注入 LLM；
 未定义/越权读取 → 叶子直接 FAILURE（程序侧）。
@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import pytest
 from fake_transport import FakeTransport, chat_response
-from leaf_agent_helpers import StubEngine
+from leaf_agent_helpers import MockRegistry
 
-from webops.leaf_agent import execute_leaf
-from webops.leaf_agent.models import LeafContext
-from webops.llm import LLMConfig, LLMSession
-from webops.parser.models import ActionNode, ConditionNode
-from webops.schema import SchemaSpace
+from autobranch.leaf_agent import execute_leaf
+from autobranch.leaf_agent.models import LeafContext
+from autobranch.llm import LLMConfig, LLMSession
+from autobranch.parser.models import ActionNode, ConditionNode
+from autobranch.schema import SchemaSpace
 
 
 @pytest.fixture
@@ -30,14 +30,14 @@ def space() -> SchemaSpace:
 
 
 def _ctx(llm_config, space, transport):
-    engine = StubEngine()
+    engine = MockRegistry()
     session_log: list[str] = []
 
     def factory(cfg, system_prompt):
         return LLMSession(config=cfg, system_prompt=system_prompt, transport=transport)
 
     return (
-        LeafContext(config=llm_config, engine=engine, space=space, session_factory=factory),
+        LeafContext(config=llm_config, registry=engine, space=space, session_factory=factory),
         session_log,
     )
 
@@ -107,7 +107,10 @@ def test_extract_target_must_be_declared(llm_config, space):
     tool_call = {
         "id": "c1",
         "type": "function",
-        "function": {"name": "extract", "arguments": '{"ref":"[1]","target":"this/未声明"}'},
+        "function": {
+            "name": "browser.extract",
+            "arguments": '{"ref":"[1]","target":"this/未声明"}',
+        },
     }
     transport = FakeTransport(
         responses=[
@@ -115,26 +118,29 @@ def test_extract_target_must_be_declared(llm_config, space):
             _chat(text="结果: 成功"),
         ]
     )
-    # StubEngine 支持 extract 调用
-    engine = StubEngine()
-    engine.results["extract"] = {"ok": True, "detail": {"var": "this/未声明", "value": "x"}}
+    # MockRegistry 支持 extract 调用
+    engine = MockRegistry()
+    engine.register("browser.extract", output_param="target")
+    engine.results["browser.extract"] = {"ok": True, "detail": {"var": "this/未声明", "value": "x"}}
 
     def factory(cfg, system_prompt):
         return LLMSession(config=cfg, system_prompt=system_prompt, transport=transport)
 
     ctx = LeafContext(
         config=llm_config,
-        engine=engine,
+        registry=engine,
         space=space,
         session_factory=factory,
-        tools=[__import__("webops.llm", fromlist=["ToolSpec"]).ToolSpec("extract", "e", {})],
+        tools=[
+            __import__("autobranch.llm", fromlist=["ToolSpec"]).ToolSpec("browser.extract", "e", {})
+        ],
     )
     node = ActionNode(description="提取值 [[set:this/已声明]]", set_targets=("this/已声明",))
     result = execute_leaf(node, ctx)
     # 目标未声明 → extract 被拒（工具结果回传），但 LLM 修正后仍可成功
     assert result.status == "success"
     # 引擎层 extract 未被真正调用（校验在 M6 层拦截；仅预取 semantic_graph）
-    extract_calls = [c for c in engine.calls if c[0] == "extract"]
+    extract_calls = [c for c in engine.calls if c[0] == "browser.extract"]
     assert extract_calls == []
 
 
@@ -142,12 +148,15 @@ def test_extract_target_declared_allowed(llm_config, space):
     """extract 目标在 [[set:]] 声明集内 → 正常调用引擎 extract。"""
     from fake_transport import chat_response as _chat
 
-    from webops.browser import OpResult
+    from autobranch.browser import OpResult
 
     tool_call = {
         "id": "c1",
         "type": "function",
-        "function": {"name": "extract", "arguments": '{"ref":"[1]","target":"this/已声明"}'},
+        "function": {
+            "name": "browser.extract",
+            "arguments": '{"ref":"[1]","target":"this/已声明"}',
+        },
     }
     transport = FakeTransport(
         responses=[
@@ -155,8 +164,9 @@ def test_extract_target_declared_allowed(llm_config, space):
             _chat(text="结果: 成功"),
         ]
     )
-    engine = StubEngine()
-    engine.results["extract"] = OpResult(
+    engine = MockRegistry()
+    engine.register("browser.extract", output_param="target")
+    engine.results["browser.extract"] = OpResult(
         True, detail={"var": "this/已声明", "value": "x", "type": "str"}
     )
 
@@ -165,7 +175,7 @@ def test_extract_target_declared_allowed(llm_config, space):
 
     ctx = LeafContext(
         config=llm_config,
-        engine=engine,
+        registry=engine,
         space=space,
         session_factory=factory,
         tools=[],
@@ -173,20 +183,21 @@ def test_extract_target_declared_allowed(llm_config, space):
     node = ActionNode(description="提取 [[set:this/已声明]]", set_targets=("this/已声明",))
     result = execute_leaf(node, ctx)
     assert result.status == "success"
-    extract_calls = [c for c in engine.calls if c[0] == "extract"]
+    extract_calls = [c for c in engine.calls if c[0] == "browser.extract"]
     assert len(extract_calls) == 1
-    assert extract_calls[0][1]["target"] == "已声明"
+    # 产出型目标参数由引擎拆出落笔，不传给插件函数
+    assert "target" not in extract_calls[0][1]
 
 def test_open_save_to_must_be_declared(llm_config, space):
     """open 的 save_to 目标未在叶子 [[set:]] 声明集内 → 拒绝（不写入）。"""
     from fake_transport import chat_response as _chat
 
-    from webops.browser import OpResult
+    from autobranch.browser import OpResult
 
     tool_call = {
         "id": "c1",
         "type": "function",
-        "function": {"name": "open", "arguments": '{"url":"http://x","save_to":"this/未声明页"}'},
+        "function": {"name": "browser.open", "arguments": '{"url":"http://x","save_to":"this/未声明页"}'},
     }
     transport = FakeTransport(
         responses=[
@@ -194,15 +205,18 @@ def test_open_save_to_must_be_declared(llm_config, space):
             _chat(text="结果: 成功"),
         ]
     )
-    engine = StubEngine()
-    engine.results["open"] = OpResult(True, detail={"page_ref": "p", "var": "this/未声明页"})
+    engine = MockRegistry()
+    engine.register("browser.open", output_param="save_to")
+    engine.results["browser.open"] = OpResult(
+        True, detail={"page_ref": "p", "var": "this/未声明页"}
+    )
 
     def factory(cfg, system_prompt):
         return LLMSession(config=cfg, system_prompt=system_prompt, transport=transport)
 
     ctx = LeafContext(
         config=llm_config,
-        engine=engine,
+        registry=engine,
         space=space,
         session_factory=factory,
         tools=[],
@@ -215,7 +229,7 @@ def test_open_save_to_must_be_declared(llm_config, space):
     result = execute_leaf(node, ctx)
     # 未声明目标 → open 被 M6 拒（工具结果回传），但 LLM 修正后成功
     assert result.status == "success"
-    open_calls = [c for c in engine.calls if c[0] == "open"]
+    open_calls = [c for c in engine.calls if c[0] == "browser.open"]
     assert open_calls == []  # open 未真正调用（save_to 未声明被拦截）
 
 
@@ -223,12 +237,12 @@ def test_open_save_to_declared_allowed(llm_config, space):
     """open 的 save_to 在声明集内 → 正常调用。"""
     from fake_transport import chat_response as _chat
 
-    from webops.browser import OpResult
+    from autobranch.browser import OpResult
 
     tool_call = {
         "id": "c1",
         "type": "function",
-        "function": {"name": "open", "arguments": '{"url":"http://x","save_to":"this/页面A"}'},
+        "function": {"name": "browser.open", "arguments": '{"url":"http://x","save_to":"this/页面A"}'},
     }
     transport = FakeTransport(
         responses=[
@@ -236,15 +250,16 @@ def test_open_save_to_declared_allowed(llm_config, space):
             _chat(text="结果: 成功"),
         ]
     )
-    engine = StubEngine()
-    engine.results["open"] = OpResult(True, detail={"page_ref": "p", "var": "this/页面A"})
+    engine = MockRegistry()
+    engine.register("browser.open", output_param="save_to")
+    engine.results["browser.open"] = OpResult(True, detail={"page_ref": "p", "var": "this/页面A"})
 
     def factory(cfg, system_prompt):
         return LLMSession(config=cfg, system_prompt=system_prompt, transport=transport)
 
     ctx = LeafContext(
         config=llm_config,
-        engine=engine,
+        registry=engine,
         space=space,
         session_factory=factory,
         tools=[],
@@ -256,6 +271,7 @@ def test_open_save_to_declared_allowed(llm_config, space):
     )
     result = execute_leaf(node, ctx)
     assert result.status == "success"
-    open_calls = [c for c in engine.calls if c[0] == "open"]
+    open_calls = [c for c in engine.calls if c[0] == "browser.open"]
     assert len(open_calls) == 1
-    assert open_calls[0][1]["save_to"] == "页面A"
+    # 产出型目标参数由引擎拆出落笔，不传给插件函数
+    assert "save_to" not in open_calls[0][1]

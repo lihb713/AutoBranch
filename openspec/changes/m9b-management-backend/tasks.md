@@ -1,7 +1,7 @@
 ## 1. 项目脚手架与依赖
 
-- [x] 1.1 在独立 conda 环境（`webops`，python 3.11）内新增后端依赖：`pip install fastapi uvicorn sqlalchemy pydantic` 并写入 `pyproject.toml`；验证 `uvicorn webops.server.main:app` 可导入（`python -c "import webops.server.main"` 无报错）
-- [x] 1.2 建立 `webops/server/` 包结构（`db.py`、`models/`、`schemas/`、`services/`、`routers/`、`errors.py`、`main.py`、`config.py`）；验证空应用可启动：`uvicorn webops.server.main:app` 起服并访问 `/api/health` 返回 200
+- [x] 1.1 在独立 conda 环境（`autobranch`，python 3.11）内新增后端依赖：`pip install fastapi uvicorn sqlalchemy pydantic` 并写入 `pyproject.toml`；验证 `uvicorn autobranch.server.main:app` 可导入（`python -c "import autobranch.server.main"` 无报错）
+- [x] 1.2 建立 `autobranch/server/` 包结构（`db.py`、`models/`、`schemas/`、`services/`、`routers/`、`errors.py`、`main.py`、`config.py`）；验证空应用可启动：`uvicorn autobranch.server.main:app` 起服并访问 `/api/health` 返回 200
 - [x] 1.3 实现 `db.py`：SQLAlchemy engine（SQLite `check_same_thread=False`）+ `SessionLocal` + `Base` + `get_db` 依赖；验证 `Base.metadata.create_all()` 生成 `.db` 文件且可建会话
 
 ## 2. 数据库模型与迁移
@@ -42,6 +42,6 @@
 ## 8. 集成测试与实机验收
 
 - [x] 8.1 编写集成测试（pytest -m integration）：真实/半真实链路——建文档 → 保存校验 → 触发执行 → 轮询至 finished → 取报告/截图；验证全部断言通过
-- [x] 8.2 实机验收：启动 `uvicorn webops.server.main:app` 与 M9a 前端（`npm run dev`），浏览器实际走一遍 列表/编辑/保存校验/执行/轮询渲染/截图展示 全流程；验证前后端联调通过（不能仅凭单测）
+- [x] 8.2 实机验收：启动 `uvicorn autobranch.server.main:app` 与 M9a 前端（`npm run dev`），浏览器实际走一遍 列表/编辑/保存校验/执行/轮询渲染/截图展示 全流程；验证前后端联调通过（不能仅凭单测）
   > 说明：M9a 前端尚未实施（本阶段仅交付后端 API 完整可用）。已用真实 uvicorn（`--reload`）启动并逐个 HTTP 请求验证 health/CRUD/check/run/state/report/trace/reports 接口；前端浏览器走查待 M9a 实施后补做。
 - [x] 8.3 对照 spec「验收标准」逐条核对并同步更新 `docs/contract.md` §12.2-M9b 与 `docs/specs/M9b-management-backend.md`（每次代码变更后同步文档）；验证文档与代码一致

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.browser import ElementRef, ErrorCode, PageRef
+from autobranch.browser import ElementRef, ErrorCode, PageRef
 
 pytestmark = pytest.mark.integration
 
@@ -16,7 +16,7 @@ class TestOpenPage:
         ref = open_page(f"{server_url}/basic.html")
         handle = page_handle(ref)
         assert handle.url.endswith("/basic.html")
-        assert handle.title == "WebOps 基础操作测试页"
+        assert handle.title == "AutoBranch 基础操作测试页"
 
     def test_multiple_pages_coexist(self, driver, server_url, open_page, page_handle):
         ref_a = open_page(f"{server_url}/basic.html")
@@ -27,8 +27,8 @@ class TestOpenPage:
         assert handle_a.url.endswith("/basic.html")
         assert handle_b.url.endswith("/api_page.html")
         # 两页独立、均存活
-        assert handle_a.title == "WebOps 基础操作测试页"
-        assert handle_b.title == "WebOps API 监听测试页"
+        assert handle_a.title == "AutoBranch 基础操作测试页"
+        assert handle_b.title == "AutoBranch API 监听测试页"
 
     def test_open_unreachable_returns_failure(self, driver):
         result = driver.open("http://127.0.0.1:1/unreachable", timeout_ms=3000)
@@ -103,7 +103,7 @@ class TestMultiTabIsolation:
         assert text == "初始状态"
 
     def test_crawl_per_page_isolation(self, driver, server_url, open_page, page_handle):
-        from webops.browser import DomProbe
+        from autobranch.browser import DomProbe
 
         ref_a = open_page(f"{server_url}/basic.html")
         ref_b = open_page(f"{server_url}/api_page.html")

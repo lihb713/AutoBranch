@@ -1,5 +1,5 @@
 # 密钥与本地配置
-webops.config.json
+autobranch.config.json
 *.local.json
 .env
 
@@ -23,15 +23,15 @@ data/
 reports/
 *.png
 # 前端源码中的 reports 特性目录属源代码，排除运行时规则误伤
-!webops/frontend/src/features/reports/
-!webops/frontend/src/features/reports/**
+!autobranch/frontend/src/features/reports/
+!autobranch/frontend/src/features/reports/**
 
 # Node / 前端
 node_modules/
-webops/frontend/dist/
-webops/frontend/coverage/
-webops/frontend/playwright-report/
-webops/frontend/test-results/
+autobranch/frontend/dist/
+autobranch/frontend/coverage/
+autobranch/frontend/playwright-report/
+autobranch/frontend/test-results/
 
 # 编辑器 / 系统
 .vscode/

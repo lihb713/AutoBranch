@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from webops.browser import ElementRef, ErrorCode
+from autobranch.browser import ElementRef, ErrorCode
 
 pytestmark = pytest.mark.integration
 
@@ -23,7 +23,7 @@ class TestDownload:
         path = result.detail["path"]
         assert os.path.isfile(path)
         with open(path, encoding="utf-8") as f:
-            assert f.read() == "hello-webops-download"
+            assert f.read() == "hello-autobranch-download"
         assert path.startswith(save_dir)
 
 

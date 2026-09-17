@@ -5,12 +5,11 @@ fixture 断言 bounds 与兄弟排序（§8.3 ③、§7.6.1 原则 2）。
 
 from __future__ import annotations
 
+from autobranch.browser.models import ElementNode
+from autobranch.semantic_graph.geometry import sort_children, union_bounds, visual_key
+from autobranch.semantic_graph.programmatic import build_part_of_edges, run_programmatic
+from autobranch.semantic_graph.selection import build_semantic_tree
 from snapshot_factory import SnapshotBuilder, login_snapshot
-
-from webops.browser.models import ElementNode
-from webops.semantic_graph.geometry import sort_children, union_bounds, visual_key
-from webops.semantic_graph.programmatic import build_part_of_edges, run_programmatic
-from webops.semantic_graph.selection import build_semantic_tree
 
 
 class TestVisualKey:

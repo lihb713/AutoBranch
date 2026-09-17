@@ -9,7 +9,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from webops.browser import BrowserConfig, BrowserDriver
+from autobranch.browser import BrowserConfig, BrowserDriver
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures")
 
@@ -30,7 +30,7 @@ class _Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/files/data.txt"):
-            data = b"hello-webops-download"
+            data = b"hello-autobranch-download"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")
             self.send_header("Content-Disposition", 'attachment; filename="data.txt"')

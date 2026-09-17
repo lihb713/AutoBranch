@@ -8,8 +8,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from webops.browser import BrowserConfig, BrowserDriver
-from webops.semantic_graph import MockFiller
+from autobranch.browser import BrowserConfig, BrowserDriver
+from autobranch.semantic_graph import MockFiller
 
 FIXTURES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures"

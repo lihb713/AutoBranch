@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from webops.browser.models import Bounds, DomSnapshot, ElementNode, LODSpec
+from autobranch.browser.models import Bounds, DomSnapshot, ElementNode, LODSpec
 
 # 与 M1 ``roleOf`` 对齐的默认 role（M4 侧再归一化 listbox→select / columnheader→column）
 DEFAULT_ROLE: dict[str, str] = {

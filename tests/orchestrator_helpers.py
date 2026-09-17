@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import time
 
-from webops.leaf_agent.models import LeafResult
-from webops.parser.models import (
+from autobranch.leaf_agent.models import LeafResult
+from autobranch.parser.models import (
     ActionNode,
     BranchSpec,
     ConditionNode,
@@ -19,7 +19,7 @@ from webops.parser.models import (
     SelectorNode,
     SequenceNode,
 )
-from webops.reporting.models import LeafTrace
+from autobranch.reporting.models import LeafTrace
 
 ROOT_FRAME = "主流程/"
 
@@ -147,7 +147,7 @@ class MockBrowser:
         return None
 
     def activate_page(self, page_ref):
-        from webops.engine.models import OpResult
+        from autobranch.engine.models import OpResult
 
         return OpResult(True, detail={"page_ref": page_ref})
 
@@ -171,9 +171,9 @@ def make_run_context(
     供直接 tick（``Traverser``）测试使用；``Engine.run`` 测试请用
     ``make_engine``。
     """
-    from webops.orchestrator import RunContext as RC
-    from webops.reporting import Reporter
-    from webops.schema import SchemaSpace
+    from autobranch.orchestrator import RunContext as RC
+    from autobranch.reporting import Reporter
+    from autobranch.schema import SchemaSpace
 
     space = SchemaSpace()
     if config.timeout is not None:
@@ -202,7 +202,7 @@ def make_run_context(
 
 def make_engine(*, browser=None, leaf_executor=None, space_factory=None, reporter_factory=None):
     """构造 ``Engine``（默认注入 mock 浏览器与 StubLeaf）。"""
-    from webops.orchestrator import Engine
+    from autobranch.orchestrator import Engine
 
     return Engine(
         browser=browser if browser is not None else MockBrowser(),
@@ -214,8 +214,8 @@ def make_engine(*, browser=None, leaf_executor=None, space_factory=None, reporte
 
 def make_doc_resolver(docs: dict):
     """从 {文档名: 新 DSL dict} 构造跨文档引用解析器（测试用）。"""
-    from webops.parser.models import DocumentSource
-    from webops.parser.refs import MappingResolver
+    from autobranch.parser.models import DocumentSource
+    from autobranch.parser.refs import MappingResolver
 
     resolver = MappingResolver()
     for name, raw in docs.items():

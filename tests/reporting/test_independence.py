@@ -9,11 +9,11 @@ from __future__ import annotations
 import inspect
 import sys
 
+from autobranch.browser.models import PageRef
 from reporting.factories import make_action_report, make_composite_report, make_condition_report
 
-from webops.browser.models import PageRef
-from webops.reporting import Reporter
-from webops.reporting.models import NodeInfo
+from autobranch.reporting import Reporter
+from autobranch.reporting.models import NodeInfo
 
 
 class TestIndependence:
@@ -21,9 +21,9 @@ class TestIndependence:
 
     def test_reporting_source_has_no_playwright_dependency(self):
         names = (
-            "webops.reporting.models",
-            "webops.reporting.render",
-            "webops.reporting.reporter",
+            "autobranch.reporting.models",
+            "autobranch.reporting.render",
+            "autobranch.reporting.reporter",
         )
         for name in names:
             source = inspect.getsource(sys.modules[name])

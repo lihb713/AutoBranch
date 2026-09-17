@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from snapshot_factory import login_snapshot, orders_snapshot
 
-from webops.semantic_graph import run_programmatic
+from autobranch.semantic_graph import run_programmatic
 
 
 class TestProgrammaticIndependence:
@@ -30,20 +30,20 @@ class TestProgrammaticIndependence:
 
 
 class TestIndependenceSmoke:
-    """模块独立性：子模块不 import webops.llm。"""
+    """模块独立性：子模块不 import autobranch.llm。"""
 
     def test_programmatic_modules_do_not_import_llm(self):
         import importlib
 
         for name in (
-            "webops.semantic_graph.programmatic",
-            "webops.semantic_graph.selection",
-            "webops.semantic_graph.geometry",
-            "webops.semantic_graph.values",
-            "webops.semantic_graph.enrich",
-            "webops.semantic_graph.candidates",
-            "webops.semantic_graph.refs",
-            "webops.semantic_graph.lod",
+            "autobranch.semantic_graph.programmatic",
+            "autobranch.semantic_graph.selection",
+            "autobranch.semantic_graph.geometry",
+            "autobranch.semantic_graph.values",
+            "autobranch.semantic_graph.enrich",
+            "autobranch.semantic_graph.candidates",
+            "autobranch.semantic_graph.refs",
+            "autobranch.semantic_graph.lod",
         ):
             module = importlib.import_module(name)
-            assert "webops.llm" not in module.__dict__
+            assert "autobranch.llm" not in module.__dict__

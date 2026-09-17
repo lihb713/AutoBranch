@@ -10,10 +10,10 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from webops.server.config import ServerConfig
-from webops.server.db import configure_database, session_factory
-from webops.server.main import create_app
-from webops.server.services.engine import MockEngineService
+from autobranch.server.config import ServerConfig
+from autobranch.server.db import configure_database, session_factory
+from autobranch.server.main import create_app
+from autobranch.server.services.engine import MockEngineService
 
 #: 通过 M2 清晰度校验的合法行为树文档（统一槽位 DSL）。
 VALID_YAML = """
@@ -86,7 +86,7 @@ root: n1
 
 @pytest.fixture
 def settings(tmp_path) -> ServerConfig:
-    return ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    return ServerConfig(db_path=tmp_path / "autobranch.db", report_root=tmp_path / "reports")
 
 
 @pytest.fixture

@@ -10,11 +10,11 @@ from pathlib import Path
 
 from orchestrator_helpers import MockBrowser, StubLeaf
 
-from webops.config import WebOpsConfig
-from webops.orchestrator import Engine
-from webops.orchestrator.models import RunResult
-from webops.reporting import ExecState
-from webops.server.services.engine import (
+from autobranch.config import AutoBranchConfig
+from autobranch.orchestrator import Engine
+from autobranch.orchestrator.models import RunResult
+from autobranch.reporting import ExecState
+from autobranch.server.services.engine import (
     EmbeddedEngineService,
     EngineService,
     MockEngineService,
@@ -56,15 +56,15 @@ def test_mock_engine_default_result():
 # ------------------------------------------------------------- 真实内嵌（5.1）
 
 def test_embedded_engine_is_engine_service():
-    svc = EmbeddedEngineService(WebOpsConfig.load(), Path("data/reports"))
+    svc = EmbeddedEngineService(AutoBranchConfig.load(), Path("data/reports"))
     assert isinstance(svc, EngineService)
 
 
 def test_embedded_engine_builds_default_engine():
-    svc = EmbeddedEngineService(WebOpsConfig.load(), Path("data/reports"))
+    svc = EmbeddedEngineService(AutoBranchConfig.load(), Path("data/reports"))
     engine = svc._default_engine(1, Path("data/reports"))
     assert isinstance(engine, Engine)
-    assert svc.last_functions is not None
+    assert engine._registry is not None  # 插件模式（默认空注册表亦可）
 
 
 def test_embedded_engine_runs_with_mock_leaf(tmp_path):
@@ -78,7 +78,7 @@ def test_embedded_engine_runs_with_mock_leaf(tmp_path):
         )
 
     svc = EmbeddedEngineService(
-        WebOpsConfig.load(), report_root, engine_factory=factory
+        AutoBranchConfig.load(), report_root, engine_factory=factory
     )
     result = svc.run(tree_id=1, content=VALID_YAML, run_id=7, doc_id="冒烟流程")
     assert result.status == "success"

@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from orchestrator_helpers import MockBrowser, StubLeaf
 
-from webops.orchestrator import (
+from autobranch.orchestrator import (
     FAILURE,
     SUCCESS,
     RunConfig,
     RunContext,
     RunResult,
 )
-from webops.reporting import Reporter
-from webops.schema import SchemaSpace
+from autobranch.reporting import Reporter
+from autobranch.schema import SchemaSpace
 
 
 class TestNodeStatus:
@@ -25,7 +25,7 @@ class TestNodeStatus:
         assert FAILURE in ("success", "failure")
 
     def test_no_running_state(self) -> None:
-        from webops.orchestrator import NodeStatus
+        from autobranch.orchestrator import NodeStatus
 
         allowed = ("success", "failure")
         # NodeStatus 是字面量联合，仅两种取值

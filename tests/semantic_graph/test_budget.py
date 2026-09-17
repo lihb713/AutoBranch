@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pytest
+from autobranch.semantic_graph.budget import estimate_graph_tokens
+from autobranch.semantic_graph.errors import SemanticGraphBudgetExceeded
 from snapshot_factory import login_snapshot
 
-from webops.semantic_graph import MockFiller, generate_semantic_graph
-from webops.semantic_graph.budget import estimate_graph_tokens
-from webops.semantic_graph.errors import SemanticGraphBudgetExceeded
+from autobranch.semantic_graph import MockFiller, generate_semantic_graph
 
 
 class TestBudget:

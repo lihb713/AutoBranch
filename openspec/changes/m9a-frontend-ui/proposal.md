@@ -1,6 +1,6 @@
 ## Why
 
-WebOps 目前只有引擎与后端 API，缺少人机交互界面，用户无法可视化地书写含复合节点的行为树、管理文档或观察执行过程。依据契约 §12.4/§12.5，需要提供纯前端 UI（M9a）：拖拽式行为树编辑器、行为树管理 CRUD、1 秒轮询的执行报告页，让用户以"始终含复合节点"的视图完成从书写到验收的完整闭环。
+AutoBranch 目前只有引擎与后端 API，缺少人机交互界面，用户无法可视化地书写含复合节点的行为树、管理文档或观察执行过程。依据契约 §12.4/§12.5，需要提供纯前端 UI（M9a）：拖拽式行为树编辑器、行为树管理 CRUD、1 秒轮询的执行报告页，让用户以"始终含复合节点"的视图完成从书写到验收的完整闭环。
 
 ## What Changes
 
@@ -22,7 +22,7 @@ WebOps 目前只有引擎与后端 API，缺少人机交互界面，用户无法
 
 ## Impact
 
-- **新增代码**：`webops/frontend/` 下的 Vite 前端工程（`src/api/` API 客户端、`src/types/` 领域类型、`src/hooks/` 轮询 hook、`src/components/` 通用组件、`src/features/tree-editor|runs|reports/` 业务模块），对应 `docs/specs/M9a-frontend-ui.md` 第 5 章接口契约
+- **新增代码**：`autobranch/frontend/` 下的 Vite 前端工程（`src/api/` API 客户端、`src/types/` 领域类型、`src/hooks/` 轮询 hook、`src/components/` 通用组件、`src/features/tree-editor|runs|reports/` 业务模块），对应 `docs/specs/M9a-frontend-ui.md` 第 5 章接口契约
 - **被依赖方**：无（M9a 是最上层，仅消费 M9b）
 - **消费 API**：`/api/trees` CRUD、`/api/trees/{id}/check`、`/api/trees/{id}/run`、`/api/runs/{run_id}/state|report|trace`、`/api/reports/{path}`
 - **外部依赖**：新增 npm 依赖（React 18、TypeScript、Vite、测试库）；遵循 `.opencode/rules/frontend-style.md` 与 `.opencode/rules/api-conventions.md`

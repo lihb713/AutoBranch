@@ -11,11 +11,11 @@ import pytest
 from fastapi.testclient import TestClient
 from orchestrator_helpers import MockBrowser, StubLeaf
 
-from webops.config import WebOpsConfig
-from webops.orchestrator import Engine
-from webops.server.config import ServerConfig
-from webops.server.main import create_app
-from webops.server.services.engine import EmbeddedEngineService, build_reporter_factory
+from autobranch.config import AutoBranchConfig
+from autobranch.orchestrator import Engine
+from autobranch.server.config import ServerConfig
+from autobranch.server.main import create_app
+from autobranch.server.services.engine import EmbeddedEngineService, build_reporter_factory
 
 from .conftest import VALID_YAML, make_tree_yaml
 
@@ -31,14 +31,14 @@ def _make_client(settings: ServerConfig) -> TestClient:
         )
 
     engine_service = EmbeddedEngineService(
-        WebOpsConfig.load(), settings.report_root, engine_factory=factory
+        AutoBranchConfig.load(), settings.report_root, engine_factory=factory
     )
     app = create_app(settings, engine_service=engine_service)
     return TestClient(app)
 
 
 def test_end_to_end_execution_flow(tmp_path):
-    settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    settings = ServerConfig(db_path=tmp_path / "autobranch.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
     created = client.post("/api/trees", json={"name": "冒烟流程", "content": VALID_YAML})
@@ -79,7 +79,7 @@ def test_end_to_end_execution_flow(tmp_path):
 
 def test_run_after_rename_matches_content_root_block(tmp_path):
     """回归：改名后 tree 名对齐，doc_id 对齐后运行成功。"""
-    settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    settings = ServerConfig(db_path=tmp_path / "autobranch.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
     created = client.post(
@@ -106,11 +106,11 @@ def test_run_after_rename_matches_content_root_block(tmp_path):
 
 def test_end_to_end_execution_failure_flow(tmp_path):
     """执行前校验拦截：损坏文档触发执行返回 422 且不产生 run。"""
-    settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    settings = ServerConfig(db_path=tmp_path / "autobranch.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
-    from webops.server.db import configure_database, session_factory
-    from webops.server.models import Run, Tree
+    from autobranch.server.db import configure_database, session_factory
+    from autobranch.server.models import Run, Tree
 
     configure_database(settings.db_path)
     db = session_factory()()
@@ -152,7 +152,7 @@ def _ref_doc(name: str, target: str) -> str:
 
 def test_cross_doc_ref_end_to_end(tmp_path):
     """跨文档引用端到端：A ref B，A 校验通过、执行成功（B 的 Root 被执行）。"""
-    settings = ServerConfig(db_path=tmp_path / "webops.db", report_root=tmp_path / "reports")
+    settings = ServerConfig(db_path=tmp_path / "autobranch.db", report_root=tmp_path / "reports")
     client = _make_client(settings)
 
     # 先建被引文档 B（含一个可执行叶子），再建引用文档 A

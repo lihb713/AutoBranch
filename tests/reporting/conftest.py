@@ -5,14 +5,14 @@ from __future__ import annotations
 import os
 
 import pytest
+from autobranch.browser.models import OpResult, PageRef
 from reporting.factories import (
     make_action_report,
     make_composite_report,
     make_condition_report,
 )
 
-from webops.browser.models import OpResult, PageRef
-from webops.reporting.models import NodeInfo, NodeReport
+from autobranch.reporting.models import NodeInfo, NodeReport
 
 
 @pytest.fixture

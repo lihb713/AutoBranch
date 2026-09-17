@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from webops.schema import (
+from autobranch.schema import (
     TYPE_REGISTRY,
     FrameDecl,
     PageRef,
@@ -17,7 +17,7 @@ from webops.schema import (
     infer_type,
     validate_type_name,
 )
-from webops.schema.path import resolve_target, split_segments
+from autobranch.schema.path import resolve_target, split_segments
 
 
 def make_frame(name: str = "T") -> SchemaFrame:
@@ -94,8 +94,8 @@ def test_split_segments_rejects_var_with_slash():
 
 def test_supported_types_enumerable():
     """1.3 类型登记表可枚举核心类型（英文 token）。"""
-    assert set(TYPE_REGISTRY) == {"str", "int", "float", "bool", "page_ref"}
-    for name in ["str", "int", "float", "bool", "page_ref"]:
+    assert set(TYPE_REGISTRY) == {"str", "int", "float", "bool", "page_ref", "object"}
+    for name in ["str", "int", "float", "bool", "page_ref", "object"]:
         assert name in TYPE_REGISTRY
 
 

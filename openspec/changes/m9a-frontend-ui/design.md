@@ -1,6 +1,6 @@
 ## Context
 
-动机见 proposal.md - Why。当前 WebOps 已具备引擎与后端 API 契约（`docs/specs/M9b-management-backend.md`），但无任何前端代码。M9a 是纯前端（React 18 + TypeScript + Vite），仅消费 M9b API，是最上层模块、无下游依赖。约束来源：
+动机见 proposal.md - Why。当前 AutoBranch 已具备引擎与后端 API 契约（`docs/specs/M9b-management-backend.md`），但无任何前端代码。M9a 是纯前端（React 18 + TypeScript + Vite），仅消费 M9b API，是最上层模块、无下游依赖。约束来源：
 
 - 契约 §12.4：执行报告用**1 秒轮询**，非 WebSocket；§12.5：用户始终看到复合节点、前端不展开复合节点，清晰度校验"前端保存时校验一次 + 后端执行前再校验一次"
 - `.opencode/rules/frontend-style.md`：目录约定（`src/api|components|features|hooks|types`）、就近状态管理、reducer 管理编辑器节点树、`usePolling` hook、列表 key 用稳定 id、组件不直接 fetch
@@ -25,7 +25,7 @@
 
 ### D1：工程骨架与目录结构
 
-按 `frontend-style.md` 第 1 节落地 `webops/frontend/`：`src/api/`（API 客户端）、`src/types/`（领域类型）、`src/hooks/`（usePolling）、`src/components/`（通用无状态组件）、`src/features/tree-editor|runs|reports/`（页面级业务模块）。测试文件与组件同目录（`*.test.tsx`）。
+按 `frontend-style.md` 第 1 节落地 `autobranch/frontend/`：`src/api/`（API 客户端）、`src/types/`（领域类型）、`src/hooks/`（usePolling）、`src/components/`（通用无状态组件）、`src/features/tree-editor|runs|reports/`（页面级业务模块）。测试文件与组件同目录（`*.test.tsx`）。
 
 - **备选**：按功能把 API 调用散在页面里 —— 违背规范"组件不直接 fetch"，拒绝
 - **理由**：规范即约定，目录即边界，便于独立验收
@@ -90,4 +90,4 @@
 
 - 前端为全新工程，无存量迁移；`npm run dev` 开发，`npm run build` 产物供 M9b 后续静态托管（不在本 change 范围）
 - 独立验收路径：以 M9b mock server 提供 API，前端可不依赖真实后端先行交付；后端就绪后切换真实地址做集成验收
-- 回滚策略：前端改动互不依赖后端代码，可整体移除 `webops/frontend/` 目录回退
+- 回滚策略：前端改动互不依赖后端代码，可整体移除 `autobranch/frontend/` 目录回退

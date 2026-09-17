@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from orchestrator_helpers import MockBrowser, StubLeaf, action, leaf_failure
 
-from webops.orchestrator import Engine, RunConfig
-from webops.parser.models import BehaviorTree, SequenceNode
-from webops.schema import SchemaSpace
+from autobranch.orchestrator import Engine, RunConfig
+from autobranch.parser.models import BehaviorTree, SequenceNode
+from autobranch.plugin_system import PluginBase, PluginRegistry
+from autobranch.schema import SchemaSpace
 
 
 def _tree() -> BehaviorTree:
@@ -19,23 +20,29 @@ def _tree() -> BehaviorTree:
 
 
 class TestSessionInit:
-    """任务 4.3：每次 run 创建全新浏览器 context（无持久化）。"""
+    """任务 4.3：浏览器冷启动懒装配（纯计算树零浏览器开销）；插件加载时启动全新 context。"""
 
-    def test_run_starts_fresh_context(self, config, mock_browser, stub_leaf) -> None:
+    def test_run_pure_tree_does_not_start_browser(self, config, mock_browser, stub_leaf) -> None:
         engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
         result = engine.run(_tree(), config)
         assert result.status == "success"
-        # start 每次调用都会先 stop 再新建 context（M1 冷启动语义），M7 每 run 必调
-        assert len(mock_browser.starts) == 1
+        # 未使用浏览器插件 → 不冷启动驱动（懒装配，纯计算树零浏览器开销）
+        assert mock_browser.starts == []
 
-    def test_each_run_starts_new_context(self, config, mock_browser, stub_leaf) -> None:
-        engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
-        engine.run(_tree(), config)
-        engine.run(_tree(), config)
-        # 两次 run = start/stop/start/stop，无运行间残留
+    def test_browser_plugin_load_starts_driver(self, config, mock_browser, stub_leaf) -> None:
+        """浏览器插件懒装配（init）时冷启动驱动；release 后再次加载重新启动。"""
+        import types
+
+        from autobranch.plugins.browser import BrowserPlugin
+
+        reg = PluginRegistry()
+        reg.register(BrowserPlugin())
+        runtime = types.SimpleNamespace(browser_factory=lambda: mock_browser)
+        reg.ensure_loaded("browser", runtime)
+        assert len(mock_browser.starts) == 1
+        reg.release()
+        reg.ensure_loaded("browser", runtime)
         assert len(mock_browser.starts) == 2
-        assert len(mock_browser.stops) == 2
-        assert mock_browser.started is False  # 上次运行后已释放
 
     def test_global_config_injected_to_root_schema(self, config) -> None:
         """任务 4.4：全局默认配置注入根级 schema，resolve_config 兜底可取到。"""
@@ -60,18 +67,38 @@ class TestSessionInit:
 
 
 class TestSessionRelease:
-    """任务 4.5：遍历结束（成功/失败）统一关闭 context，运行间无残留。"""
+    """遍历结束统一释放插件资源（浏览器等由浏览器插件 release 负责）。"""
 
-    def test_browser_stopped_after_success(self, config, mock_browser, stub_leaf) -> None:
-        engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
+    def test_plugins_released_after_success(self, config, mock_browser, stub_leaf) -> None:
+        released: list[str] = []
+
+        class _P(PluginBase):
+            name = "mock"
+
+            def release(self):
+                released.append("released")
+
+        reg = PluginRegistry()
+        reg.register(_P())
+        reg.ensure_loaded("mock")
+        engine = Engine(browser=mock_browser, leaf_executor=stub_leaf, registry=reg)
         engine.run(_tree(), config)
-        assert len(mock_browser.stops) == 1
-        assert mock_browser.started is False
+        assert released == ["released"]
 
-    def test_browser_stopped_after_failure(self, config, mock_browser, stub_leaf) -> None:
+    def test_plugins_released_after_failure(self, config, mock_browser, stub_leaf) -> None:
+        released: list[str] = []
+
+        class _P(PluginBase):
+            name = "mock"
+
+            def release(self):
+                released.append("released")
+
+        reg = PluginRegistry()
+        reg.register(_P())
+        reg.ensure_loaded("mock")
         stub_leaf.results["动作"] = leaf_failure("动作")
-        engine = Engine(browser=mock_browser, leaf_executor=stub_leaf)
+        engine = Engine(browser=mock_browser, leaf_executor=stub_leaf, registry=reg)
         result = engine.run(_tree(), config)
         assert result.status == "failure"
-        assert len(mock_browser.stops) == 1
-        assert mock_browser.started is False
+        assert released == ["released"]

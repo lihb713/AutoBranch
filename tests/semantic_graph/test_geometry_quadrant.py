@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
-from webops.browser.models import Bounds
-from webops.semantic_graph.geometry import page_quadrant, quadrant_center
+from autobranch.browser.models import Bounds
+from autobranch.semantic_graph.geometry import page_quadrant, quadrant_center
 
 VIEWPORT = {"width": 900, "height": 600}
 

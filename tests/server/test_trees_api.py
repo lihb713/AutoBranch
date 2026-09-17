@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from webops.server.models import Run, Tree
+from autobranch.server.models import Run, Tree
 
 from .conftest import INVALID_REF_YAML, VALID_YAML, create_tree, make_tree_yaml
 
@@ -109,7 +109,7 @@ def test_delete_tree_cascades_runs_and_files(client, session, settings):
     resp = client.delete(f"/api/trees/{tree['id']}")
     assert resp.status_code == 204
     assert not report_dir.exists()
-    from webops.server.db import session_factory
+    from autobranch.server.db import session_factory
 
     fresh = session_factory()()
     assert fresh.get(Run, run.id) is None

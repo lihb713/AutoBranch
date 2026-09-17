@@ -7,8 +7,8 @@ import logging
 
 import pytest
 
-from webops.llm.config import LLMConfig
-from webops.llm.models import LLMResponse, ToolCall, ToolResult, ToolSpec
+from autobranch.llm.config import LLMConfig
+from autobranch.llm.models import LLMResponse, ToolCall, ToolResult, ToolSpec
 
 
 def test_config_requires_all_fields():
@@ -61,7 +61,7 @@ def test_api_key_not_in_logs():
     """2.3 api_key 不进入日志输出。"""
     secret = "sk-this-is-a-secret-test-key-12345"
     cfg = LLMConfig(base_url="u", api_key=secret, model="m")
-    logger = logging.getLogger("webops.llm")
+    logger = logging.getLogger("autobranch.llm")
     records: list[str] = []
     handler = logging.Handler()
     handler.emit = lambda record: records.append(record.getMessage())

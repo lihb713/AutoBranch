@@ -7,7 +7,7 @@ import struct
 
 import pytest
 
-from webops.browser import BrowserConfig, BrowserDriver
+from autobranch.browser import BrowserConfig, BrowserDriver
 
 pytestmark = pytest.mark.integration
 

@@ -1,0 +1,61 @@
+"""AutoBranch 行为树文档解析器（M2）。
+
+将行为树文档（一文档一树，yaml/dict）确定性解析为**仅含基础节点**的内部
+行为树对象，展开复合节点（§4.3）、解析引用（§5.7.3/§12）、执行清晰度校验
+（§4.4）。纯逻辑、无外部运行时依赖（不依赖 LLM / 浏览器）。
+
+公开入口：
+- ``BehaviorTreeParser.parse`` / ``parse``：解析入口
+- 数据模型：``Node`` 各子类、``BranchSpec``、``ParseResult``、
+  ``CheckReport``、``DocumentSource`` 等
+- 引用解析：``RefResolver``（协议）、``MappingResolver``（内存实现）
+- 异常：``ParserError`` / ``InvalidDocumentError`` / ``RefNotFoundError``
+"""
+
+from autobranch.parser.errors import InvalidDocumentError, ParserError, RefNotFoundError
+from autobranch.parser.models import (
+    ActionNode,
+    BehaviorTree,
+    BranchSpec,
+    CheckIssue,
+    CheckReport,
+    ConditionNode,
+    DocumentSource,
+    FinishNode,
+    Loc,
+    Node,
+    ParseResult,
+    RefNode,
+    RepeatNode,
+    SelectorNode,
+    SequenceNode,
+    make_issue,
+)
+from autobranch.parser.parser import BehaviorTreeParser, parse
+from autobranch.parser.refs import MappingResolver, RefResolver
+
+__all__ = [
+    "BehaviorTreeParser",
+    "parse",
+    "ActionNode",
+    "ConditionNode",
+    "SequenceNode",
+    "SelectorNode",
+    "RepeatNode",
+    "FinishNode",
+    "Node",
+    "RefNode",
+    "BranchSpec",
+    "BehaviorTree",
+    "CheckIssue",
+    "CheckReport",
+    "ParseResult",
+    "DocumentSource",
+    "Loc",
+    "make_issue",
+    "RefResolver",
+    "MappingResolver",
+    "ParserError",
+    "InvalidDocumentError",
+    "RefNotFoundError",
+]

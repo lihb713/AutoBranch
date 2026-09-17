@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import pytest
+from autobranch.browser.driver import _classify_playwright_error
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from webops.browser import (
+from autobranch.browser import (
     ElementRef,
     ErrorCode,
     FatalBrowserError,
     OpResult,
 )
-from webops.browser.driver import _classify_playwright_error
 
 pytestmark = pytest.mark.integration
 

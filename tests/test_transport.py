@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from fake_transport import FakeTransport
 
-from webops.llm.errors import LLMConnectionError, LLMTimeoutError
-from webops.llm.transport import TransportResponse, UrllibTransport
+from autobranch.llm.errors import LLMConnectionError, LLMTimeoutError
+from autobranch.llm.transport import TransportResponse, UrllibTransport
 
 
 def test_transport_interface_satisfied_by_both():
@@ -34,7 +34,7 @@ def test_urllib_transport_connection_error():
     transport = UrllibTransport()
     with pytest.raises(LLMConnectionError):
         transport.request(
-            "http://webops-nonexistent-host.invalid/x",
+            "http://autobranch-nonexistent-host.invalid/x",
             {"Content-Type": "application/json"},
             b"{}",
             timeout=1,

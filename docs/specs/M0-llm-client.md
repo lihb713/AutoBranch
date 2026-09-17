@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-封装 OpenAI 兼容接口，为 WebOps 提供统一的 LLM 调用能力。它是所有 LLM 交互的唯一入口，被叶子 agent 执行（M6）与语义图生成（M4）复用。**无依赖、最早实现，可独立测试。**
+封装 OpenAI 兼容接口，为 AutoBranch 提供统一的 LLM 调用能力。它是所有 LLM 交互的唯一入口，被叶子 agent 执行（M6）与语义图生成（M4）复用。**无依赖、最早实现，可独立测试。**
 
 ## 2. 功能范围
 
@@ -23,7 +23,7 @@
 ## 3. 数据依赖
 
 ### 3.1 输入
-- **LLM 配置**：`{ base_url, api_key, model, timeout }`（来自统一配置 `webops.config.json`，经 `WebOpsConfig.load().to_llm_config()` 构建；`api_key` 可直接写入配置文件 `llm.api_key`，环境变量 `WEB_OPS_LLM_API_KEY` 存在时优先，见 contract §6.3；M9b 亦可注入）
+- **LLM 配置**：`{ base_url, api_key, model, timeout }`（来自统一配置 `autobranch.config.json`，经 `AutoBranchConfig.load().to_llm_config()` 构建；`api_key` 可直接写入配置文件 `llm.api_key`，环境变量 `AUTOBRANCH_LLM_API_KEY` 存在时优先，见 contract §6.3；M9b 亦可注入）
 - **会话参数**：`system_prompt`、用户/工具消息序列、可调用工具（函数 schema）列表
 
 ### 3.2 输出
@@ -113,7 +113,7 @@ class UrllibTransport(Transport):     # 默认实现：标准库 urllib，带 Us
 # 协议适配（设计 D3）：Chat Completions（/chat/completions）与 Responses（/responses）
 # 映射到同一内部 Message 序列与同一 LLMResponse 结构，差异收敛在适配层。
 
-# 请求头：User-Agent 为自定义（webops-llm-client/0.1，非 urllib 默认）；
+# 请求头：User-Agent 为自定义（autobranch-llm-client/0.1，非 urllib 默认）；
 # x-opencode-session 由 LLMSession 按会话注入（见 §5.2），传输层透传调用方 headers。
 ```
 
@@ -143,6 +143,9 @@ class UrllibTransport(Transport):     # 默认实现：标准库 urllib，带 Us
 
 - **Mock HTTP**（`tests/fake_transport.py`）：`FakeTransport` 拦截请求、返回预设响应序列，验证请求体格式、工具回填正确性（独立于真实网络）
 - **真实 API 冒烟**（可选，`tests/test_smoke.py`）：经环境变量注入密钥后连接 OpenAI 兼容端点验证（未配置自动跳过）。已验证 **OpenCode Go** 端点：
-  `WEB_OPS_LLM_BASE_URL=https://opencode.ai/zen/go/v1`、`WEB_OPS_LLM_MODEL=deepseek-v4-flash`，含文本回复与工具调用两条路径
+  `AUTOBRANCH_LLM_BASE_URL=https://opencode.ai/zen/go/v1`、`AUTOBRANCH_LLM_MODEL=deepseek-v4-flash`，含文本回复与工具调用两条路径
 - **单元测试**：消息序列累积、token 统计、异常分类、协议解析（协议/传输/会话均可离线测试）
 - **独立性**：不依赖浏览器、不依赖行为树，可单独运行全部测试
+## 请求重试（已实现）
+
+`LLMConfig` 支持 `retry_times`（默认 2）/ `retry_delay`（默认 1.0）；`LLMSession.request` 对**瞬时失败**（连接错误 / 超时 / HTTP 429 / 5xx）指数退避重试（1s→2s）。重试只在成功时才累积上下文（不重复消息）；401/403 鉴权、预算超限不重试。
