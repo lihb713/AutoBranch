@@ -69,6 +69,14 @@ def test_text_selector_still_preferred():
     assert _selector(element, node) == 'button:has-text("Continue with Google")'
 
 
+def test_path_preferred_over_ambiguous_text():
+    """有精确索引路径时优先路径而非 ``:has-text``——避免重复文本 strict 冲突。"""
+    path = "body > nav:nth-of-type(1) > a:nth-of-type(3)"
+    node = _node("a", depth=4, path=path, text="Usage")
+    element = _element("[8]", "link", "a", text="Usage")
+    assert _selector(element, node) == path
+
+
 def test_indexed_path_fallback_for_filtered_ancestors():
     """无 id/无文本/无 value 的元素 → 用快照携带的真实 DOM 索引路径。
 

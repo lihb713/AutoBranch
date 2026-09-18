@@ -141,20 +141,22 @@ class EngineRefMap:
 
     @classmethod
     def _selector_for(cls, element: Element, node: ElementNode | None) -> str:
-        """推导 CSS 选择器：``#dom_id`` → ``:has-text`` → ``input[value]`` → 索引路径。
+        """推导 CSS 选择器：``#dom_id`` → 真实 DOM 索引路径 → ``:has-text`` → ``input[value]``。
 
         定位优先级（从可靠到兜底）：
         1. DOM ``id``（``#<id>``）最精确。
-        2. 元素可见文本（``tag:has-text("文本")``）——导航链接/按钮等无 id 的
-           元素靠文本定位可靠（Playwright :has-text 子串匹配）。
-        3. ``<input>`` 元素按稳定的 value 属性定位（submit/button 按钮标签在
-           value 中，无子文本）。
-        4. 快照节点携带的**真实 DOM 索引路径**（``nth-of-type``，含被过滤的
+        2. 快照节点携带的**真实 DOM 索引路径**（``nth-of-type``，含被过滤的
            中间容器）——由爬取端从真实 DOM 祖先生成，不受快照树过滤影响，
-           任何深度的元素都能精确定位。
+           唯一且精确定位；优先于文本定位可避免重复文本的 strict 冲突。
+        3. 元素可见文本（``tag:has-text("文本")``）——无 id/无路径时的
+           兜底（Playwright :has-text 子串匹配；文本重复时可能歧义）。
+        4. ``<input>`` 元素按稳定的 value 属性定位（submit/button 按钮标签在
+           value 中，无子文本）。
         """
         if node is not None and node.dom_id:
             return f"#{_css_escape(node.dom_id)}"
+        if node is not None and node.path:
+            return node.path
         if node is None:
             return element.tag or element.role
         text = (element.state.text or "").strip()
@@ -164,8 +166,6 @@ class EngineRefMap:
         value = (node.value or element.state.value or "").strip()
         if node.tag == "input" and value and cls._text_safe(value):
             return f'input[value="{cls._escape_text(value)}"]'
-        if node.path:
-            return node.path
         return element.tag or element.role
 
     @staticmethod
