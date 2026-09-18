@@ -54,12 +54,13 @@ export function HighlightedField({ label, multiline, className, ...rest }: Highl
     <label className="text-field">
       <span className="text-field__label">{label}</span>
       <div className="hl-field">
-        <div
-          className="hl-field__overlay"
-          aria-hidden="true"
-          style={{ transform: `translate(${-pos.left}px, ${-pos.top}px)` }}
-        >
-          {highlighted}
+        <div className="hl-field__overlay" aria-hidden="true">
+          <div
+            className="hl-field__overlay-text"
+            style={{ transform: `translate(${-pos.left}px, ${-pos.top}px)` }}
+          >
+            {highlighted}
+          </div>
         </div>
         {multiline ? (
           <textarea
