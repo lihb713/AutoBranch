@@ -1,4 +1,4 @@
-> **模块重编号**：原 **M6 叶子 agent** 重编号为 **M4**。叶子执行支持插件两级能力选择。
+﻿> **模块重编号**：原 **M6 叶子 agent** 重编号为 **M4**。叶子执行支持插件两级能力选择。
 
 # M6 · 叶子 agent 执行 Spec
 
@@ -60,7 +60,7 @@ class LeafContext:
     tools: list[ToolSpec] | None = None        # 初始工具集（默认能力概览 + use_capability）
     max_rounds: int = 10                       # 轮数上限（§5.7.2.1 ①）
     no_progress_rounds: int = 2                # 连续无进展阈值（§9.7 ②）
-    timeout: float | None = 120.0              # 单叶子墙钟超时（None 不检测）
+    timeout: float | None = 240.0              # 单叶子墙钟超时（None 不检测）
     session_timeout: float = 60.0              # 单次 LLM 请求超时
     initial_graph_scope: str = "full"          # （兼容保留）
     initial_graph_lod: int = 2                 # （兼容保留）
@@ -106,7 +106,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 任一触发 → 终止叶子 → 记为 LLM 侧失败 → 沿行为树传播：
 1. **LLM 对话轮数上限**：`ctx.max_rounds`（默认 10 轮工具调用），第 N+1 轮请求即终止，`terminator="round_limit"`
 2. **LLM 连续 N 轮无进展**：`ctx.no_progress_rounds`（默认 2），对连续多轮的「函数名+参数+结果」指纹比较，`terminator="no_progress"`
-3. **单叶子执行超时**：`ctx.timeout`（默认 120s，墙钟计时），`terminator="timeout"`
+3. **单叶子执行超时**：`ctx.timeout`（默认 240s，墙钟计时），`terminator="timeout"`
 
 ### 5.4 定位终止条件（§9.7，叶子终止的子集，已实现）
 

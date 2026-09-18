@@ -47,7 +47,7 @@ def test_defaults_when_no_file(tmp_path, monkeypatch):
     assert cfg.llm.api_key == ""
     assert cfg.run.report_dir == "reports"
     assert cfg.browser.browser_type == "chromium"
-    assert cfg.run.timeout == 120.0
+    assert cfg.run.timeout == 240.0
     assert cfg.run.max_rounds == 10
 
 

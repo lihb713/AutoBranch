@@ -1,4 +1,4 @@
-"""M7 编排器数据契约（M7 spec §5.1/§5.2、契约 §5.7.7/§5.9/§12.4）。
+﻿"""M7 编排器数据契约（M7 spec §5.1/§5.2、契约 §5.7.7/§5.9/§12.4）。
 
 - ``NodeStatus`` / ``SUCCESS`` / ``FAILURE``：节点状态常量（阻塞式遍历，
   无 RUNNING 中间状态，契约 §5.7.7）。
@@ -48,7 +48,7 @@ class RunConfig:
     :param session_factory: 会话工厂（传 M6，测试注入假传输用）。
     """
 
-    timeout: float | None = 120.0
+    timeout: float | None = 240.0
     max_rounds: int = 10
     no_progress_rounds: int = 2
     session_timeout: float = 60.0

@@ -124,8 +124,8 @@ class TestConfigInheritance:
         main_tree = seq(action("全局叶子"), RefNode(ref_target="登录"))
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         Traverser(ctx).tick(main_tree)
-        # 全局默认兜底（根级 schema 注入 config.timeout=120）
-        assert ctx.leaf_executor.timeouts["全局叶子"] == 120.0
+        # 全局默认兜底（根级 schema 注入 config.timeout=240）
+        assert ctx.leaf_executor.timeouts["全局叶子"] == 240.0
         # 被引文档自身覆盖
         assert ctx.leaf_executor.timeouts["登录叶子"] == 5.0
         # 祖先继承：子块未覆盖 → 继承最近祖先登录文档的 5

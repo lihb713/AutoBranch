@@ -185,8 +185,8 @@ class TestTimeoutInheritance:
         main_tree = seq(action("根叶子"), RefNode(ref_target="登录"))
         ctx = make_run_context(config, resolver=resolver, blocks_tree={"主流程": main_tree})
         assert Traverser(ctx).tick(main_tree) == SUCCESS
-        # 全局默认（根级）: config.timeout = 120
-        assert ctx.leaf_executor.timeouts["根叶子"] == 120.0
+        # 全局默认（根级）: config.timeout = 240
+        assert ctx.leaf_executor.timeouts["根叶子"] == 240.0
         # 被引文档覆盖值: 登录文档 timeout=0.3（经 ref 建帧注入）
         assert ctx.leaf_executor.timeouts["块叶子"] == 0.3
         # 三级继承: 子块无覆盖 → 继承最近祖先（登录文档）的 0.3

@@ -1,4 +1,4 @@
-"""AutoBranch 统一配置加载（工具侧配置，非用户行为树文档）。
+﻿"""AutoBranch 统一配置加载（工具侧配置，非用户行为树文档）。
 
 集中管理程序运行参数：LLM 配置（base_url/api_key/model）、浏览器配置
 （类型/无头/超时）、运行参数（叶子超时/轮数上限/报告目录等）。配置来源：
@@ -82,7 +82,7 @@ class RunOptions:
     :param budget_limit: 语义图 token 预算上限（None 不检测）。
     """
 
-    timeout: float | None = 120.0
+    timeout: float | None = 240.0
     max_rounds: int = 10
     no_progress_rounds: int = 2
     session_timeout: float = 60.0

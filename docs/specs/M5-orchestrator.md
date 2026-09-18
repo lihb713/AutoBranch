@@ -1,4 +1,4 @@
-> **模块重编号**：原 **M7 编排器** 重编号为 **M5**。支持 FunctionCall 节点与插件分发/懒装配。
+﻿> **模块重编号**：原 **M7 编排器** 重编号为 **M5**。支持 FunctionCall 节点与插件分发/懒装配。
 
 # M7 · 编排器 + 遍历器 Spec
 
@@ -87,7 +87,7 @@ Engine(
 ```python
 @dataclass(frozen=True)
 class RunConfig:
-    timeout: float | None = 120.0      # 全局叶子超时（注入根级 schema "timeout"）
+    timeout: float | None = 240.0      # 全局叶子超时（注入根级 schema "timeout"）
     max_rounds: int = 10               # 叶子 LLM 工具调用轮数上限（传 M6）
     no_progress_rounds: int = 2        # 连续无进展阈值（传 M6）
     session_timeout: float = 60.0      # 单次 LLM 请求超时（传 M6）

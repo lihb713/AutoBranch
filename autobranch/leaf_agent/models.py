@@ -1,4 +1,4 @@
-"""M6 叶子 agent 数据契约（M6 spec §5.1，对齐 M8 ``autobranch.reporting.models``）。
+﻿"""M6 叶子 agent 数据契约（M6 spec §5.1，对齐 M8 ``autobranch.reporting.models``）。
 
 - ``ToolCallRecord``：单次引擎工具调用记录（函数名/参数/结果/是否成功/时间戳），
   支持序列化/反序列化。注意 M8 的 ``ToolCallRecord`` 不含时间戳字段，本模块
@@ -122,7 +122,7 @@ class LeafContext:
     runtime: Any = None
     max_rounds: int = 10
     no_progress_rounds: int = 2
-    timeout: float | None = 120.0
+    timeout: float | None = 240.0
     session_timeout: float = 60.0
     initial_graph_scope: str = "full"
     initial_graph_lod: int = 2
