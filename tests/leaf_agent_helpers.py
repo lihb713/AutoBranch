@@ -32,6 +32,21 @@ class MockRegistry:
         self.raise_next: Exception | None = None
         self.raise_on: dict[str, Exception] = {}
         self._functions: dict[str, FunctionDef] = {}
+        self._plugins: dict[str, str] = {}
+
+    def register_plugin(self, name: str, description: str = "") -> None:
+        self._plugins[name] = description
+
+    def plugins(self):
+        from types import SimpleNamespace
+
+        return [SimpleNamespace(name=n, description=d) for n, d in self._plugins.items()]
+
+    def known_plugins(self) -> set[str]:
+        return set(self._plugins)
+
+    def functions_of(self, name: str) -> list[FunctionDef]:
+        return list(self._functions.values())
 
     def register(
         self, name: str, *, output_param: str | None = None, parameters: dict | None = None

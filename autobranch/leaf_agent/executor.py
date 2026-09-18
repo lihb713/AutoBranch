@@ -42,6 +42,7 @@ from autobranch.llm import (
     LLMBudgetExceeded,
     LLMConnectionError,
     LLMError,
+    LLMProtocolError,
     LLMSession,
     LLMTimeoutError,
     ToolResult,
@@ -51,6 +52,7 @@ from autobranch.parser.models import ActionNode, ConditionNode
 from autobranch.plugin_system import FunctionResult
 from autobranch.plugin_system.capability import (
     USE_CAPABILITY_TOOL,
+    capability_overview,
     handle_use_capability,
 )
 from autobranch.reporting.models import LeafTrace
@@ -142,6 +144,8 @@ def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResu
     set_decls = tuple(getattr(node, "set_decls", ()))
     tools = ctx.tools if ctx.tools is not None else _initial_tools(ctx)
     system_prompt = build_system_prompt(node, schema_hint=_tool_names_text(tools))
+    if ctx.registry is not None:
+        system_prompt += f"\n\n{capability_overview(ctx.registry)}"
     session = (ctx.session_factory or _default_session_factory(ctx))(ctx.config, system_prompt)
 
     graph_text = ""
@@ -180,7 +184,18 @@ def _run_agent_loop(
     try:
         while True:
             _check_deadline(deadline)
-            response = session.request(tools=current_tools)
+            try:
+                response = session.request(tools=current_tools)
+            except LLMProtocolError as exc:
+                # LLM 输出畸形（工具参数非合法 JSON / 响应不可解析）：回填纠错指令，预算内重试
+                rounds += 1
+                _check_round_limit(rounds, ctx.max_rounds)
+                session.add_user_message(
+                    f"上一轮 LLM 输出无法解析（{exc}）。请重新输出规范的工具调用，"
+                    "工具调用参数必须是合法 JSON；不要重复输出已执行的调用。"
+                )
+                progress.record(_fingerprint([("__llm_retry__", str(exc), "")]))
+                continue
             if response.text:
                 reasoning.append(response.text)
             if response.has_tool_calls:
@@ -204,7 +219,18 @@ def _run_agent_loop(
                 _check_deadline(deadline)
                 continue
             decision = response.text
-            status, bool_value = parse_final_decision(decision, node_type)
+            try:
+                status, bool_value = parse_final_decision(decision, node_type)
+            except DecisionError as exc:
+                # 最终回答不可解析：回填纠错指令，预算内重试
+                rounds += 1
+                _check_round_limit(rounds, ctx.max_rounds)
+                session.add_user_message(
+                    f"无法解析最终结果（{exc}）。请以「结果: 成功」或「结果: 失败」"
+                    "（Condition 为「结果: 真」/「结果: 假」）的格式重新输出最终结论。"
+                )
+                progress.record(_fingerprint([("__decision_retry__", str(exc), "")]))
+                continue
             return _LeafOutcome(
                 status=status,
                 bool_value=bool_value,

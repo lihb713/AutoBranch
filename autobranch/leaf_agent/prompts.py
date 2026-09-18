@@ -1,4 +1,4 @@
-"""叶子执行提示词模板（M6 spec §5.7.2 提示词设计、design D6 版本化）。
+﻿"""叶子执行提示词模板（M6 spec §5.7.2 提示词设计、design D6 版本化）。
 
 固定模板：系统提示词（角色与行为准则）+ 节点描述 + 语义图正文，模板带版本号
 （``PROMPT_VERSION``）。相同输入下渲染结果一致，使 LLM 决策可记录并与后续
@@ -16,7 +16,7 @@ from typing import Literal
 
 from autobranch.parser.models import ActionNode, ConditionNode
 
-PROMPT_VERSION = "1.5"
+PROMPT_VERSION = "1.6"
 
 _ACTION_SYSTEM = """\
 你是一个 Web 自动化执行代理。你的任务是根据「节点描述」，在浏览器中执行对应的网页操作。
@@ -40,7 +40,9 @@ _ACTION_SYSTEM = """\
 6. 若用户消息提示「当前无打开的页面」：说明本动作需要打开/访问一个网址（或引用已保存的
    url 字符串/页签变量）。**直接调用 open(url) 打开新页面**，无需先有当前页面；
    引用已保存的 url 字符串也用 open；引用已保存的页签变量（保存的页面引用）用
-   activate 切换。"""
+   activate 切换。
+7. 调用 use_capability 加载能力时，能力名必须**逐字复制**自系统提示中的「可用能力」列表，
+   不得臆造或改写名称。"""
 
 _CONDITION_SYSTEM = """\
 你是一个 Web 自动化判断代理。你的任务是根据「节点描述」（条件），判断当前页面是否满足该条件。

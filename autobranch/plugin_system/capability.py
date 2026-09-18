@@ -17,12 +17,15 @@ USE_CAPABILITY_TOOL = ToolSpec(
     name="use_capability",
     description=(
         "加载一个能力（插件）并返回其可用函数清单。能力加载后其函数即可调用。"
-        "能力名须从系统提示中的可用能力列表选择。"
+        "能力名必须逐字取自系统提示中的「可用能力」列表；臆造或改写名称将返回未知能力错误。"
     ),
     parameters={
         "type": "object",
         "properties": {
-            "capability": {"type": "string", "description": "要加载的能力名"},
+            "capability": {
+                "type": "string",
+                "description": "要加载的能力名（逐字取自「可用能力」列表）",
+            },
         },
         "required": ["capability"],
     },

@@ -1,4 +1,4 @@
-"""任务 4.3：提示词模板装配（固定输入 → 稳定渲染）与最终回答解析。"""
+﻿"""任务 4.3：提示词模板装配（固定输入 → 稳定渲染）与最终回答解析。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def test_prompt_render_is_deterministic():
 
 def test_prompt_version_is_stable():
     """4.3 提示词带版本号。"""
-    assert PROMPT_VERSION == "1.5"
+    assert PROMPT_VERSION == "1.6"
 
 
 def test_system_prompt_differentiates_node_type():
