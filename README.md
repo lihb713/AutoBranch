@@ -13,6 +13,7 @@
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、插件管理页、执行报告页。
 - **执行实例化**：每次执行保存**行为树快照 + 入参**（触发时刻冻结，执行/重试不随实时树变化）；支持根级入参注入与出参返回、执行列表页（进行中/历史回看）、FIFO 队列调度（全局并发上限可配置）、按快照重试；含不可序列化入参（如 page_ref）的树仅支持 ref 调用。
+- **经验回灌**：整树成功的历史经验（节点级成功调用路径，去 ref 化）存入经验库，同条件（同行为树快照 + 同入参 + 同节点）重跑时以"参考而非指令"注入叶子提示词（以当前语义图为准、与当前状态不符时忽略），降低 LLM 随机性导致的同树重跑失败；按匹配组自动老化。
 
 ## 目录结构
 
@@ -88,7 +89,10 @@ conda run -n autobranch python -m playwright install chromium
 | `AUTOBRANCH_DB_PATH` | SQLite 数据库路径（默认 `data/autobranch.db`） |
 | `AUTOBRANCH_REPORT_DIR` | 报告/截图持久化目录（默认 `data/reports`） |
 
-> 配置项 `max_concurrent_runs`（顶层，默认 3）：服务端**执行并发上限**（同时最多运行 N 个执行实例，超出的进入 FIFO 排队）。
+> 配置项：
+> - `max_concurrent_runs`（顶层，默认 3）：服务端**执行并发上限**（同时最多运行 N 个执行实例，超出的进入 FIFO 排队）。
+> - `experience_feedback`（顶层，默认 true）：**经验回灌开关**（关闭时不采集也不注入）。
+> - `experience_retention`（顶层，默认 5）：**经验老化**——每个匹配组（同树同入参同节点）只保留最近 N 条经验。
 
 > **数据库连接说明**：`autobranch.config.json` 中**不需要**（也没有）数据库连接项——SQLite 为单文件库，路径由 `AUTOBRANCH_DB_PATH` 环境变量或默认值 `data/autobranch.db` 决定，无连接串/账号配置；后端启动时自动初始化建表。如需更换数据库位置，设置环境变量即可，无需改动配置文件或代码。
 
@@ -104,7 +108,9 @@ conda run -n autobranch python -m playwright install chromium
     "headless": true,
     "timeout_ms": 30000
   },
-  "max_concurrent_runs": 3
+  "max_concurrent_runs": 3,
+  "experience_feedback": true,
+  "experience_retention": 5
 }
 ```
 

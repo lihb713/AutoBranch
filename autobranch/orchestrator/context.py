@@ -108,6 +108,7 @@ def make_default_leaf_executor(
             session_timeout=config.session_timeout,
             initial_graph_scope=config.initial_graph_scope,
             initial_graph_lod=config.initial_graph_lod,
+            experience_lookup=config.experience_lookup,
         )
         return execute_leaf(node, leaf_ctx)
 

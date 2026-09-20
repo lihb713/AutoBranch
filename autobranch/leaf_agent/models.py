@@ -126,6 +126,9 @@ class LeafContext:
     session_timeout: float = 60.0
     initial_graph_scope: str = "full"
     initial_graph_lod: int = 2
+    #: 经验回灌查询回调：``(替换 Param 后的 description) -> 参考段文本 | None``
+    #: （由服务端注入，命中三钥匙才返回参考段；None 时不注入，行为与无经验一致）。
+    experience_lookup: Callable[[str], str | None] | None = None
 
 
 def _jsonable(value: Any) -> Any:

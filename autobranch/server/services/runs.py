@@ -17,21 +17,23 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from autobranch.config import AutoBranchConfig
 from autobranch.parser.snapshot import compute_tree_content_hash
-from autobranch.reporting.models import ActionCall, ExecState, NodeInfo, NodeReport
+from autobranch.reporting.models import ActionCall, ExecState, LeafTrace, NodeInfo, NodeReport
 from autobranch.schema.models import PageRef
 from autobranch.server.db import session_factory
 from autobranch.server.errors import AppError, CheckValidationError
-from autobranch.server.models import Run, Tree
+from autobranch.server.models import Experience, Run, Tree
 from autobranch.server.schemas.run import (
     ActionCallOut,
     ExecStateOut,
@@ -68,6 +70,67 @@ def _json_safe_output(value: object) -> object:
 def serialize_outputs(outputs: dict[str, object]) -> dict[str, object]:
     """把引擎出参转为 JSON 安全可入库的表示（展示用途，不承诺完整还原对象）。"""
     return {name: _json_safe_output(value) for name, value in outputs.items()}
+
+
+#: 蒸馏时剔除的运行时标识参数（ref 编号、语义图坐标等，页面一变即失效）。
+_RUNTIME_REF_KEYS = frozenset({"ref"})
+_COORD_KEYS = frozenset({"scope", "dom_path"})
+
+
+def normalize_inputs(inputs: dict | None) -> str:
+    """归一化入参为稳定比较串（sort_keys），经验匹配的"入参直比"依据。"""
+    return json.dumps(inputs or {}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def _keep_arg(key: str, value: object) -> bool:
+    """蒸馏过滤：丢弃纯运行时标识参数（ref 编号、坐标 dict），保留语义参数。"""
+    if key in _RUNTIME_REF_KEYS and (
+        isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+    ):
+        return False
+    if key in _COORD_KEYS and isinstance(value, dict):
+        return False
+    return True
+
+
+def _truncate(text: str, limit: int = 120) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
+def distill_tool_calls(trace: LeafTrace) -> list[dict]:
+    """蒸馏成功路径的骨架：只保留成功调用的 function + 关键参数 + 结果摘要（去 ref 化）。
+
+    剔除失败尝试（``success is False``）与推理噪声；运行时标识（ref 编号/坐标）不进入经验。
+    """
+    calls: list[dict] = []
+    for record in trace.calls:
+        if record.success is False:
+            continue
+        args = record.arguments or {}
+        kept = {k: v for k, v in args.items() if _keep_arg(k, v)}
+        calls.append(
+            {
+                "function": record.name,
+                "arguments": kept,
+                "result": _truncate(record.result or ""),
+            }
+        )
+    return calls
+
+
+def render_reference(tool_calls: list[dict], decision: str | None) -> str:
+    """渲染参考段（注入叶子 prompt）：成功调用序列 + 最终决策，附权威声明。"""
+    lines = ["本次执行的参考经验（同行为树同入参的历史成功做法）:"]
+    lines.append("（仅供参考，以当前语义图为准；与当前页面状态不符时忽略经验）")
+    for i, call in enumerate(tool_calls, 1):
+        args = call.get("arguments") or {}
+        arg_text = ", ".join(f"{k}={v}" for k, v in args.items()) if args else ""
+        lines.append(f"{i}. {call.get('function')}({arg_text}) → 成功")
+    if decision:
+        lines.append(f"最终决策: {decision}")
+    return "\n".join(lines)
 
 
 def _issues_summary(detail: list) -> str:
@@ -269,6 +332,7 @@ class RunService:
                 run_id,
                 doc_id=parsed.tree.name,
                 run_inputs=dict(run.inputs or {}),
+                experience_lookup=self._make_experience_lookup(run),
             )
             self._finalize(db, run_id, result)
         except Exception as exc:
@@ -290,6 +354,100 @@ class RunService:
         )
         run.report_path = report_path
         db.commit()
+        if status == "success" and self._config.experience_feedback:
+            try:
+                self._collect_experiences(db, run)
+            except Exception:
+                logger.exception("经验采集异常 (run_id=%s)", run_id)
+
+    # ------------------------------------------------------------- 经验回灌
+
+    def _make_experience_lookup(
+        self, run: Run
+    ) -> Callable[[str], str | None] | None:
+        """构建节点级经验查询闭包（三钥匙：hash + 归一化入参 + 替换后 description）。
+
+        命中返回参考段文本；未命中返回 None（该叶子行为与无经验一致）。
+        """
+        if not self._config.experience_feedback:
+            return None
+        tree_content_hash = run.tree_content_hash
+        inputs_norm = normalize_inputs(run.inputs)
+
+        def _lookup(node_desc: str) -> str | None:
+            db = session_factory()()
+            try:
+                row = db.scalar(
+                    select(Experience)
+                    .where(
+                        Experience.tree_content_hash == tree_content_hash,
+                        Experience.inputs_norm == inputs_norm,
+                        Experience.node_desc == node_desc,
+                    )
+                    .order_by(Experience.created_at.desc(), Experience.id.desc())
+                    .limit(1)
+                )
+            finally:
+                db.close()
+            if row is None:
+                return None
+            return render_reference(row.tool_calls or [], row.decision)
+
+        return _lookup
+
+    def _collect_experiences(self, db: Session, run: Run) -> None:
+        """整树成功时采集节点级经验：从引擎终态取含 llm_trace 的节点报告，蒸馏入库。"""
+        state = self._engine.get_exec_state(run.id)
+        if state is None or not state.completed:
+            return
+        inputs_norm = normalize_inputs(run.inputs)
+        inserted = 0
+        for report in state.completed:
+            if report.node_type not in ("Action", "Condition"):
+                continue
+            if report.result != "success":
+                continue
+            trace = getattr(report, "llm_trace", None)
+            if trace is None:
+                continue
+            desc = (trace.llm_input or {}).get("description") or report.node_desc
+            calls = distill_tool_calls(trace)
+            if not calls and not trace.decision:
+                continue
+            db.add(
+                Experience(
+                    run_id=run.id,
+                    tree_content_hash=run.tree_content_hash,
+                    inputs_norm=inputs_norm,
+                    node_desc=desc,
+                    node_type=report.node_type,
+                    tool_calls=calls,
+                    decision=trace.decision or "",
+                )
+            )
+            inserted += 1
+        db.commit()
+        if inserted:
+            self._prune_experiences(db)
+
+    def _prune_experiences(self, db: Session) -> None:
+        """老化：按匹配组（hash + inputs_norm + node_desc）只保留最近 N 条。"""
+        keep = max(1, self._config.experience_retention)
+        rows = db.scalars(
+            select(Experience).order_by(
+                Experience.created_at.desc(), Experience.id.desc()
+            )
+        ).all()
+        counts: dict[tuple[str, str, str], int] = {}
+        to_delete: list[int] = []
+        for row in rows:
+            key = (row.tree_content_hash, row.inputs_norm, row.node_desc)
+            counts[key] = counts.get(key, 0) + 1
+            if counts[key] > keep:
+                to_delete.append(row.id)
+        if to_delete:
+            db.execute(delete(Experience).where(Experience.id.in_(to_delete)))
+            db.commit()
 
     def _set_failed(self, db: Session, run_id: int, reason: str) -> None:
         try:

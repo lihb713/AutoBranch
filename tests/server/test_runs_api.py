@@ -232,6 +232,49 @@ def test_types_api(client):
     assert types["object"]["constructible"] is False
 
 
+# ------------------------------------------------------------- 经验回灌采集（任务 4.1）
+
+def test_api_run_success_collects_experience(client, mock_engine, session):
+    from autobranch.reporting.models import ExecState as _ES
+    from autobranch.reporting.models import LeafTrace as _LT
+    from autobranch.reporting.models import NodeReport as _NR
+    from autobranch.server.models import Experience
+
+    tree_id = _create(client, "带参流程", _INPUTS_YAML)
+    mock_engine.default_final_state = _ES(
+        run_id="x",
+        completed=[
+            _NR(
+                node_type="Action",
+                node_desc="操作 admin",
+                result="success",
+                timestamp="t",
+                llm_trace=_LT(
+                    llm_input={"description": "操作 admin"},
+                    decision="结果: 成功",
+                ),
+            )
+        ],
+    )
+    resp = client.post(f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin"}})
+    run_id = resp.json()["run_id"]
+    wait_finished(client, run_id)
+    rows = session.query(Experience).all()
+    assert len(rows) == 1
+    assert rows[0].node_desc == "操作 admin"
+
+
+def test_api_run_failure_no_experience(client, mock_engine, session):
+    from autobranch.server.models import Experience
+
+    mock_engine.default_result = RunResult(status="failure", failure_reason="x")
+    tree_id = _create(client, "带参流程", _INPUTS_YAML)
+    resp = client.post(f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin"}})
+    run_id = resp.json()["run_id"]
+    wait_finished(client, run_id)
+    assert session.query(Experience).count() == 0
+
+
 # ------------------------------------------------------------- 状态轮询（6.1）
 
 def test_state_polling_advances(client, mock_engine, session):

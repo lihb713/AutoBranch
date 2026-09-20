@@ -94,6 +94,13 @@ GET    /api/types                     # 类型可构造性（TypeInfoOut：token
 - **执行配置**：`AutoBranchConfig.load()` 统一加载（§6.3），经 `to_run_config()` 构建 `RunConfig`（report_dir 指向 `data/reports/` 绝对路径）；真实引擎按 e2e 装配注入 M5 `EngineFunctions`（MockFiller 语义图）+ 可选 M0 `LLMConfig`（api_key 可直接写入配置文件 `llm.api_key`，或经 `AUTOBRANCH_LLM_API_KEY` 注入，环境变量优先）。
 - **文档库（跨文档引用）**：`services/doclib.py::DbResolver` 按文档名从 DB 加载 `Tree.content` → `DocumentSource`，实现 M2 `RefResolver`；校验/执行装配经它解析 `ref`（替换旧空 `MappingResolver`，保证生产环境跨文档引用可解析）。
 
+### 5.3.1 经验回灌（Change C，已实现）
+
+- **采集**：整树成功（`_finalize` 置 success）时，经 `engine.get_exec_state` 取含 `llm_trace` 的节点报告，对每个 Action/Condition 成功叶子**蒸馏一条经验**入库 `experiences`（`tree_content_hash` + `inputs_norm`（归一化入参 JSON）+ `node_desc`（替换 Param 后的 description）三钥匙 + `tool_calls` + `decision`）。整树失败不采集；删执行实例级联删其经验（FK CASCADE）。
+- **蒸馏**：只保留成功调用序列（function + 关键参数 + 结果摘要截断）+ 最终决策；**去 ref 化**（ref 编号 / scope / dom_path 坐标等运行时标识不进入经验），剔除推理文本/失败尝试/截图/时间戳。
+- **匹配与注入**：`RunService` 构建查询闭包（绑定 run 的 hash + 归一化入参），经 `EngineService.run(experience_lookup=...)` → `RunConfig` → `LeafContext` 注入；叶子在 `Param` 替换后按 `node_desc` 查最近一条（`ORDER BY created_at DESC LIMIT 1`）渲染参考段（含"仅供参考，以当前语义图为准"声明）。
+- **老化与配置**：采集后按匹配组（hash + inputs_norm + node_desc）只保留最近 N 条（`experience_retention`，默认 5）；`experience_feedback`（默认开）关闭时既不采集也不注入。二者入 `autobranch.config.json`。
+
 ### 5.4 数据契约
 
 ```python
@@ -115,7 +122,8 @@ class ExecStateOut:
   - `runs`（执行实例，Change A 快照化）：id、tree_id(FK→trees.id **ON DELETE SET NULL，可空**——删除树保留历史)、status(CheckConstraint pending/running/success/failure)、failure_reason、report_path(相对路径)、`content_snapshot`(Text，触发时刻冻结树内容)、`tree_name_snapshot`、`tree_content_hash`(执行结构指纹，index)、`inputs`(JSON)、`outputs`(JSON，可空)、created_at/updated_at
   - SQLite 开启 `PRAGMA foreign_keys=ON` 使级联/SET NULL 生效；报告/截图文件落盘 `data/reports/<run_id>/`，库中只存相对路径（database-rules §6）。
   - **执行结构指纹**（`parser/snapshot.py::compute_tree_content_hash`）：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys` 规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
-  - **迁移**：`scripts/migrate_runs_snapshot.py`（幂等：新列 ALTER ADD + tree_id 约束表重建），开发期一次性迁移（database-rules §5）。
+  - `experiences`（经验回灌，Change C）：id、run_id(FK→runs.id ON DELETE CASCADE)、tree_content_hash、inputs_norm、node_desc、node_type、tool_calls(JSON)、decision、created_at/updated_at；匹配组索引 `(tree_content_hash, inputs_norm, node_desc)`。
+  - **迁移**：`scripts/migrate_runs_snapshot.py`（幂等：新列 ALTER ADD + tree_id 约束表重建），开发期一次性迁移（database-rules §5）；`experiences` 为新表由 `create_all` 自动创建。
 
 ## 6. 验收标准（全部达成 ✅）
 

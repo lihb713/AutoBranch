@@ -634,6 +634,18 @@ Condition 执行:
 轮数语义: max_rounds (默认 10) = 工具调用轮数上限, 第 max_rounds+1 轮请求即终止
 
 LeafTrace: 复用 M8 契约 (llm_input/llm_reasoning/decision/calls/terminator)
+
+经验回灌 (Change C 已实现):
+  采集: 整树成功 run 结束时, 逐叶子 (Action/Condition) 从 LeafTrace 蒸馏经验入库
+    (experiences 表, 携带 tree_content_hash + 归一化入参 + 替换 Param 后的 description)
+  蒸馏: 只保留成功调用序列 (function + 关键参数 + 结果摘要, 去 ref 化) + 最终决策;
+    剔除推理文本/失败尝试/截图/时间戳; 运行时标识 (ref 编号/坐标) 不进入经验
+  匹配: 节点执行时按三钥匙 (tree_content_hash + 归一化入参 + 替换后 description)
+    惰性查询, ORDER BY created_at DESC LIMIT 1 取最近一条; 入参对不上/树结构变化自然不命中
+  注入: 命中则在叶子用户消息末尾追加"参考经验"段, 明示"仅供参考, 以当前语义图为准;
+    与当前页面状态不符时忽略经验"——LLM 无需诊断"路径错 vs 经验失效", 图为准、经验不符即弃
+  老化: 每个匹配组只保留最近 N 条 (experience_retention, 默认 5); 开关 experience_feedback
+    (默认开, 关闭时不采集不注入)
 ```
 
 #### 5.7.2.1 引擎与 LLM 的边界（黑盒 + 兜底）

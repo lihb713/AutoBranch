@@ -14,6 +14,7 @@ from __future__ import annotations
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -45,12 +46,15 @@ class EngineService(ABC):
         *,
         doc_id: str | None = None,
         run_inputs: dict[str, object] | None = None,
+        experience_lookup: Callable[[str], str | None] | None = None,
     ) -> RunResult:
         """内嵌执行一次行为树，返回 M7 ``RunResult``（阻塞，后台任务调用）。
 
         :param doc_id: 文档标识（M2 帧路径以它命名，须与根块名一致；
           缺省用 ``tree-<tree_id>`` 兜底）。
         :param run_inputs: 根级入参值（按文档 ``inputs`` 声明类型注入）。
+        :param experience_lookup: 经验回灌查询回调（命中返回参考段文本，未命中
+          None；None 表示不注入经验）。
         """
 
     @abstractmethod
@@ -141,6 +145,7 @@ class EmbeddedEngineService(EngineService):
         *,
         doc_id: str | None = None,
         run_inputs: dict[str, object] | None = None,
+        experience_lookup: Callable[[str], str | None] | None = None,
     ) -> RunResult:
         """解析执行：doc_id 须与内容实际根块名一致（帧路径以它命名）。
 
@@ -168,9 +173,12 @@ class EmbeddedEngineService(EngineService):
         with self._lock:
             self._runs[run_id] = (engine, None)
         try:
+            run_config = replace(
+                self._build_run_config(), experience_lookup=experience_lookup
+            )
             run_result = engine.run(
                 result.tree,
-                self._build_run_config(),
+                run_config,
                 resolver=resolver,
                 blocks_tree=result.blocks_tree,
                 decl_inputs=result.decl_inputs,
@@ -258,10 +266,13 @@ class MockEngineService(EngineService):
     def __init__(self) -> None:
         self.call_log: list[tuple[int, str, int]] = []
         self.run_inputs_log: list[dict[str, object] | None] = []
+        self.experience_lookup_log: list[Callable[[str], str | None] | None] = []
         self._results: dict[int, list[RunResult]] = {}
         self._states: dict[int, list[ExecState]] = {}
         self._final: dict[int, ExecState] = {}
+        self._final_states: dict[int, ExecState] = {}
         self.default_result: RunResult = RunResult(status="success")
+        self.default_final_state: ExecState | None = None
 
     def set_script(
         self,
@@ -274,6 +285,10 @@ class MockEngineService(EngineService):
         if states:
             self._states[run_id] = list(states)
 
+    def set_final_state(self, run_id: int, state: ExecState) -> None:
+        """设定 run 的终态（含 completed NodeReport，供经验采集测试注入）。"""
+        self._final_states[run_id] = state
+
     def run(
         self,
         tree_id: int,
@@ -282,12 +297,18 @@ class MockEngineService(EngineService):
         *,
         doc_id: str | None = None,
         run_inputs: dict[str, object] | None = None,
+        experience_lookup: Callable[[str], str | None] | None = None,
     ) -> RunResult:
         self.call_log.append((tree_id, content, run_id))
         self.run_inputs_log.append(run_inputs)
+        self.experience_lookup_log.append(experience_lookup)
         queue = self._results.get(run_id)
         outcome = queue.pop(0) if queue else self.default_result
-        self._final[run_id] = ExecState(run_id=str(run_id), finished=True)
+        self._final[run_id] = (
+            self._final_states.get(run_id)
+            or self.default_final_state
+            or ExecState(run_id=str(run_id), finished=True)
+        )
         return outcome
 
     def get_exec_state(self, run_id: int) -> ExecState | None:
@@ -297,7 +318,10 @@ class MockEngineService(EngineService):
             if not queue:
                 self._states.pop(run_id, None)
             return state
-        return self._final.get(run_id)
+        state = self._final.get(run_id)
+        if state is not None:
+            return state
+        return self._final_states.get(run_id)
 
 
 __all__ = [

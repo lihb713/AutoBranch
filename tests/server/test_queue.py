@@ -26,7 +26,9 @@ class BlockingEngine(EngineService):
         self.release = threading.Event()
         self.calls: list[int] = []
 
-    def run(self, tree_id, content, run_id, *, doc_id=None, run_inputs=None):
+    def run(
+        self, tree_id, content, run_id, *, doc_id=None, run_inputs=None, experience_lookup=None
+    ):
         self.calls.append(run_id)
         self.started.set()
         self.release.wait()

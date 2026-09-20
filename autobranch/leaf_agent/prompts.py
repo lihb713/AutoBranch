@@ -87,6 +87,7 @@ def build_user_message(
     css_hint: str | None = None,
     set_targets: tuple[str, ...] = (),
     set_decls: tuple[tuple[str, str], ...] = (),
+    reference: str | None = None,
 ) -> str:
     """构建用户消息（节点描述 + 当前语义图正文）。
 
@@ -94,6 +95,8 @@ def build_user_message(
     :param set_decls: ``(path, type)`` 类型标注（TYPE_REGISTRY token）；type=page_ref
       提示用 open 存页签、type=str 提示用 get_url/extract 存文本、其余类型提示
       提取后转换。仅作提示，实际类型由引擎函数保证。
+    :param reference: 经验回灌参考段（同行为树同入参历史成功做法，命中才注入；
+      明示仅供参考、以当前语义图为准、与当前状态不符时忽略）。
     """
     hint = f"\nCSS 提示: {css_hint}" if css_hint else ""
     set_line = ""
@@ -113,7 +116,8 @@ def build_user_message(
             "\n（写入目标的变量必须在以上声明集内；若描述是“切回/使用已打开页面”"
             "调 activate 而非 open）"
         )
-    return f"节点描述: {description}{hint}{set_line}\n\n当前页面语义图:\n{graph_text}"
+    ref_line = f"\n\n{reference}" if reference else ""
+    return f"节点描述: {description}{hint}{set_line}{ref_line}\n\n当前页面语义图:\n{graph_text}"
 
 
 class DecisionError(ValueError):

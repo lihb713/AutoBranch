@@ -99,6 +99,8 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 输出: Action=成功/失败; Condition=确定布尔值
 ```
 
+- **经验回灌（Change C，已实现）**：`LeafContext.experience_lookup`（服务端注入回调）在 `Param.x` 替换后按节点身份查询历史成功经验（三钥匙：`tree_content_hash` + 归一化入参 + 替换后 description），命中则在用户消息末尾追加"参考经验"段（明示"仅供参考，以当前语义图为准；与当前状态不符时忽略经验"）；未命中/关闭时提示词与无经验完全一致。
+- **LeafTrace 记录替换后描述**：`llm_input["description"]` 记录 `Param.x` 替换后的实际文本（LLM 真正看到的），非模板——回溯报告与经验采集以此为准。
 - 最终回答标记约定（`parse_final_decision` 解析）：Action 为 `结果: 成功`/`结果: 失败`；Condition 为 `结果: 真`/`结果: 假`（确定判断），`结果: 失败` 表示无法确定 → LLM 侧失败。兼容英文标记（success/failure/true/false）与 JSON 结构化结果（`{"status": ...}`/`{"bool_value": ...}`）。
 
 ### 5.3 叶子终止条件（引擎兜底，§5.7.2.1，已实现）

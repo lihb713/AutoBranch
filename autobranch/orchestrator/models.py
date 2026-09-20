@@ -59,6 +59,8 @@ class RunConfig:
     global_config: dict[str, Value] = field(default_factory=dict)
     llm_config: LLMConfig | None = None
     session_factory: Callable[[LLMConfig, str], LLMSession] | None = None
+    #: 经验回灌查询回调 ``(替换后 description) -> 参考段文本 | None``（服务端注入）。
+    experience_lookup: Callable[[str], str | None] | None = None
 
 
 @dataclass(frozen=True)

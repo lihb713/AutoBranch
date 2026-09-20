@@ -130,6 +130,10 @@ class AutoBranchConfig:
     run: RunOptions = field(default_factory=RunOptions)
     #: 服务端执行并发上限（M9b 队列调度：同时最多 N 个执行实例，默认 3）。
     max_concurrent_runs: int = 3
+    #: 经验回灌开关（默认开；关闭时不采集也不注入）。
+    experience_feedback: bool = True
+    #: 经验老化：每个匹配组（hash + inputs + node_desc）只保留最近 N 条。
+    experience_retention: int = 5
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AutoBranchConfig:
@@ -141,6 +145,8 @@ class AutoBranchConfig:
             browser=BrowserOptions.from_dict(browser_data),
             run=RunOptions.from_dict(run_data),
             max_concurrent_runs=int(data.get("max_concurrent_runs", cls.max_concurrent_runs)),
+            experience_feedback=bool(data.get("experience_feedback", cls.experience_feedback)),
+            experience_retention=int(data.get("experience_retention", cls.experience_retention)),
         )
 
     @classmethod
@@ -225,6 +231,8 @@ def _apply_env_overrides(cfg: AutoBranchConfig) -> AutoBranchConfig:
             browser=cfg.browser,
             run=cfg.run,
             max_concurrent_runs=cfg.max_concurrent_runs,
+            experience_feedback=cfg.experience_feedback,
+            experience_retention=cfg.experience_retention,
         )
     return cfg
 

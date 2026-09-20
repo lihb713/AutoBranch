@@ -138,7 +138,11 @@ def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResu
     if get_error is not None:
         # 读取变量失败是程序错误：叶子直接 FAILURE（程序侧）
         return _build_leaf_result(
-            node, node_type, _LeafOutcome("failure", None, "program", None, decision=get_error), ""
+            node,
+            node_type,
+            _LeafOutcome("failure", None, "program", None, decision=get_error),
+            "",
+            resolved_description=description,
         )
     set_targets = tuple(getattr(node, "set_targets", ()))
     set_decls = tuple(getattr(node, "set_decls", ()))
@@ -148,6 +152,10 @@ def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResu
         system_prompt += f"\n\n{capability_overview(ctx.registry)}"
     session = (ctx.session_factory or _default_session_factory(ctx))(ctx.config, system_prompt)
 
+    # 经验回灌：替换 Param 后按节点身份查历史成功经验（三钥匙匹配），命中才注入
+    reference = None
+    if ctx.experience_lookup is not None:
+        reference = ctx.experience_lookup(description)
     graph_text = ""
     user_message = build_user_message(
         description=description,
@@ -155,10 +163,13 @@ def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResu
         css_hint=_css_hint(node),
         set_targets=set_targets,
         set_decls=set_decls,
+        reference=reference,
     )
     session.add_user_message(user_message)
     outcome = _run_agent_loop(session, ctx, node_type, tools, set_targets, set_decls)
-    return _build_leaf_result(node, node_type, outcome, graph_text)
+    return _build_leaf_result(
+        node, node_type, outcome, graph_text, resolved_description=description
+    )
 
 
 def _run_agent_loop(
@@ -442,11 +453,13 @@ def _build_leaf_result(
     node_type: str,
     outcome: _LeafOutcome,
     graph_text: str,
+    *,
+    resolved_description: str,
 ) -> LeafResult:
     trace = LeafTrace(
         llm_input={
             "node_type": node_type,
-            "description": node.description,
+            "description": resolved_description,
             "css_hint": _css_hint(node),
             "graph": graph_text,
             "prompt_version": PROMPT_VERSION,
