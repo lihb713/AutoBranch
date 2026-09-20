@@ -1,4 +1,4 @@
-import type { ReportResponse, RunStart, RunState } from "../types/run";
+import type { ReportResponse, RunDetail, RunOut, RunStart, RunState } from "../types/run";
 import { request } from "./request";
 
 async function requestReport(path: string): Promise<ReportResponse> {
@@ -18,7 +18,21 @@ async function requestReport(path: string): Promise<ReportResponse> {
 }
 
 export const runsApi = {
-  runTree: (id: number) => request<RunStart>(`/trees/${id}/run`, { method: "POST" }),
+  runTree: (id: number, inputs?: Record<string, unknown>) =>
+    request<RunStart>(`/trees/${id}/run`, {
+      method: "POST",
+      body: JSON.stringify({ inputs }),
+    }),
+
+  listRuns: () => request<RunOut[]>("/runs"),
+
+  getRunDetail: (runId: string | number) => request<RunDetail>(`/runs/${runId}`),
+
+  retryRun: (runId: string | number) =>
+    request<RunStart>(`/runs/${runId}/retry`, { method: "POST" }),
+
+  deleteRun: (runId: string | number) =>
+    request<void>(`/runs/${runId}`, { method: "DELETE" }),
 
   getRunState: (runId: string | number) => request<RunState>(`/runs/${runId}/state`),
 

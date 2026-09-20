@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   getRunState: vi.fn(),
   getRunReport: vi.fn(),
   getRunTrace: vi.fn(),
+  getRunDetail: vi.fn(),
+  retryRun: vi.fn(),
 }));
 
 vi.mock("../../api/runs", () => ({
@@ -15,6 +17,8 @@ vi.mock("../../api/runs", () => ({
     getRunState: mocks.getRunState,
     getRunReport: mocks.getRunReport,
     getRunTrace: mocks.getRunTrace,
+    getRunDetail: mocks.getRunDetail,
+    retryRun: mocks.retryRun,
     getReportFile: (p: string) => `/api/reports/${p}`,
   },
 }));
@@ -62,6 +66,22 @@ function renderReport() {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  mocks.getRunDetail.mockResolvedValue({
+    id: 5,
+    tree_id: 1,
+    tree_name: "冒烟流程",
+    status: "success",
+    inputs: {},
+    outputs: null,
+    tree_content_hash: "abc123",
+    failure_reason: null,
+    created_at: null,
+    updated_at: null,
+    duration: null,
+    progress: null,
+    content_snapshot: "tree: 冒烟流程",
+  });
+  mocks.retryRun.mockResolvedValue({ run_id: 99 });
 });
 
 afterEach(() => {

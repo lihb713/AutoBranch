@@ -1,13 +1,12 @@
 """行为树文档 CRUD 服务（设计 D1：业务逻辑下沉 service 层）。
 
 业务规则：重名 409、不存在 404（抛 ``AppError``）；保存前经 M2 清晰度校验
-（``validate_document``，失败 422 不落库，契约 §12.5）；删除行为树时级联
-删除其执行记录（FK CASCADE）并清理报告文件。
+（``validate_document``，失败 422 不落库，契约 §12.5）；删除行为树时**保留**
+其历史执行实例（``Run.tree_id`` 经 FK ``SET NULL`` 置空，执行历史自包含）。
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
@@ -17,30 +16,47 @@ from sqlalchemy.orm import Session
 
 from autobranch.plugin_system import PluginRegistry
 from autobranch.server.db import get_db
-from autobranch.server.deps import get_plugin_registry, get_report_root
+from autobranch.server.deps import get_plugin_registry
 from autobranch.server.errors import AppError
-from autobranch.server.models import Run, Tree
+from autobranch.server.models import Tree
 from autobranch.server.schemas.tree import TreeCreate, TreeDetailOut, TreeOut, TreeUpdate
 from autobranch.server.services.validation import validate_document
 
 DbSession = Annotated[Session, Depends(get_db)]
-ReportRoot = Annotated[Path, Depends(get_report_root)]
 Registry = Annotated[PluginRegistry, Depends(get_plugin_registry)]
 
 
 class TreeService:
     """行为树文档库服务（会话经 FastAPI DI 注入）。"""
 
-    def __init__(self, db: DbSession, report_root: ReportRoot, registry: Registry = None) -> None:
+    def __init__(self, db: DbSession, registry: Registry = None) -> None:
         self.db = db
-        self.report_root = report_root
         self.registry = registry
 
     # ------------------------------------------------------------- 查询
 
+    @staticmethod
+    def _declared_inputs(content: str) -> dict[str, str]:
+        """派生文档级入参声明（名 -> 类型），供前端执行约束/入参对话框。"""
+        from autobranch.parser.yamlio import normalize_document
+
+        raw = (normalize_document(content) or {}).get("inputs") or {}
+        if not isinstance(raw, dict):
+            return {}
+        return {str(k): str(v) for k, v in raw.items()}
+
+    def _out(self, tree: Tree) -> TreeOut:
+        return TreeOut(
+            id=tree.id,
+            name=tree.name,
+            created_at=tree.created_at,
+            updated_at=tree.updated_at,
+            inputs=self._declared_inputs(tree.content),
+        )
+
     def list_all(self) -> list[TreeOut]:
         trees = self.db.scalars(select(Tree).order_by(Tree.id)).all()
-        return [TreeOut.model_validate(tree) for tree in trees]
+        return [self._out(tree) for tree in trees]
 
     def get(self, tree_id: int) -> Tree:
         tree = self.db.get(Tree, tree_id)
@@ -50,7 +66,15 @@ class TreeService:
 
     def get_detail(self, tree_id: int) -> TreeDetailOut:
         tree = self.get(tree_id)
-        return TreeDetailOut.model_validate(tree)
+        out = self._out(tree)
+        return TreeDetailOut(
+            id=out.id,
+            name=out.name,
+            created_at=out.created_at,
+            updated_at=out.updated_at,
+            inputs=out.inputs,
+            content=tree.content,
+        )
 
     def get_content(self, tree_id: int) -> Tree:
         return self.get(tree_id)
@@ -70,7 +94,7 @@ class TreeService:
         self.db.add(tree)
         self._commit_or_conflict()
         self.db.refresh(tree)
-        return TreeOut.model_validate(tree)
+        return self._out(tree)
 
     def update(self, tree_id: int, payload: TreeUpdate) -> TreeOut:
         tree = self.get(tree_id)
@@ -81,15 +105,12 @@ class TreeService:
         tree.content = new_content
         self._commit_or_conflict()
         self.db.refresh(tree)
-        return TreeOut.model_validate(tree)
+        return self._out(tree)
 
     def delete(self, tree_id: int) -> None:
         tree = self.get(tree_id)
-        run_ids = [run.id for run in self.db.scalars(select(Run).where(Run.tree_id == tree_id))]
         self.db.delete(tree)
         self.db.commit()
-        for run_id in run_ids:
-            self._cleanup_run_files(run_id)
 
     # ------------------------------------------------------------- 内部
 
@@ -99,13 +120,6 @@ class TreeService:
         except IntegrityError:
             self.db.rollback()
             raise AppError(409, "行为树名称已存在") from None
-
-    def _cleanup_run_files(self, run_id: int) -> None:
-        target = (self.report_root / str(run_id)).resolve()
-        if target.is_relative_to(self.report_root.resolve()):
-            import shutil
-
-            shutil.rmtree(target, ignore_errors=True)
 
 
 __all__ = ["TreeService"]

@@ -1206,3 +1206,103 @@ body {
   -webkit-text-fill-color: #15803d;
   font-weight: inherit;
 }
+/* ===== Change A：全局导航 / 执行列表 / 入参对话框 / 出参区 ===== */
+.global-nav {
+  display: flex;
+  gap: 4px;
+  padding: 10px 16px 0;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+.global-nav__tab {
+  padding: 8px 14px;
+  border-radius: 8px 8px 0 0;
+  color: var(--color-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  border: 1px solid transparent;
+  border-bottom: none;
+}
+.global-nav__tab:hover { color: var(--color-text); background: var(--color-bg-muted); }
+.global-nav__tab--active {
+  color: var(--color-text);
+  background: var(--color-bg);
+  border-color: var(--color-border);
+  font-weight: 600;
+}
+
+.tree-list-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.status-pending {
+  color: var(--color-muted);
+  background: var(--color-border);
+}
+
+.run-dialog {
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
+  max-width: 480px;
+}
+.run-dialog__title { font-weight: 600; margin-bottom: 12px; }
+.run-dialog__field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.run-dialog__label { width: 160px; font-size: var(--font-size-sm); }
+.run-dialog__input {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  flex: 1;
+}
+.run-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+.run-cell-json {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snapshot-dialog {
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  max-width: 720px;
+}
+.snapshot-dialog__content {
+  background: var(--color-bg-muted);
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: var(--font-size-sm);
+}
+
+.outputs-section {
+  margin: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.outputs-section__title { font-weight: 600; margin-bottom: 8px; }
+.outputs-section__body {
+  background: var(--color-bg-muted);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+}

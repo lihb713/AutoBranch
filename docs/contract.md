@@ -2278,6 +2278,20 @@ run_id 语义: POST /run 返回的 run_id 为 runs 表自增 id（非引擎内�
 
 doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树名=文档名（`tree` 键 ≠ 文档 name → 422 拒绝），
   帧 doc_id 取解析出的树名
+
+**执行实例化（Change A 已实现）：**
+- **执行实例**：每次执行建模为自包含实例，触发时刻冻结快照——`content_snapshot`（行为树 yaml 全文）、
+  `tree_name_snapshot`、`tree_content_hash`（执行结构指纹）、`inputs`（原始入参）；执行与重试一律基于
+  快照，不读实时树内容；树被删除后历史实例仍可回看/重试（`runs.tree_id` ON DELETE SET NULL）。
+- **执行结构指纹**：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys`
+  规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
+- **根级入参/出参**：`POST /run` 可选 `inputs`（按声明类型 coerce 注入根帧，叶子 `Param.` 读取）；
+  结束读根帧 `outputs` 落库并在报告页/列表展示。声明含不可由文本构造类型（`page_ref`/`object`）的树
+  禁止直接执行（422，仅支持 ref 调用）；可构造性经 `GET /api/types`（`cast is not None`）单点派生。
+- **队列调度**：全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列；`pending` 即排队中（列表显示
+  序号）；并发满的新触发进排队（不再有同树 409 去重），执行结束自动调度下一个。
+- **执行列表**：`GET /api/runs` + 前端 `/runs` 页（状态/快照树名/入参/耗时/指纹短显/进行中轮询）；
+  `GET /api/runs/{id}`（含快照）、`POST /api/runs/{id}/retry`（复制快照+入参）、`DELETE /api/runs/{id}`。
 ```
 
 ### 12.5 前端行为树的复合节点视图

@@ -31,6 +31,7 @@ def config_file(tmp_path):
                     "max_rounds": 6,
                     "report_dir": "custom_reports",
                 },
+                "max_concurrent_runs": 5,
             }
         ),
         encoding="utf-8",
@@ -49,6 +50,7 @@ def test_defaults_when_no_file(tmp_path, monkeypatch):
     assert cfg.browser.browser_type == "chromium"
     assert cfg.run.timeout == 240.0
     assert cfg.run.max_rounds == 10
+    assert cfg.max_concurrent_runs == 3  # 默认并发上限
 
 
 def test_load_from_file(config_file):
@@ -63,6 +65,7 @@ def test_load_from_file(config_file):
     assert cfg.run.timeout == 200.0
     assert cfg.run.max_rounds == 6
     assert cfg.run.report_dir == "custom_reports"
+    assert cfg.max_concurrent_runs == 5  # 配置文件覆盖
 
 
 def test_env_api_key_overrides_file(config_file, monkeypatch):
@@ -70,6 +73,7 @@ def test_env_api_key_overrides_file(config_file, monkeypatch):
     cfg = AutoBranchConfig.load(config_file, apply_env=True)
     assert cfg.llm.api_key == "sk-env-secret"  # 环境变量优先
     assert cfg.llm.base_url == "https://api.example.com/v1"  # 文件字段保留
+    assert cfg.max_concurrent_runs == 5  # env 覆盖不影响并发上限
 
 
 def test_env_config_path(config_file, monkeypatch):

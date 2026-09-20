@@ -5,6 +5,7 @@ import { Button } from "../../components/Button";
 import { ErrorMessage } from "../../components/ErrorMessage";
 import { StatusBadge } from "../../components/StatusBadge";
 import { usePolling } from "../../hooks/usePolling";
+import type { RunDetail } from "../../types/run";
 import { BlackboardPanel } from "../reports/BlackboardPanel";
 import { ReportPanel } from "../reports/ReportPanel";
 import { NodeReportRow } from "./NodeReportRow";
@@ -20,6 +21,7 @@ export function RunReportPage() {
   const [execText, setExecText] = useState<string | null>(null);
   const [traceText, setTraceText] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<RunDetail | null>(null);
 
   const finished = data?.finished === true;
 
@@ -27,6 +29,12 @@ export function RunReportPage() {
     if (!finished || runId === undefined) return;
     let cancelled = false;
     setReportError(null);
+    runsApi
+      .getRunDetail(runId)
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch(() => undefined);
     Promise.all([runsApi.getRunReport(runId), runsApi.getRunTrace(runId)])
       .then(([rep, trace]) => {
         if (cancelled) return;
@@ -46,12 +54,22 @@ export function RunReportPage() {
     };
   }, [finished, runId]);
 
+  const handleRetry = async () => {
+    if (runId === undefined) return;
+    try {
+      const { run_id } = await runsApi.retryRun(runId);
+      navigate(`/runs/${run_id}`);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "重试失败");
+    }
+  };
+
   if (runId === undefined) {
     return (
       <div className="page-error">
         <ErrorMessage message="缺少执行编号（runId）" />
-        <Button variant="ghost" onClick={() => navigate("/")}>
-          返回列表
+        <Button variant="ghost" onClick={() => navigate("/runs")}>
+          返回执行列表
         </Button>
       </div>
     );
@@ -65,8 +83,13 @@ export function RunReportPage() {
         <h1 className="page-title">执行报告 #{runId}</h1>
         <div className="page-actions">
           <StatusBadge kind={statusKind} />
-          <Button variant="ghost" onClick={() => navigate("/")}>
-            返回列表
+          {finished ? (
+            <Button variant="ghost" onClick={() => void handleRetry()} data-testid="report-retry">
+              重试
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={() => navigate("/runs")}>
+            返回执行列表
           </Button>
         </div>
       </header>
@@ -77,6 +100,13 @@ export function RunReportPage() {
       ) : null}
 
       {data === null && error === null ? <div className="page-loading">等待执行状态…</div> : null}
+
+      {detail?.outputs && Object.keys(detail.outputs).length > 0 ? (
+        <div className="outputs-section" data-testid="outputs-section">
+          <h2 className="outputs-section__title">出参</h2>
+          <pre className="outputs-section__body">{JSON.stringify(detail.outputs, null, 2)}</pre>
+        </div>
+      ) : null}
 
       {data !== null ? (
         <div className="run-report__body">

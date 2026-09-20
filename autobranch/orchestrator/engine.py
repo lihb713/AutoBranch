@@ -18,7 +18,7 @@ from autobranch.orchestrator.context import RunContext, make_default_leaf_execut
 from autobranch.orchestrator.models import FAILURE, RunConfig, RunResult
 from autobranch.orchestrator.traverser import Traverser, count_nodes
 from autobranch.reporting import ExecState, Reporter
-from autobranch.schema import SchemaSpace
+from autobranch.schema import SchemaSpace, coerce
 from autobranch.schema.errors import SchemaError
 
 if TYPE_CHECKING:
@@ -78,6 +78,7 @@ class Engine:
         decl_inputs: dict[str, str] | None = None,
         decl_outputs: list[str] | None = None,
         config_overrides: dict[str, object] | None = None,
+        run_inputs: dict[str, object] | None = None,
     ) -> RunResult:
         """执行入口（§9.8 ⓪/①/②）：会话初始化 → 遍历 → 返回运行结果。
 
@@ -89,6 +90,8 @@ class Engine:
         :param blocks_tree: 文档名 -> 主树（一文档一树；ref 运行期经 resolver
           加载被引文档，本表仅承载根文档主树）。
         :param decl_inputs/outputs/config_overrides: 文档级接口与配置声明。
+        :param run_inputs: 根级入参值（名 -> 值，按声明类型 coerce 后注入根帧；
+          叶子以 ``Param.<名>`` 读取）。
         """
         self._run_context = None
         problem = self._validate_input(tree, config)
@@ -127,8 +130,11 @@ class Engine:
         self._run_context = ctx
         traverser = Traverser(ctx)
         status = FAILURE
+        root_frame = None
         try:
             space.enter_frame(tree.name, ctx.schema_decl(tree.name))
+            root_frame = ctx.current_frame
+            self._inject_run_inputs(space, root_frame, ctx.decl_inputs, run_inputs)
             status = traverser.tick(tree.root)
         except FatalBrowserError as exc:
             ctx.failure_reason = ctx.failure_reason or f"程序侧致命错误: {exc}"
@@ -145,13 +151,47 @@ class Engine:
                 registry.release()
             except Exception:
                 logger.warning("插件资源释放异常", exc_info=True)
+        outputs = self._read_outputs(space, root_frame, ctx.decl_outputs)
         bundle = reporter.finalize()
         return RunResult(
             status=status,
             failure_reason=ctx.failure_reason if status == FAILURE else None,
+            outputs=outputs,
             exec_report=bundle.exec_report,
             trace_report=bundle.trace_report,
         )
+
+    @staticmethod
+    def _inject_run_inputs(
+        space: SchemaSpace,
+        root_frame,
+        decl_inputs: dict[str, str],
+        run_inputs: dict[str, object] | None,
+    ) -> None:
+        """根级入参注入：按声明类型 coerce 后写根帧 ``this/<名>``（叶子 Param 读取）。
+
+        仅注入声明过的入参；未声明的入参忽略（API 层已校验，此处防御）。
+        """
+        if not run_inputs:
+            return
+        for name, raw in run_inputs.items():
+            type_name = decl_inputs.get(name)
+            if type_name is None:
+                continue
+            value = coerce(type_name, raw)
+            space.write(root_frame, f"this/{name}", value, type_name)
+
+    @staticmethod
+    def _read_outputs(space: SchemaSpace, root_frame, decl_outputs: list[str]) -> dict[str, object]:
+        """遍历后读根帧输出（按 ``decl_outputs`` 声明；None 值不收录）。"""
+        if root_frame is None or not decl_outputs:
+            return {}
+        outputs: dict[str, object] = {}
+        for name in decl_outputs:
+            value = space.read(root_frame, f"this/{name}")
+            if value is not None:
+                outputs[name] = value
+        return outputs
 
     def get_exec_state(self) -> ExecState:
         """可查询执行状态快照（§12.4，供 M9b 轮询）；未运行返回空状态。

@@ -34,6 +34,8 @@ class TreeOut(BaseModel):
     name: str
     created_at: datetime
     updated_at: datetime
+    #: 文档级入参声明（名 -> 类型），派生自 content（前端执行按钮约束/入参对话框用）。
+    inputs: dict[str, str] = {}
 
 
 class TreeDetailOut(TreeOut):

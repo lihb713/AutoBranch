@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ApiError } from "../../api/request";
 import { runsApi } from "../../api/runs";
 import { treesApi } from "../../api/trees";
+import { typesApi } from "../../api/types";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
 import type { TreeOut } from "../../types/tree";
+import { RunInputDialog } from "../runs/RunInputDialog";
 import { parseDoc } from "./treeModel";
 
 function formatTime(value: string): string {
@@ -20,7 +22,16 @@ export function TreeListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [constructible, setConstructible] = useState<Set<string>>(new Set());
+  const [pendingTree, setPendingTree] = useState<TreeOut | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    typesApi
+      .listTypes()
+      .then((list) => setConstructible(new Set(list.filter((t) => t.constructible).map((t) => t.token))))
+      .catch(() => setConstructible(new Set(["str", "int", "float", "bool"])));
+  }, []);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -65,11 +76,12 @@ export function TreeListPage() {
     [refetchList],
   );
 
-  const handleRun = useCallback(
-    async (tree: TreeOut) => {
+  const runTree = useCallback(
+    async (tree: TreeOut, inputs?: Record<string, unknown>) => {
       setError(null);
+      setPendingTree(null);
       try {
-        const { run_id } = await runsApi.runTree(tree.id);
+        const { run_id } = await runsApi.runTree(tree.id, inputs);
         navigate(`/runs/${run_id}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "触发执行失败");
@@ -77,6 +89,25 @@ export function TreeListPage() {
     },
     [navigate],
   );
+
+  const handleRunClick = useCallback(
+    (tree: TreeOut) => {
+      const declared = Object.keys(tree.inputs ?? {});
+      if (declared.length === 0) {
+        void runTree(tree);
+        return;
+      }
+      const nonConstructible = declared.filter((name) => !constructible.has(tree.inputs[name]));
+      if (nonConstructible.length > 0) {
+        return; // 含不可构造入参 → 不渲染执行按钮（防御性）
+      }
+      setPendingTree(tree);
+    },
+    [constructible, runTree],
+  );
+
+  const canRunDirectly = (tree: TreeOut) =>
+    Object.keys(tree.inputs ?? {}).every((name) => constructible.has(tree.inputs[name]));
 
   const handleImport = useCallback(
     async (file: File) => {
@@ -102,24 +133,26 @@ export function TreeListPage() {
   );
 
   return (
-    <section className="tree-list-page">
+    <section className="tree-list-page" data-testid="tree-list-page">
       <header className="page-header">
         <h1 className="page-title">行为树</h1>
-        <div className="page-actions">
-          <Link to="/plugins" className="btn btn-ghost" data-testid="go-plugins">
-            插件管理
-          </Link>
-          <Button
-            variant="ghost"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            data-testid="import-tree"
-          >
-            {importing ? "导入中…" : "导入文档"}
-          </Button>
-          <Button onClick={() => navigate("/editor")}>新建行为树</Button>
-        </div>
       </header>
+
+      {error ? <ErrorMessage message={error} /> : null}
+
+      <div className="tree-list-toolbar" data-testid="tree-list-toolbar">
+        <Button
+          variant="ghost"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          data-testid="import-tree"
+        >
+          {importing ? "导入中…" : "导入文档"}
+        </Button>
+        <Button onClick={() => navigate("/editor")} data-testid="new-tree">
+          新建行为树
+        </Button>
+      </div>
 
       <input
         ref={fileInputRef}
@@ -133,8 +166,6 @@ export function TreeListPage() {
           e.target.value = "";
         }}
       />
-
-      {error ? <ErrorMessage message={error} /> : null}
 
       {loading ? (
         <div className="page-loading">加载中…</div>
@@ -164,13 +195,20 @@ export function TreeListPage() {
                     <Button
                       variant="ghost"
                       onClick={() => navigate(`/editor/${tree.id}`)}
+                      data-testid={`edit-${tree.id}`}
                     >
                       编辑
                     </Button>
-                    <Button variant="ghost" onClick={() => handleRun(tree)}>
-                      执行
-                    </Button>
-                    <Button variant="danger" onClick={() => handleDelete(tree)}>
+                    {canRunDirectly(tree) ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleRunClick(tree)}
+                        data-testid={`run-${tree.id}`}
+                      >
+                        执行
+                      </Button>
+                    ) : null}
+                    <Button variant="danger" onClick={() => handleDelete(tree)} data-testid={`delete-${tree.id}`}>
                       删除
                     </Button>
                   </div>
@@ -180,6 +218,15 @@ export function TreeListPage() {
           </tbody>
         </table>
       )}
+
+      {pendingTree ? (
+        <RunInputDialog
+          treeName={pendingTree.name}
+          inputs={pendingTree.inputs}
+          onConfirm={(inputs) => void runTree(pendingTree, inputs)}
+          onCancel={() => setPendingTree(null)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -67,12 +67,14 @@ class RunResult:
 
     :param status: 最终状态（success/failure）。
     :param failure_reason: 失败原因（失败时非空，指向首个失败叶子/终止根因）。
+    :param outputs: 出参值（按文档 ``outputs`` 声明读根帧输出；失败时可能为部分值）。
     :param exec_report: 执行报告（报告①，M8 生成）；校验失败不启动遍历时为 None。
     :param trace_report: 回溯报告（报告②，M8 生成）；校验失败不启动遍历时为 None。
     """
 
     status: NodeStatus
     failure_reason: str | None = None
+    outputs: dict[str, object] = field(default_factory=dict)
     exec_report: ExecReport | None = None
     trace_report: TraceReport | None = None
 

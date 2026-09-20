@@ -16,8 +16,10 @@ AutoBranch 的用户交互界面：行为树编辑器（拖拽节点 → 生成�
 | 行为树编辑器 | 拖拽节点 + 填写信息 → 生成含复合节点的行为树文档 | §12.5/§4.3 |
 | FunctionCall 节点编辑 | 编辑器支持 `type: FunctionCall` 节点：选函数后按函数签名（JSON Schema）自动罗列入参/返回值表单，无需手动增删 | §12.2.1 |
 | 可搜索下拉 | 函数名选择器（罗列全名 `插件.函数` + 描述，支持过滤）、ref 目标文档、槽位/分支子节点下拉均支持输入过滤（类型下拉保持原生 select） | §12.2.1 / tree-editor spec |
-| 行为树管理 | 列表/查看/修改/删除（CRUD） | §12.2-M9a |
-| 执行报告页 | 轮询执行状态，实时渲染节点进度 + 截图 | §12.4/§5.8.3 |
+| 行为树管理 | 列表/查看/修改/删除（CRUD）；全局页签导航（行为树管理/执行列表/插件管理）；「导入文档」「新建行为树」在页面内容区 | §12.2-M9a |
+| 执行报告页 | 轮询执行状态，实时渲染节点进度 + 截图；顶部「重试」（复制快照+入参）；「出参」区展示返回值 | §12.4/§5.8.3 |
+| 执行列表页 | `/runs`：全部执行实例（进行中/历史），状态徽章/快照树名/入参/耗时/指纹短显；进行中轮询；重试/查看快照/删除 | §12.4（Change A） |
+| 入参对话框 | 声明入参的树点「执行」弹框填参（仅可构造类型渲染输入框，bool 复选框）；含不可构造入参（page_ref）的树不渲染「执行」按钮 | §12.4（Change A） |
 | 复合节点视图 | 用户始终看到含复合节点的行为树（Step/Branch/LoopUntil/...） | §12.5 |
 | 清晰度校验提示 | 保存时校验（M9b 复用 M2），友好提示用户修正 | §12.5 |
 | 插件管理页 | 插件列表（预置/自定义徽标）+ 新增/编辑（CodeMirror 6 编辑器）+ 保存校验（行号/约束提示）+ 删除关联弹窗（引用置空确认） | plugin-management spec |
@@ -57,11 +59,16 @@ POST   /api/trees/{id}/check   # 清晰度校验
 ### 5.2 执行 API
 
 ```
-POST   /api/trees/{id}/run     # 触发执行 → run_id
+POST   /api/trees/{id}/run     # 触发执行 → run_id（可选 body {"inputs": {...}}）
+GET    /api/runs               # 执行实例列表（状态/快照树名/入参/耗时/指纹/进度）
+GET    /api/runs/{run_id}      # 实例详情（含 content_snapshot，查看快照/出参）
+POST   /api/runs/{run_id}/retry  # 按快照重试 → run_id
+DELETE /api/runs/{run_id}      # 删除执行实例
 GET    /api/runs/{run_id}/state   # 轮询执行状态（进度/当前节点/已完成报告）
 GET    /api/runs/{run_id}/report  # 执行报告
 GET    /api/runs/{run_id}/trace   # 回溯报告
 GET    /api/reports/{path}     # 截图/报告文件
+GET    /api/types              # 类型可构造性（token + constructible，入参表单/执行按钮约束单点来源）
 ```
 
 ### 5.3 编辑器节点模型（一文档一树，§4.1）
@@ -90,7 +97,7 @@ GET    /api/reports/{path}     # 截图/报告文件
 **实现说明（已落地）**：
 
 - 工程位置 `autobranch/frontend/`（Vite + React 18 + TS），目录按 `frontend-style.md`：`src/api|components|features|hooks|types`。
-- 路由（react-router-dom）：`/` 列表、`/editor/:id?` 编辑器、`/runs/:runId` 报告页。
+- 路由（react-router-dom）：`/` 列表、`/editor/:id?` 编辑器、`/runs` 执行列表、`/runs/:runId` 报告页；全局页签导航 `GlobalNav`（行为树管理/执行列表/插件管理）。
 - **节点模型**（`features/tree-editor/treeModel.ts`）：`TreeNode = {id, type, name, fields, body?, actions?, action?, then?, else?, branches?, target?, args?, returns?}`（`fields` 存 `description`/`expect`/`if`/`when`/`until`/`max` 等标量字段；槽位字段按类型出现：`body`/`actions`/`action`/`then`/`else`/`branches`；`target`/`args`/`returns` 仅 `ref`）、`TreeDoc = {tree, inputs, outputs, config, nodes, root}`；`parseDoc`/`serializeDoc` 与一文档一树 DSL 无损往返（含 ref args/returns）；`nextNodeId`/`freeRoots`/`referencedIds` 支撑 id 生成、游离判定与重复引用校验。
 - **布局引擎**（`features/tree-editor/layout.ts`）：固定尺寸卡片，自底向上算宽、自顶向下定位（根在上、向下生长、兄弟水平均布）；`layoutDocument` 主树在左上、游离树依次排布其下。
 - 状态：`useState`（表单）+ `useReducer`（编辑器节点树）+ `usePolling` hook（1 秒轮询，卸载清理）。
@@ -118,7 +125,7 @@ GET    /api/reports/{path}     # 截图/报告文件
 - **组件测试**：编辑器拖拽/表单、节点树渲染（`src/**/*.test.tsx`）——编辑器拖拽等复杂 UI 操作由组件测试覆盖
 - **API mock 测试**：mock `src/api/`（vi.mock），覆盖列表/编辑/校验/轮询流程与 404 错误路径
 - **轮询渲染测试**：fake timers 模拟执行状态序列，验证进度与截图实时更新
-- **Playwright E2E**（`e2e/workflow.spec.ts` + `e2e/ref-call.spec.ts`，`npm run test:e2e`）：**前端执行行为树 + 前端查看执行结果**——列表页点「执行」→ 报告页轮询 → 切换查看完整执行报告/回溯报告。`ref-call.spec.ts` 覆盖**跨文档 ref 动态调用**（文档 A `ref` 文档 B，args 传参/returns 回收），验证文档引用执行链路。E2E 用 API 预置行为树（不模拟编辑器拖拽），聚焦执行/轮询/报告渲染链路
+- **Playwright E2E**（`e2e/workflow.spec.ts` + `e2e/ref-call.spec.ts` + `e2e/run-instances.spec.ts`，`npm run test:e2e`）：**前端执行行为树 + 前端查看执行结果**——列表页点「执行」→ 报告页轮询 → 切换查看完整执行报告/回溯报告。`ref-call.spec.ts` 覆盖**跨文档 ref 动态调用**（文档 A `ref` 文档 B，args 传参/returns 回收）；`run-instances.spec.ts` 覆盖执行实例链路（带入参执行 → 出参展示 → 列表轮询 → 查看快照 → 重试；含不可构造入参的树不渲染执行按钮，用确定性 FunctionCall 树避免 LLM 依赖）。E2E 用 API 预置行为树（不模拟编辑器拖拽），聚焦执行/轮询/报告渲染链路
 - **实机联调**（已通过）：vite dev(5174) → uvicorn(8001) 代理链路，list/create/check/get/run/轮询/report/trace 全通
 
 **测试结果**：`npm run lint` ✓、`npm run typecheck` ✓、`npm test` ✓、`npm run test:e2e` ✓（workflow + ref-call，Playwright，前端执行+报告查看链路）、`npm run build` ✓。

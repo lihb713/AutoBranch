@@ -97,9 +97,17 @@ def test_delete_missing_404(client):
     assert resp.status_code == 404
 
 
-def test_delete_tree_cascades_runs_and_files(client, session, settings):
+def test_delete_tree_keeps_runs_and_files(client, session, settings):
+    """删除行为树后历史执行实例保留（tree_id 置空、报告保留）——Change A 任务 4.5。"""
     tree = create_tree(client)
-    run = Run(tree_id=tree["id"], status="success", report_path="1/exec_report.md")
+    run = Run(
+        tree_id=tree["id"],
+        status="success",
+        report_path="1/exec_report.md",
+        content_snapshot=make_tree_yaml("冒烟流程"),
+        tree_name_snapshot="冒烟流程",
+        tree_content_hash="abc123",
+    )
     session.add(run)
     session.commit()
     report_dir = settings.report_root / "1"
@@ -108,11 +116,14 @@ def test_delete_tree_cascades_runs_and_files(client, session, settings):
 
     resp = client.delete(f"/api/trees/{tree['id']}")
     assert resp.status_code == 204
-    assert not report_dir.exists()
+    assert report_dir.exists()  # 报告保留
     from autobranch.server.db import session_factory
 
     fresh = session_factory()()
-    assert fresh.get(Run, run.id) is None
+    kept = fresh.get(Run, run.id)
+    assert kept is not None
+    assert kept.tree_id is None
+    assert kept.tree_name_snapshot == "冒烟流程"
     fresh.close()
 
 

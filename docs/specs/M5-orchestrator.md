@@ -57,15 +57,18 @@ class Engine:
             resolver=None, blocks_tree: dict[str, Node] | None = None,
             decl_inputs: dict[str, str] | None = None,
             decl_outputs: list[str] | None = None,
-            config_overrides: dict[str, object] | None = None) -> RunResult: ...
+            config_overrides: dict[str, object] | None = None,
+            run_inputs: dict[str, object] | None = None) -> RunResult: ...
     # resolver：跨文档引用解析器（ref 按文档名加载被引文档）
     # blocks_tree：文档名 → 该文档主树；decl_inputs/outputs/config_overrides：文档级声明与配置
+    # run_inputs：根级入参值（Change A：enter_frame 后按声明类型 coerce 写根帧 this/<名>，叶子 Param 读取）
     def get_exec_state(self) -> ExecState: ...   # 供 M9b 轮询
 
 @dataclass(frozen=True)
 class RunResult:
     status: Literal["success", "failure"]
     failure_reason: str | None = None
+    outputs: dict[str, object] = {}          # 出参（Change A：遍历后按 decl_outputs 读根帧）
     exec_report: ExecReport | None = None    # 校验失败不启动遍历时为 None
     trace_report: TraceReport | None = None
 ```

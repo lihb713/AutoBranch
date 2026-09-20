@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   deleteTree: vi.fn(),
   runTree: vi.fn(),
   createTree: vi.fn(),
+  listTypes: vi.fn(),
 }));
 
 vi.mock("../../api/trees", () => ({
@@ -27,9 +28,25 @@ vi.mock("../../api/runs", () => ({
   runsApi: { runTree: mocks.runTree, getReportFile: (p: string) => `/api/reports/${p}` },
 }));
 
+vi.mock("../../api/types", () => ({
+  typesApi: { listTypes: mocks.listTypes },
+}));
+
 const TREES: TreeOut[] = [
-  { id: 1, name: "登录流程", created_at: "2026-01-01T00:00:00", updated_at: "2026-01-01T00:00:00" },
-  { id: 2, name: "下单流程", created_at: "2026-01-02T00:00:00", updated_at: "2026-01-02T00:00:00" },
+  {
+    id: 1,
+    name: "登录流程",
+    created_at: "2026-01-01T00:00:00",
+    updated_at: "2026-01-01T00:00:00",
+    inputs: {},
+  },
+  {
+    id: 2,
+    name: "下单流程",
+    created_at: "2026-01-02T00:00:00",
+    updated_at: "2026-01-02T00:00:00",
+    inputs: {},
+  },
 ];
 
 function renderList() {
@@ -46,6 +63,14 @@ function renderList() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.listTypes.mockResolvedValue([
+    { token: "str", constructible: true },
+    { token: "int", constructible: true },
+    { token: "float", constructible: true },
+    { token: "bool", constructible: true },
+    { token: "page_ref", constructible: false },
+    { token: "object", constructible: false },
+  ]);
 });
 
 describe("TreeListPage", () => {
@@ -124,9 +149,50 @@ describe("TreeListPage", () => {
     fireEvent.click(runBtn);
 
     await waitFor(() => {
-      expect(mocks.runTree).toHaveBeenCalledWith(1);
+      expect(mocks.runTree).toHaveBeenCalledWith(1, undefined);
     });
     expect(await screen.findByText("报告页占位")).toBeInTheDocument();
+  });
+
+  it("含可构造入参：弹入参对话框并提交", async () => {
+    const withInputs: TreeOut = {
+      id: 3,
+      name: "带参流程",
+      created_at: "2026-01-03T00:00:00",
+      updated_at: "2026-01-03T00:00:00",
+      inputs: { user: "str", n: "int" },
+    };
+    mocks.listTrees.mockResolvedValue([withInputs]);
+    mocks.runTree.mockResolvedValue({ run_id: 55 });
+    renderList();
+    await screen.findByText("带参流程");
+
+    fireEvent.click(screen.getByTestId("run-3"));
+    expect(await screen.findByTestId("run-input-dialog")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("input-value-user"), { target: { value: "admin" } });
+    fireEvent.change(screen.getByTestId("input-value-n"), { target: { value: "42" } });
+    fireEvent.click(screen.getByTestId("run-dialog-confirm"));
+
+    await waitFor(() => {
+      expect(mocks.runTree).toHaveBeenCalledWith(3, { user: "admin", n: 42 });
+    });
+  });
+
+  it("含不可构造入参：不渲染执行按钮", async () => {
+    const withPageRef: TreeOut = {
+      id: 4,
+      name: "页签流程",
+      created_at: "2026-01-04T00:00:00",
+      updated_at: "2026-01-04T00:00:00",
+      inputs: { 页: "page_ref" },
+    };
+    mocks.listTrees.mockResolvedValue([withPageRef]);
+    renderList();
+    await screen.findByText("页签流程");
+
+    const row = screen.getByTestId("tree-row-4");
+    const buttons = Array.from(row.querySelectorAll("button")).map((b) => b.textContent);
+    expect(buttons).not.toContain("执行");
   });
 
   it("执行触发 409 给出错误提示", async () => {

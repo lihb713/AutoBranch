@@ -3,6 +3,7 @@ export type TreeOut = {
   name: string;
   created_at: string;
   updated_at: string;
+  inputs: Record<string, string>;
 };
 
 export type TreeDetailOut = TreeOut & {

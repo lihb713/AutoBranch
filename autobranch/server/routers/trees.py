@@ -7,15 +7,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from autobranch.server.db import get_db
 from autobranch.server.deps import get_run_service
 from autobranch.server.schemas.check import CheckReportOut
-from autobranch.server.schemas.run import RunStartOut
+from autobranch.server.schemas.run import RunStartIn, RunStartOut
 from autobranch.server.schemas.tree import TreeCreate, TreeDetailOut, TreeOut, TreeUpdate
-from autobranch.server.services.runs import RunService
+from autobranch.server.services.runs import RunService, validate_run_inputs
 from autobranch.server.services.trees import TreeService
 from autobranch.server.services.validation import CheckReportBuilder, validate_document
 
@@ -67,16 +67,16 @@ def check_tree(tree_id: int, service: TreeServiceDep):
 @router.post("/{tree_id}/run", response_model=RunStartOut, status_code=status.HTTP_202_ACCEPTED)
 def run_tree(
     tree_id: int,
-    background_tasks: BackgroundTasks,
     service: TreeServiceDep,
     run_service: RunServiceDep,
     db: DbSession,
+    payload: RunStartIn | None = None,
 ):
-    """异步触发执行：执行前校验（422 拒绝）→ 建 Run → 后台任务内嵌引擎。"""
+    """异步触发执行：执行前校验（422）→ 冻结快照+入参 → 建 Run → 队列调度。"""
     tree = service.get(tree_id)
     validate_document(tree.content, tree.name, registry=service.registry)
-    run = run_service.start(db, tree_id)
-    background_tasks.add_task(run_service.execute_async, run.id, tree_id)
+    validate_run_inputs(tree.content, payload.inputs if payload else None)
+    run = run_service.start(db, tree_id, inputs=payload.inputs if payload else None)
     return {"run_id": run.id}
 
 

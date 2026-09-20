@@ -12,6 +12,7 @@
 - **插件框架**：预置浏览器 / 计算 / SSH / 文件插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、插件管理页、执行报告页。
+- **执行实例化**：每次执行保存**行为树快照 + 入参**（触发时刻冻结，执行/重试不随实时树变化）；支持根级入参注入与出参返回、执行列表页（进行中/历史回看）、FIFO 队列调度（全局并发上限可配置）、按快照重试；含不可序列化入参（如 page_ref）的树仅支持 ref 调用。
 
 ## 目录结构
 
@@ -34,7 +35,7 @@ docs/
   specs/                   M0–M9 模块规格
   tmp/                     设计草稿
 openspec/                  需求规格（spec-driven，含归档变更）
-scripts/                   一次性迁移脚本（函数全名迁移）
+scripts/                   一次性迁移脚本（函数全名迁移 / runs 执行实例快照迁移）
 ```
 
 ## 安装
@@ -75,6 +76,7 @@ conda run -n autobranch python -m playwright install chromium
 
 - **无需手动初始化**：AutoBranch 使用 **SQLite 单文件库**。后端（`uvicorn ... autobranch.server.main:app`）首次启动时自动创建数据库文件并建表（`configure_database` → `create_all`），安装后直接启动即可。
 - 默认数据库文件位于 `data/autobranch.db`（`data/` 目录会自动创建）。
+- **既有库升级**：`runs` 表升级为"执行实例"（新增快照/入参/出参列、`tree_id` 改 SET NULL）时，运行 `conda run -n autobranch python -m scripts.migrate_runs_snapshot`（幂等，可从任意旧版本升级）。
 
 ## 配置
 
@@ -85,6 +87,8 @@ conda run -n autobranch python -m playwright install chromium
 | `AUTOBRANCH_LLM_API_KEY` | LLM API 密钥（优先于配置文件） |
 | `AUTOBRANCH_DB_PATH` | SQLite 数据库路径（默认 `data/autobranch.db`） |
 | `AUTOBRANCH_REPORT_DIR` | 报告/截图持久化目录（默认 `data/reports`） |
+
+> 配置项 `max_concurrent_runs`（顶层，默认 3）：服务端**执行并发上限**（同时最多运行 N 个执行实例，超出的进入 FIFO 排队）。
 
 > **数据库连接说明**：`autobranch.config.json` 中**不需要**（也没有）数据库连接项——SQLite 为单文件库，路径由 `AUTOBRANCH_DB_PATH` 环境变量或默认值 `data/autobranch.db` 决定，无连接串/账号配置；后端启动时自动初始化建表。如需更换数据库位置，设置环境变量即可，无需改动配置文件或代码。
 
@@ -99,7 +103,8 @@ conda run -n autobranch python -m playwright install chromium
   "browser": {
     "headless": true,
     "timeout_ms": 30000
-  }
+  },
+  "max_concurrent_runs": 3
 }
 ```
 
@@ -150,8 +155,9 @@ root: n1
 ```
 
 - 通过前端「行为树管理」创建 / 保存（保存时做清晰度校验，FunctionCall 会校验函数存在性与参数对齐）。
-- 点击「执行」→ 后台异步运行 → 前端轮询状态 → 展示执行报告与截图。
-- 也可直接调用 API：`POST /api/trees/{id}/run`。
+- 点击「执行」→ 若声明了入参则弹框填参（含不可序列化入参的树不显示「执行」按钮）→ 后台异步运行 → 前端轮询状态 → 展示执行报告与出参。
+- 「行为树执行列表」页可查看全部执行实例（进行中/历史）、轮询进度、重试（按当时快照+入参）、查看快照、删除记录。
+- 也可直接调用 API：`POST /api/trees/{id}/run`（可选 body `{"inputs": {...}}`）。
 
 ### 插件管理
 
@@ -200,8 +206,8 @@ root: n1
 | M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall 确定性执行 |
 | M6 报告 | 执行报告 / 截图 / 回溯 / 可查询状态 |
 | M7 插件集 | browser / compute / ssh / file + 自定义插件 |
-| M8 管理后端 | FastAPI：trees / runs / reports / plugins / functions |
-| M9 前端 | React + Vite：行为树编辑器 / 插件管理 / 执行报告 |
+| M8 管理后端 | FastAPI：trees / runs（执行实例：快照/入参/出参/列表/重试/队列）/ reports / plugins / functions / types |
+| M9 前端 | React + Vite：行为树编辑器 / 插件管理 / 执行报告 / 执行列表 |
 
 ## 测试
 

@@ -5,5 +5,13 @@ from autobranch.server.routers.plugins import router as plugins_router
 from autobranch.server.routers.reports import router as reports_router
 from autobranch.server.routers.runs import router as runs_router
 from autobranch.server.routers.trees import router as trees_router
+from autobranch.server.routers.types import router as types_router
 
-__all__ = ["trees_router", "runs_router", "reports_router", "plugins_router", "functions_router"]
+__all__ = [
+    "trees_router",
+    "runs_router",
+    "reports_router",
+    "plugins_router",
+    "functions_router",
+    "types_router",
+]

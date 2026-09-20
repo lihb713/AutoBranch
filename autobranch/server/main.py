@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from autobranch.plugin_system import PluginRegistry
@@ -20,6 +22,7 @@ from autobranch.server.routers import (
     reports_router,
     runs_router,
     trees_router,
+    types_router,
 )
 from autobranch.server.services.engine import EmbeddedEngineService, EngineService
 from autobranch.server.services.plugins import PluginService
@@ -30,6 +33,17 @@ APP_TITLE = "AutoBranch 行为树管理系统"
 
 #: 预置插件目录（包内 ``autobranch/plugins/``）。
 PLUGINS_DIR = "autobranch/plugins"
+
+
+def _make_lifespan(run_service: RunService):
+    """应用生命周期：关闭时释放执行线程池（不等待在跑任务）。"""
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        yield
+        run_service.shutdown()
+
+    return _lifespan
 
 
 def create_app(
@@ -55,7 +69,7 @@ def create_app(
         engine_service, settings.report_root, settings.autobranch_config(), registry=registry
     )
 
-    app = FastAPI(title=APP_TITLE, version="0.1.0")
+    app = FastAPI(title=APP_TITLE, version="0.1.0", lifespan=_make_lifespan(run_service))
     app.state.settings = settings
     app.state.engine_service = engine_service
     app.state.report_service = report_service
@@ -74,6 +88,7 @@ def create_app(
     app.include_router(reports_router)
     app.include_router(plugins_router)
     app.include_router(functions_router)
+    app.include_router(types_router)
 
     # 插件初始化：扫描预置插件 → 写/刷新 builtin 记录（只读）
     with session_factory()() as db:

@@ -38,12 +38,19 @@ class EngineService(ABC):
 
     @abstractmethod
     def run(
-        self, tree_id: int, content: str, run_id: int, *, doc_id: str | None = None
+        self,
+        tree_id: int,
+        content: str,
+        run_id: int,
+        *,
+        doc_id: str | None = None,
+        run_inputs: dict[str, object] | None = None,
     ) -> RunResult:
         """内嵌执行一次行为树，返回 M7 ``RunResult``（阻塞，后台任务调用）。
 
         :param doc_id: 文档标识（M2 帧路径以它命名，须与根块名一致；
           缺省用 ``tree-<tree_id>`` 兜底）。
+        :param run_inputs: 根级入参值（按文档 ``inputs`` 声明类型注入）。
         """
 
     @abstractmethod
@@ -133,6 +140,7 @@ class EmbeddedEngineService(EngineService):
         run_id: int,
         *,
         doc_id: str | None = None,
+        run_inputs: dict[str, object] | None = None,
     ) -> RunResult:
         """解析执行：doc_id 须与内容实际根块名一致（帧路径以它命名）。
 
@@ -168,6 +176,7 @@ class EmbeddedEngineService(EngineService):
                 decl_inputs=result.decl_inputs,
                 decl_outputs=result.decl_outputs,
                 config_overrides=result.config,
+                run_inputs=run_inputs,
             )
         finally:
             with self._lock:
@@ -248,6 +257,7 @@ class MockEngineService(EngineService):
 
     def __init__(self) -> None:
         self.call_log: list[tuple[int, str, int]] = []
+        self.run_inputs_log: list[dict[str, object] | None] = []
         self._results: dict[int, list[RunResult]] = {}
         self._states: dict[int, list[ExecState]] = {}
         self._final: dict[int, ExecState] = {}
@@ -265,9 +275,16 @@ class MockEngineService(EngineService):
             self._states[run_id] = list(states)
 
     def run(
-        self, tree_id: int, content: str, run_id: int, *, doc_id: str | None = None
+        self,
+        tree_id: int,
+        content: str,
+        run_id: int,
+        *,
+        doc_id: str | None = None,
+        run_inputs: dict[str, object] | None = None,
     ) -> RunResult:
         self.call_log.append((tree_id, content, run_id))
+        self.run_inputs_log.append(run_inputs)
         queue = self._results.get(run_id)
         outcome = queue.pop(0) if queue else self.default_result
         self._final[run_id] = ExecState(run_id=str(run_id), finished=True)

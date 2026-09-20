@@ -53,34 +53,41 @@ POST   /api/trees              # 创建（201，元数据；保存时校验 422 
 GET    /api/trees/by-name/{name}  # 按文档名查（200，含 content；ref 展开/参数加载/文档库）
 GET    /api/trees/{id}         # 查看（200，含 content）
 PUT    /api/trees/{id}         # 修改（200；至少提交 name/content 之一，校验 422 拒绝，含树名=文档名强制）
-DELETE /api/trees/{id}         # 删除（204；级联删除执行记录并清理报告文件）
+DELETE /api/trees/{id}         # 删除（204；**保留**执行历史，run.tree_id 置空，报告保留）
 POST   /api/trees/{id}/check   # 清晰度校验（200，CheckReport：ok + issues 错误清单，不落库）
 ```
 
 - 错误：资源不存在 404、重名 409、参数/文档校验失败 422（detail 为 CheckReport 错误清单）。
 - 422 detail 结构：`[{"code", "message", "rule", "loc"}, ...]`（可读、可定位，对齐 §4.4 八类）。
 
-### 5.2 执行 API
+### 5.2 执行 API（执行实例化，Change A）
 
 ```
-POST   /api/trees/{id}/run            # 触发执行（异步 202 → {"run_id": n}）
+POST   /api/trees/{id}/run            # 触发执行（异步 202 → {"run_id": n}；可选 body {"inputs": {...}}）
+GET    /api/runs                      # 执行实例列表（RunOut：快照树名/状态/入参/耗时/指纹/进度）
+GET    /api/runs/{run_id}             # 实例详情（含 content_snapshot，供查看快照）
+POST   /api/runs/{run_id}/retry       # 按快照重试（复制原实例快照+入参新建 Run，202 → run_id）
+DELETE /api/runs/{run_id}             # 删除执行实例（204，清理报告目录）
 GET    /api/runs/{run_id}/state       # 轮询执行状态（ExecStateOut）
 GET    /api/runs/{run_id}/report      # 执行报告（进行中 200 {"status":"running"}，结束 text/markdown）
 GET    /api/runs/{run_id}/trace       # 回溯报告（同上）
 GET    /api/reports/{path}            # 截图/报告文件（白名单防目录穿越）
+GET    /api/types                     # 类型可构造性（TypeInfoOut：token + constructible = cast is not None）
 ```
 
-- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`；文档 `tree` 键须 = 树名），帧 doc_id 取解析出的树名。
-- 并发去重：同一 tree 存在 pending/running 的 run 时返回 409。
+- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（如 `page_ref`/`object`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 → 422。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
+- **执行实例快照**：触发时刻冻结 `content_snapshot`（行为树 yaml 全文）/ `tree_name_snapshot` / `tree_content_hash`（执行结构指纹）/ `inputs`（原始入参）。执行与重试一律基于快照，不读实时树内容；树被删除后历史实例仍可回看/重试（自包含）。
+- **队列调度**：去掉 D8 同树并发 409 去重，改为**全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列**——`pending` 即排队中（列表显示序号）；`start` 与每次执行结束触发 `_drain()`，先置 running 占位再提交到 `ThreadPoolExecutor(max_workers=N)`；重启恢复沿用 `mark_interrupted`（pending/running → interrupted）。
 - `GET /api/reports/{path}`：`resolve()` 做 `is_relative_to(REPORT_ROOT)` 白名单，越界 400、不存在 404；`.md`→`text/markdown`、`.png`→`image/png`。
 
-### 5.3 执行流程（§12.4）
+### 5.3 执行流程（§12.4，实例化）
 
 ```
-① 前端 POST /run → 建 Run(pending) → 202 run_id → BackgroundTasks 后台执行
-② 后台任务：置 running → 内嵌 M7 引擎.run（同进程）→ 落终态（status/failure_reason/report_path）
-③ 前端每 1 秒轮询 GET /state（进行中读引擎内存快照，结束读终态）
-④ 执行完毕 → GET /report + /trace 展示完整报告
+① 前端 POST /run（可选 inputs）→ 冻结快照+入参 → 建 Run(pending) → 202 run_id → _drain() 调度
+② 调度器（线程池，上限 N）：并发未满取最早 pending → 置 running → execute_async 从快照执行（内嵌 M7）
+   → 落终态（status/failure_reason/outputs/report_path）→ 再调度下一个
+③ 前端每 1 秒轮询 GET /state（进行中读引擎内存快照，结束读终态）；执行列表轮询 GET /runs
+④ 执行完毕 → GET /report + /trace 展示完整报告；GET /runs/{id} 取快照/出参
 ```
 
 - **进程重启恢复**：应用启动时扫描 running/pending 记录置 failure（`failure_reason="interrupted"`），终态仍可查询。
@@ -105,8 +112,10 @@ class ExecStateOut:
 - `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path（LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
   - `trees`：id、name(unique)、content(Text)、created_at/updated_at
-  - `runs`：id、tree_id(FK→trees.id ON DELETE CASCADE)、status(CheckConstraint pending/running/success/failure)、failure_reason、report_path(相对路径)、created_at/updated_at
-  - SQLite 开启 `PRAGMA foreign_keys=ON` 使级联生效；报告/截图文件落盘 `data/reports/<run_id>/`，库中只存相对路径（database-rules §6）。
+  - `runs`（执行实例，Change A 快照化）：id、tree_id(FK→trees.id **ON DELETE SET NULL，可空**——删除树保留历史)、status(CheckConstraint pending/running/success/failure)、failure_reason、report_path(相对路径)、`content_snapshot`(Text，触发时刻冻结树内容)、`tree_name_snapshot`、`tree_content_hash`(执行结构指纹，index)、`inputs`(JSON)、`outputs`(JSON，可空)、created_at/updated_at
+  - SQLite 开启 `PRAGMA foreign_keys=ON` 使级联/SET NULL 生效；报告/截图文件落盘 `data/reports/<run_id>/`，库中只存相对路径（database-rules §6）。
+  - **执行结构指纹**（`parser/snapshot.py::compute_tree_content_hash`）：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys` 规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
+  - **迁移**：`scripts/migrate_runs_snapshot.py`（幂等：新列 ALTER ADD + tree_id 约束表重建），开发期一次性迁移（database-rules §5）。
 
 ## 6. 验收标准（全部达成 ✅）
 

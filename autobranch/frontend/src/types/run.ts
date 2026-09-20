@@ -41,4 +41,28 @@ export type RunStart = {
   run_id: number;
 };
 
+export type TypeInfo = {
+  token: string;
+  constructible: boolean;
+};
+
+export type RunOut = {
+  id: number;
+  tree_id: number | null;
+  tree_name: string;
+  status: string;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown> | null;
+  tree_content_hash: string;
+  failure_reason: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  duration: number | null;
+  progress: number | null;
+};
+
+export type RunDetail = RunOut & {
+  content_snapshot: string;
+};
+
 export type ReportResponse = { run_id: string; status: string; message?: string } | string;

@@ -128,6 +128,8 @@ class AutoBranchConfig:
     llm: LLMOptions = field(default_factory=LLMOptions)
     browser: BrowserOptions = field(default_factory=BrowserOptions)
     run: RunOptions = field(default_factory=RunOptions)
+    #: 服务端执行并发上限（M9b 队列调度：同时最多 N 个执行实例，默认 3）。
+    max_concurrent_runs: int = 3
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AutoBranchConfig:
@@ -138,6 +140,7 @@ class AutoBranchConfig:
             llm=LLMOptions.from_dict(llm_data),
             browser=BrowserOptions.from_dict(browser_data),
             run=RunOptions.from_dict(run_data),
+            max_concurrent_runs=int(data.get("max_concurrent_runs", cls.max_concurrent_runs)),
         )
 
     @classmethod
@@ -221,6 +224,7 @@ def _apply_env_overrides(cfg: AutoBranchConfig) -> AutoBranchConfig:
             ),
             browser=cfg.browser,
             run=cfg.run,
+            max_concurrent_runs=cfg.max_concurrent_runs,
         )
     return cfg
 

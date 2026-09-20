@@ -158,3 +158,48 @@ class TestEngineEndToEnd:
         result = engine.run(tree, config)
         assert result.status == "failure"
         assert result.failure_reason is not None
+
+
+class TestEngineRunInputsOutputs:
+    """Change A 任务 2.2：根级入参注入（叶子 Param 可读）与出参返回。"""
+
+    def test_run_inputs_injected_and_outputs_read(self, config, mock_browser) -> None:
+        from autobranch.schema import SchemaSpace
+
+        space = SchemaSpace()
+        seen: dict[str, object] = {}
+
+        def leaf(node, timeout):
+            frame = space._current
+            seen["user"] = space.read(frame, "this/user")
+            seen["n"] = space.read(frame, "this/n")
+            space.write(frame, "this/结果", "ok", "str")
+            return leaf_success(node.description)
+
+        engine = Engine(browser=mock_browser, leaf_executor=leaf, space_factory=lambda: space)
+        tree = BehaviorTree(name="主流程", root=action("动作"))
+        result = engine.run(
+            tree,
+            config,
+            decl_inputs={"user": "str", "n": "int"},
+            decl_outputs=["结果"],
+            run_inputs={"user": "admin", "n": "42", "extra": "ignored"},
+        )
+        assert result.status == "success"
+        assert seen["user"] == "admin"
+        assert seen["n"] == 42  # coerce 到声明类型 int
+        assert result.outputs == {"结果": "ok"}
+
+    def test_no_decl_outputs_returns_empty(self, config, mock_browser) -> None:
+        from autobranch.schema import SchemaSpace
+
+        space = SchemaSpace()
+
+        def leaf(node, timeout):
+            return leaf_success(node.description)
+
+        engine = Engine(browser=mock_browser, leaf_executor=leaf, space_factory=lambda: space)
+        tree = BehaviorTree(name="主流程", root=action("动作"))
+        result = engine.run(tree, config, run_inputs={"user": "admin"})
+        assert result.status == "success"
+        assert result.outputs == {}

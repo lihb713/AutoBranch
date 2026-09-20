@@ -116,11 +116,44 @@ def test_run_valid_statuses(session, status):
     assert session.get(Run, run.id).status == status
 
 
-def test_run_cascade_on_tree_delete(session, tmp_path):
+def test_run_snapshot_columns(session):
+    """快照化列：默认值 + 类型（Change A 任务 1.1）。"""
+    tree = _tree(session)
+    run = Run(tree_id=tree.id, status="success")
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    assert run.content_snapshot == ""
+    assert run.tree_name_snapshot == ""
+    assert run.tree_content_hash == ""
+    assert run.inputs == {}
+    assert run.outputs is None
+
+    run.inputs = {"user": "admin"}
+    run.outputs = {"结果": "ok"}
+    run.content_snapshot = "tree: x"
+    run.tree_content_hash = "abc123"
+    session.commit()
+    session.refresh(run)
+    assert run.inputs == {"user": "admin"}
+    assert run.outputs == {"结果": "ok"}
+    assert run.tree_content_hash == "abc123"
+
+
+def test_run_survives_tree_delete_sets_null(session, tmp_path):
+    """删除行为树后执行历史保留（tree_id 置空、快照自包含）——Change A 任务 1.1。"""
     reports = ReportService(tmp_path / "reports")
     reports.ensure_root()
     tree = _tree(session)
-    run = Run(tree_id=tree.id, status="success", report_path="1/exec_report.md")
+    run = Run(
+        tree_id=tree.id,
+        status="success",
+        report_path="1/exec_report.md",
+        content_snapshot="tree: x",
+        tree_name_snapshot="x",
+        tree_content_hash="abc123",
+        inputs={"user": "admin"},
+    )
     session.add(run)
     session.commit()
     run_id = run.id
@@ -128,7 +161,11 @@ def test_run_cascade_on_tree_delete(session, tmp_path):
     session.commit()
     session.close()
     fresh = session_factory()()
-    assert fresh.get(Run, run_id) is None
+    kept = fresh.get(Run, run_id)
+    assert kept is not None
+    assert kept.tree_id is None
+    assert kept.tree_name_snapshot == "x"
+    assert kept.content_snapshot == "tree: x"
     fresh.close()
 
 

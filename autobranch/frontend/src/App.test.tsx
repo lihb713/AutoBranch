@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { runsApi } from "./api/runs";
 import { treesApi } from "./api/trees";
+import { typesApi } from "./api/types";
 
 vi.mock("./api/trees", () => ({
   treesApi: { listTrees: vi.fn(), getTree: vi.fn(), createTree: vi.fn(), updateTree: vi.fn(), deleteTree: vi.fn(), checkTree: vi.fn() },
@@ -15,12 +16,24 @@ vi.mock("./api/runs", () => ({
     getRunState: vi.fn(),
     getRunReport: vi.fn(),
     getRunTrace: vi.fn(),
+    listRuns: vi.fn(),
+    getRunDetail: vi.fn(),
+    retryRun: vi.fn(),
+    deleteRun: vi.fn(),
     getReportFile: (p: string) => `/api/reports/${p}`,
   },
 }));
 
+vi.mock("./api/types", () => ({
+  typesApi: { listTypes: vi.fn().mockResolvedValue([]) },
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(typesApi.listTypes).mockResolvedValue([
+    { token: "str", constructible: true },
+    { token: "page_ref", constructible: false },
+  ]);
   vi.mocked(treesApi.listTrees).mockResolvedValue([]);
   vi.mocked(runsApi.getRunState).mockResolvedValue({
     run_id: "5",
@@ -32,6 +45,21 @@ beforeEach(() => {
   });
   vi.mocked(runsApi.getRunReport).mockResolvedValue("# 执行报告");
   vi.mocked(runsApi.getRunTrace).mockResolvedValue("# 回溯报告");
+  vi.mocked(runsApi.getRunDetail).mockResolvedValue({
+    id: 5,
+    tree_id: 1,
+    tree_name: "冒烟流程",
+    status: "success",
+    inputs: {},
+    outputs: null,
+    tree_content_hash: "abc123",
+    failure_reason: null,
+    created_at: null,
+    updated_at: null,
+    duration: null,
+    progress: null,
+    content_snapshot: "tree: x",
+  });
 });
 
 async function renderAt(path: string) {
