@@ -83,7 +83,7 @@ describe("路由冒烟", () => {
 
   it("/runs/:runId 渲染执行报告页", async () => {
     await renderAt("/runs/5");
-    expect(await screen.findByRole("heading", { name: "执行报告 #5" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "执行详情 #5" })).toBeInTheDocument();
   });
 
   it("未知路径重定向到列表", async () => {

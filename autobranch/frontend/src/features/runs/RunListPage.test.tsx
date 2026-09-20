@@ -91,13 +91,22 @@ describe("RunListPage", () => {
     expect(await screen.findByText("报告页占位")).toBeInTheDocument();
   });
 
-  it("查看快照 → 拉取详情并展示内容", async () => {
+  it("查看 → 跳转执行详情页", async () => {
     renderList();
     await screen.findByTestId("run-row-1");
-    fireEvent.click(screen.getByTestId("run-snapshot-1"));
-    expect(await screen.findByTestId("snapshot-dialog")).toBeInTheDocument();
-    expect(screen.getByText(/tree: 冒烟流程/)).toBeInTheDocument();
-    expect(mocks.getRunDetail).toHaveBeenCalledWith(1);
+    fireEvent.click(screen.getByTestId("run-view-1"));
+    expect(await screen.findByText("报告页占位")).toBeInTheDocument();
+  });
+
+  it("删除 → 立即从列表移除并刷新", async () => {
+    const remaining = RUNS.filter((r) => r.id !== 1);
+    mocks.listRuns.mockResolvedValueOnce(RUNS).mockResolvedValue(remaining);
+    renderList();
+    await screen.findByTestId("run-row-1");
+    fireEvent.click(screen.getByTestId("run-delete-1"));
+    await waitFor(() => expect(mocks.deleteRun).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(screen.queryByTestId("run-row-1")).not.toBeInTheDocument());
+    expect(mocks.listRuns.mock.calls.length).toBeGreaterThanOrEqual(2); // 乐观移除 + load() 刷新
   });
 
   it("删除 → 确认后 deleteRun", async () => {

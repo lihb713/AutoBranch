@@ -1206,7 +1206,7 @@ body {
   -webkit-text-fill-color: #15803d;
   font-weight: inherit;
 }
-/* ===== Change A£ºÈ«¾Öµ¼º½ / Ö´ÐÐÁÐ±í / Èë²Î¶Ô»°¿ò / ³ö²ÎÇø ===== */
+/* ===== Change Aï¿½ï¿½È«ï¿½Öµï¿½ï¿½ï¿½ / Ö´ï¿½ï¿½ï¿½Ð±ï¿½ / ï¿½ï¿½Î¶Ô»ï¿½ï¿½ï¿½ / ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ===== */
 .global-nav {
   display: flex;
   gap: 4px;
@@ -1305,4 +1305,43 @@ body {
   border-radius: 6px;
   font-size: var(--font-size-sm);
   white-space: pre-wrap;
+}
+
+/* ===== æ‰§è¡Œè¯¦æƒ…é¡µå®žä¾‹ä¿¡æ¯ï¼ˆrun-metaï¼‰===== */
+.run-meta {
+  margin: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.run-meta__grid {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+}
+.run-meta__label { color: var(--color-muted); font-size: var(--font-size-sm); }
+.run-meta__value { font-size: var(--font-size-sm); word-break: break-all; }
+.run-meta__section {
+  border-top: 1px dashed var(--color-border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.run-meta__title {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  margin-bottom: 6px;
+  cursor: default;
+}
+details.run-meta__section > summary { cursor: pointer; }
+.run-meta__body {
+  background: var(--color-bg-muted);
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+}
+.run-meta__body--snapshot {
+  max-height: 320px;
+  overflow: auto;
 }

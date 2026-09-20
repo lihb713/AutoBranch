@@ -202,4 +202,34 @@ describe("RunReportPage 轮询渲染", () => {
     });
     expect(screen.getByTestId("report-panel")).toBeInTheDocument();
   });
+
+  it("实例信息区展示入参/出参/快照", async () => {
+    mocks.getRunState.mockResolvedValue(FINISHED);
+    mocks.getRunDetail.mockResolvedValue({
+      id: 5,
+      tree_id: 1,
+      tree_name: "带参流程",
+      status: "success",
+      inputs: { user: "admin" },
+      outputs: { 结果: "ok" },
+      tree_content_hash: "abcdef1234567890",
+      failure_reason: null,
+      created_at: null,
+      updated_at: null,
+      duration: 5,
+      progress: null,
+      content_snapshot: "tree: 带参流程\nnodes: {}",
+    });
+    renderReport();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("run-meta")).toBeInTheDocument();
+    expect(screen.getByTestId("run-meta")).toHaveTextContent('"user": "admin"');
+    expect(screen.getByTestId("outputs-section")).toHaveTextContent('"结果": "ok"');
+    fireEvent.click(screen.getByText("执行快照（触发时刻的行为树内容）"));
+    expect(screen.getByText(/tree: 带参流程/)).toBeInTheDocument();
+  });
 });

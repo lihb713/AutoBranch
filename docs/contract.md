@@ -2291,7 +2291,9 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 - **队列调度**：全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列；`pending` 即排队中（列表显示
   序号）；并发满的新触发进排队（不再有同树 409 去重），执行结束自动调度下一个。
 - **执行列表**：`GET /api/runs` + 前端 `/runs` 页（状态/快照树名/入参/耗时/指纹短显/进行中轮询）；
-  `GET /api/runs/{id}`（含快照）、`POST /api/runs/{id}/retry`（复制快照+入参）、`DELETE /api/runs/{id}`。
+  「查看」跳转**执行详情页** `/runs/{id}`——统一展示执行状态、行为树（快照名）、入参/出参、指纹、
+  耗时与折叠的「执行快照」（触发时刻行为树内容），外加执行报告/回溯报告；`POST /api/runs/{id}/retry`
+  （复制快照+入参）、`DELETE /api/runs/{id}`（删除后列表即时刷新）。
 ```
 
 ### 12.5 前端行为树的复合节点视图

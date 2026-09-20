@@ -92,14 +92,19 @@ test("带入参执行 → 报告出参 → 执行列表展示 → 重试", async
   await expect(runRow).toContainText("SUCCESS");
   await expect(runRow).toContainText('{"a":2,"b":3}');
 
-  // 5. 查看快照：展示触发时刻冻结的树内容
-  await runRow.locator('[data-testid^="run-snapshot-"]').click();
-  const snapshot = page.getByTestId("snapshot-dialog");
-  await expect(snapshot).toBeVisible();
-  await expect(snapshot).toContainText("compute.add");
-  await snapshot.getByTestId("snapshot-close").click();
+  // 5. 查看 → 跳转执行详情页：实例信息区展示状态/入参/出参/快照
+  await runRow.locator('[data-testid^="run-view-"]').click();
+  await page.waitForURL(/\/runs\/\d+/);
+  const meta = page.getByTestId("run-meta");
+  await expect(meta).toBeVisible();
+  await expect(meta).toContainText("SUCCESS");
+  await expect(meta).toContainText('"a": 2');
+  await expect(meta).toContainText('"结果": 5');
+  await page.getByText("执行快照（触发时刻的行为树内容）").click();
+  await expect(page.getByTestId("snapshot-section")).toContainText("compute.add");
 
-  // 6. 重试：复制快照+入参 → 新实例
+  // 6. 回列表重试：复制快照+入参 → 新实例
+  await page.goto("/runs");
   await runRow.locator('[data-testid^="run-retry-"]').click();
   await page.waitForURL(/\/runs\/\d+/);
   await page.goto("/runs");
