@@ -84,9 +84,6 @@ export function RunListPage() {
   const handleDelete = useCallback(
     async (run: RunOut) => {
       setError(null);
-      if (!window.confirm(`确认删除执行实例 #${run.id}（树「${run.tree_name}」）？`)) {
-        return;
-      }
       try {
         await runsApi.deleteRun(run.id);
         // 立即刷新，避免残留已删除记录

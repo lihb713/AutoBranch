@@ -69,7 +69,6 @@ beforeEach(() => {
   mocks.getRunDetail.mockResolvedValue({ ...RUNS[0], content_snapshot: "tree: 冒烟流程\nnodes: {}" });
   mocks.retryRun.mockResolvedValue({ run_id: 99 });
   mocks.deleteRun.mockResolvedValue(undefined);
-  window.confirm = vi.fn(() => true);
 });
 
 describe("RunListPage", () => {
@@ -98,7 +97,7 @@ describe("RunListPage", () => {
     expect(await screen.findByText("报告页占位")).toBeInTheDocument();
   });
 
-  it("删除 → 立即从列表移除并刷新", async () => {
+  it("删除 → 无需确认，直接删除并即时移除", async () => {
     const remaining = RUNS.filter((r) => r.id !== 1);
     mocks.listRuns.mockResolvedValueOnce(RUNS).mockResolvedValue(remaining);
     renderList();
@@ -107,14 +106,6 @@ describe("RunListPage", () => {
     await waitFor(() => expect(mocks.deleteRun).toHaveBeenCalledWith(1));
     await waitFor(() => expect(screen.queryByTestId("run-row-1")).not.toBeInTheDocument());
     expect(mocks.listRuns.mock.calls.length).toBeGreaterThanOrEqual(2); // 乐观移除 + load() 刷新
-  });
-
-  it("删除 → 确认后 deleteRun", async () => {
-    renderList();
-    await screen.findByTestId("run-row-1");
-    fireEvent.click(screen.getByTestId("run-delete-1"));
-    await waitFor(() => expect(mocks.deleteRun).toHaveBeenCalledWith(1));
-    expect(window.confirm).toHaveBeenCalled();
   });
 
   it("存在进行中实例时持续轮询（listRuns 多次调用）", async () => {
