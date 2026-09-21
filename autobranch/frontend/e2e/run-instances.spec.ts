@@ -13,13 +13,13 @@ import { expect, test, request as apiRequest } from "@playwright/test";
  */
 
 const COMPUTE_NAME = `计算${Date.now()}`;
-// 确定性执行树：入参 a/b → compute.add → 出参 结果
+// 确定性执行树：入参 a/b → compute.add → 出参 total
 const COMPUTE_YAML = `tree: ${COMPUTE_NAME}
 inputs:
   a: int
   b: int
 outputs:
-  - 结果
+  - total
 nodes:
   n1:
     type: Root
@@ -30,14 +30,14 @@ nodes:
     name: 求和
     function: compute.add
     args: [Param.a, Param.b]
-    returns: {结果: int}
+    returns: {NewParam.total: int}
 root: n1
 `;
 
 const PAGE_REF_NAME = `页签树${Date.now()}`;
 const PAGE_REF_YAML = `tree: ${PAGE_REF_NAME}
 inputs:
-  页: page_ref
+  page: page_ref
 nodes:
   n1:
     type: Root
@@ -46,7 +46,7 @@ nodes:
   n2:
     type: Action
     name: 打开
-    description: 打开 Param.页
+    description: 打开 Param.page
 root: n1
 `;
 
@@ -83,7 +83,7 @@ test("带入参执行 → 报告出参 → 执行列表展示 → 重试", async
   });
   const outputs = page.getByTestId("outputs-section");
   await expect(outputs).toBeVisible({ timeout: 120_000 });
-  await expect(outputs).toContainText('"结果": 5');
+  await expect(outputs).toContainText('"total": 5');
 
   // 4. 执行列表：实例出现、SUCCESS、入参 JSON 展示
   await page.goto("/runs");
@@ -99,7 +99,7 @@ test("带入参执行 → 报告出参 → 执行列表展示 → 重试", async
   await expect(meta).toBeVisible();
   await expect(meta).toContainText("SUCCESS");
   await expect(meta).toContainText('"a": 2');
-  await expect(meta).toContainText('"结果": 5');
+  await expect(meta).toContainText('"total": 5');
   await page.getByText("执行快照（触发时刻的行为树内容）").click();
   await expect(page.getByTestId("snapshot-section")).toContainText("compute.add");
 
