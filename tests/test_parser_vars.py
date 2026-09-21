@@ -76,5 +76,9 @@ def test_invalid_name_rejected():
     assert "syntax.invalid_name" in _issues("读 Param.2x")
 
 
+def test_non_ascii_name_rejected():
+    assert "syntax.invalid_name" in _issues("读 Param.苹果金额")
+
+
 def test_clean_text_no_issues():
-    assert _issues("访问 Param.base_url 并保存为 NewParam.网址:int") == []
+    assert _issues("访问 Param.base_url 并保存为 NewParam.siteUrl:int") == []

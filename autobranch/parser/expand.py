@@ -45,6 +45,8 @@ _SET_TMPL = re.compile(
 )
 #: 数字开头的非法变量名（``Param.2x`` → 校验错误 syntax.invalid_name）
 _INVALID_NAME_TMPL = re.compile(r"(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)")
+#: 非 ASCII 变量名（``Param.苹果`` / ``NewParam.金额`` → syntax.invalid_name）
+_NON_ASCII_NAME_TMPL = re.compile(r"(?<![A-Za-z0-9_])(?:Param|NewParam)\.[^\x00-\x7f]")
 #: 旧语法残留（``[[get:/[[set:`` 或用户可见 ``this/``）→ 校验错误 syntax.deprecated
 _DEPRECATED_TMPL = re.compile(r"\[\[\s*(?:get|set)\s*:|(?<![\w$])this/")
 #: 反引号转义段（`` `Param` `` → 纯文本，不收集/不替换）
@@ -343,6 +345,13 @@ def _check_param_syntax(ctx: ExpandContext, text: str | None, loc: Loc | None) -
             "syntax",
             "syntax.invalid_name",
             "变量名不能以数字开头",
+            loc,
+        )
+    for _m in _NON_ASCII_NAME_TMPL.finditer(text):
+        ctx.add_issue(
+            "syntax",
+            "syntax.invalid_name",
+            "变量名仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*），不支持中文",
             loc,
         )
 

@@ -129,7 +129,7 @@ root: n1
 _PAGE_REF_INPUT_YAML = """
 tree: 页签流程
 inputs:
-  页: page_ref
+  page: page_ref
 nodes:
   n1:
     type: Root
@@ -138,7 +138,7 @@ nodes:
   n2:
     type: Action
     name: 动作
-    description: 操作 Param.页
+    description: 操作 Param.page
 root: n1
 """.strip()
 

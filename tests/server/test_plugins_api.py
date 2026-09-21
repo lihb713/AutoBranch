@@ -30,7 +30,7 @@ nodes:
     function: demo.double
     args: []
     returns:
-      y: int
+      NewParam.y: int
 root: r
 """.strip()
 

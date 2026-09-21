@@ -419,11 +419,11 @@ n9:
 >
 > **变量命名规则（全部变量，强制）**：
 > - **语法**：一切变量引用/声明一律使用 `Param.<名>`（读取）、`NewParam.<名>[:类型]`（写入/returns 接收名）
->   ——`ref`/`FunctionCall` 的 `returns` 键为 `NewParam.<名>`；`inputs`/`outputs` 声明的名字即裸变量名
->   （引用处以 `Param.<名>` / `NewParam.<名>` 出现）。旧裸名 `returns: {结果: int}` 为历史兼容，
->   新文档统一 `NewParam.` 前缀。
-> - **名称字符集**：`<名>` 一律为 **ASCII 标识符 `[A-Za-z_][A-Za-z0-9_]*`**，不支持中文/非 ASCII。
->   边界 = 首个非 `[A-Za-z0-9_]` 字符（中文即边界，中文变量名已废弃，不应使用）。
+>   ——`ref`/`FunctionCall` 的 `returns` 键**必须**为 `NewParam.<名>`（裸键/非 `NewParam.` 前缀 → 校验错误
+>   `syntax.invalid_return_name`）；`inputs`/`outputs` 声明的名字即裸变量名（引用处以 `Param.<名>` /
+>   `NewParam.<名>` 出现）。实参（`args`）可为常量或字面量，不强制 `Param`。
+> - **名称字符集**：`<名>` 一律为 **ASCII 标识符 `[A-Za-z_][A-Za-z0-9_]*`**，不支持中文/非 ASCII
+>   （`Param.苹果` / `NewParam.金额` → 校验错误 `syntax.invalid_name`；returns 键同理）。
 > - 反引号包裹（`` `Param` ``/`` `NewParam` ``）为纯文本，不替换。
 > - 旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已彻底废弃，解析到 → `syntax.deprecated`。
 
@@ -2242,7 +2242,8 @@ returns: {NewParam.total: int}   # 接收名（NewParam.<ASCII名>）→ 类型�
 - 引擎核心不感知具体能力；能力全部经插件框架（M3）调用。
 - 插件只返回值（业务值 + 报告附加信息），变量写入由引擎落笔。
 - 泛型 `object` 类型承载插件对象（页面对象/会话等）。
-- **接收名规则**（与 ref 一致）：`returns` 键必须为 `NewParam.<ASCII 标识符>`（旧裸名如 `{结果: int}` 属历史兼容写法，新文档统一用 `NewParam.` 前缀）；变量名仅 ASCII（§4.2/§5.3，中文变量名已废弃）。
+- **接收名规则**（与 ref 一致）：`returns` 键**必须**为 `NewParam.<ASCII 标识符>[:类型]`——裸键或非 ASCII
+  名 → 校验错误 `syntax.invalid_return_name`；变量名仅 ASCII（§4.2/§5.3，不支持中文）。
 
 ### 12.3 引擎内嵌形态
 

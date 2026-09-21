@@ -212,7 +212,7 @@ def test_parse_ref_node():
                 "name": "处理B",
                 "target": "文档B",
                 "args": ["起始订单"],
-                "returns": {"结果": "str"},
+                "returns": {"NewParam.result": "str"},
             },
         },
         "root": "n1",
@@ -223,7 +223,7 @@ def test_parse_ref_node():
     assert ref_node.kind == "ref"
     assert ref_node.ref_target == "文档B"
     assert ref_node.args == ("起始订单",)
-    assert ref_node.returns == (("结果", "str"),)
+    assert ref_node.returns == (("result", "str"),)
 
 
 def test_parse_invalid_no_root_node():
@@ -353,7 +353,7 @@ def test_ref_args_mismatch_rejected():
                 "name": "B",
                 "target": "文档B",
                 "args": ["起始订单"],  # 只传 1 个，B 有 2 个 inputs
-                "returns": {"结果": "str"},
+                "returns": {"NewParam.result": "str"},
             },
         },
         "root": "n1",
@@ -373,7 +373,7 @@ def test_ref_args_ok_with_literal():
                 "name": "B",
                 "target": "文档B",
                 "args": ["起始订单", "http://x"],  # 变量 + 字面量
-                "returns": {"结果": "str"},
+                "returns": {"NewParam.result": "str"},
             },
         },
         "root": "n1",

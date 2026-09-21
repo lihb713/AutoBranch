@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -580,20 +581,57 @@ def _slot(field: str, child_id: str | None) -> _Slot:
     return _Slot(field, [child_id] if child_id else [], [])
 
 
-def _strip_return_name(key: object) -> tuple[str, str | None]:
-    """returns 键 → (裸接收名, 内联类型或 None)。
+#: returns 接收名：``NewParam.<ASCII名>[:类型]``（强制 NewParam 前缀 + ASCII 标识符）。
+_RETURN_KEY_TMPL = re.compile(
+    r"NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object))?"
+)
 
-    键形如 ``NewParam.名`` / ``NewParam.名:int``；无 ``NewParam.`` 前缀的裸名兼容保留。
+
+def _strip_return_name(key: object) -> tuple[str, str | None, str | None]:
+    """returns 键 → (裸接收名, 内联类型, 错误消息或 None)。
+
+    强制 ``NewParam.<ASCII名>[:类型]`` 形式：裸键（无 ``NewParam.`` 前缀）或非 ASCII
+    变量名 → 返回错误消息（由调用方追加 ``syntax.invalid_return_name`` 校验问题）。
     """
     k = str(key).strip()
-    inline: str | None = None
-    if k.startswith("NewParam."):
-        k = k[len("NewParam."):]
-    if ":" in k:
-        k, inline = k.split(":", 1)
-        k = k.strip()
+    m = _RETURN_KEY_TMPL.fullmatch(k)
+    if m is None:
+        return _legacy_return_fallback(k)
+    return m.group(1), m.group(2), None
+
+
+def _legacy_return_fallback(k: str) -> tuple[str, str | None, str | None]:
+    """非规范 returns 键：尽力解析出裸名供下游（避免级联报错），并返回校验错误。"""
+    name, inline = k, None
+    if ":" in name:
+        name, inline = name.split(":", 1)
+        name = name.strip()
         inline = inline.strip() or None
-    return k, inline
+    error = (
+        f"returns 接收名 {k!r} 必须是 NewParam.<ASCII名>[:类型] 形式"
+        "（变量名仅支持 ASCII 标识符，不支持中文/裸键）"
+    )
+    return name, inline, error
+
+
+def _append_returns(
+    doc_id: str, nid: str, returns: dict, issues: list
+) -> list[tuple[str, str]]:
+    """解析 returns 映射；非规范键追加 ``syntax.invalid_return_name`` 校验问题。"""
+    pairs: list[tuple[str, str]] = []
+    for k, v in returns.items():
+        name, inline, error = _strip_return_name(k)
+        if error is not None:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "syntax",
+                    "invalid_return_name",
+                    f"{error}（位于 {_path(doc_id, f'nodes/{nid}')}）",
+                )
+            )
+        pairs.append((name, str(v).strip() or inline or ""))
+    return pairs
 
 
 def _ref_ir(
@@ -615,9 +653,7 @@ def _ref_ir(
     returns = body.get("returns", {})
     returns_pairs: list[tuple[str, str]] = []
     if isinstance(returns, dict):
-        for k, v in returns.items():
-            name, inline = _strip_return_name(k)
-            returns_pairs.append((name, str(v).strip() or inline or ""))
+        returns_pairs = _append_returns(doc_id, nid, returns, issues)
     return IRNode(
         kind="ref",
         ref_target=str(target).strip(),
@@ -662,9 +698,7 @@ def _function_call_ir(
     returns = body.get("returns", {})
     returns_pairs: list[tuple[str, str]] = []
     if isinstance(returns, dict):
-        for k, v in returns.items():
-            name, inline = _strip_return_name(k)
-            returns_pairs.append((name, str(v).strip() or inline or ""))
+        returns_pairs = _append_returns(doc_id, nid, returns, issues)
     else:
         issues.append(
             _issue(

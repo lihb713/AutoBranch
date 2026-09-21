@@ -65,6 +65,10 @@ const SET_TMPL = /(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|in
 
 const DEPRECATED_RX = /\[\[\s*(?:get|set)\s*:|(?<![\w$])this\//;
 const INVALID_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)/;
+const NON_ASCII_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.[\u0080-\uFFFF]/;
+
+/** returns 接收键合法形：`NewParam.<ASCII名>[:类型]`（强制 NewParam 前缀）。 */
+const RETURN_KEY_RX = /^NewParam\.[A-Za-z_][A-Za-z0-9_]*(?::(str|int|float|bool|page_ref|object))?$/;
 
 /** returns 接收键 → 裸接收名（剥离 `NewParam.` 前缀与内联 `:type`）。 */
 export function stripReturnName(key: string): string {
@@ -73,6 +77,19 @@ export function stripReturnName(key: string): string {
   const colon = k.indexOf(":");
   if (colon >= 0) k = k.slice(0, colon);
   return k.trim();
+}
+
+/** returns 接收键强制 `NewParam.<ASCII名>[:类型]` 形式校验。 */
+function checkReturnKeys(node: { id: string; returns?: Record<string, string> }, issues: ClientIssue[]): void {
+  for (const key of Object.keys(node.returns ?? {})) {
+    if (!RETURN_KEY_RX.test(key.trim())) {
+      issues.push({
+        code: "syntax.invalid_return_name",
+        message: `returns 接收名「${key}」必须为 NewParam.<ASCII名>[:类型] 形式（不支持中文/裸键）`,
+        nodeId: node.id,
+      });
+    }
+  }
 }
 
 /** 收集本树已声明变量：文档级 inputs + 各叶子 NewParam. 目标 + ref/FunctionCall returns 接收名。 */
@@ -201,6 +218,9 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
       if (INVALID_NAME_RX.test(text)) {
         issues.push({ code: "syntax.invalid_name", message: "变量名不能以数字开头", nodeId: n.id, field: f });
       }
+      if (NON_ASCII_NAME_RX.test(text)) {
+        issues.push({ code: "syntax.invalid_name", message: "变量名仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*），不支持中文", nodeId: n.id, field: f });
+      }
     }
     const mounts = slotFields(n);
     for (const field of REQUIRED_SLOT_FIELDS[n.type] ?? []) {
@@ -255,6 +275,7 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
             issues.push({ code: "name_conflict", message: `接收参数「${recv}」与本树入参重名`, nodeId: n.id });
           }
         }
+        checkReturnKeys(n, issues);
         (n.args ?? []).forEach((expr, i) => {
           const typ = meta.inputs[inputNames[i]];
           if (!typ || typ === "page_ref" || !LITERAL_TOKENS.includes(typ)) return;
@@ -273,6 +294,7 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
           nodeId: n.id,
         });
       }
+      checkReturnKeys(n, issues);
     }
   }
 

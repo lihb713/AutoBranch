@@ -208,4 +208,62 @@ root: n1
     );
     expect(issues.some((i) => i.code === "type_mismatch")).toBe(true);
   });
+
+  it("描述中 Param/NewParam 非 ASCII 变量名报错", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Action
+    name: 提取
+    description: 提取 NewParam.苹果金额:int
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "syntax.invalid_name")).toBe(true);
+  });
+
+  it("returns 裸键（无 NewParam）报 invalid_return_name", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: FunctionCall
+    name: 求和
+    function: compute.add
+    args: [Param.a, Param.b]
+    returns: {total: int}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "syntax.invalid_return_name")).toBe(true);
+  });
+
+  it("returns 中文 NewParam 键报 invalid_return_name", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: FunctionCall
+    name: 求和
+    function: compute.add
+    args: [Param.a, Param.b]
+    returns: {NewParam.合计: int}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "syntax.invalid_return_name")).toBe(true);
+  });
 });
