@@ -471,7 +471,7 @@ ref 登录: args: [username]       ← T 给直接子文档传参
 **取返回值 = ref returns 回收（对称）：**
 ```
 导出文档 B 完成后，把结果写到自己的帧 result
-T 经 returns 回收: ref 导出: returns: {结果: str}   ← 本树新建接收变量"结果"（按序对应 B 的 outputs）
+T 经 returns 回收: ref 导出: returns: {NewParam.result: str}   ← 本树新建接收变量（按序对应 B 的 outputs）
 ```
 
 #### 5.3.3 文档接口（输入输出声明）
