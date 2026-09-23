@@ -123,6 +123,25 @@ def test_to_browser_config(config_file):
     assert bc.browser_type == "firefox"
     assert bc.headless is False
     assert bc.timeout_ms == 5000
+    assert bc.ignore_https_errors is False
+
+
+def test_browser_ignore_https_errors_default_and_override(tmp_path, monkeypatch):
+    from autobranch.browser import BrowserConfig
+    from autobranch.config import BrowserOptions
+
+    assert BrowserOptions().ignore_https_errors is False
+    assert BrowserConfig().ignore_https_errors is False
+
+    path = tmp_path / "autobranch.config.json"
+    path.write_text(
+        '{"browser": {"ignore_https_errors": true}}', encoding="utf-8"
+    )
+    monkeypatch.delenv("AUTOBRANCH_LLM_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    cfg = AutoBranchConfig.load()
+    assert cfg.browser.ignore_https_errors is True
+    assert cfg.to_browser_config().ignore_https_errors is True
 
 
 def test_to_run_config(config_file):

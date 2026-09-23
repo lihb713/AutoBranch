@@ -119,6 +119,57 @@ class ChatCompletionsAdapter(ProtocolAdapter):
         usage = parsed.get("usage")
         return LLMResponse(text=text, tool_calls=tool_calls), usage
 
+    def parse_stream_response(self, body: bytes) -> tuple[LLMResponse, dict]:
+        """解析 Chat Completions SSE 流式响应（chat.completion.chunk）。
+
+        逐行累积 ``delta.content`` 与 ``delta.tool_calls``（按 index 归并、逐段拼接
+        ``function.arguments``），usage 取任一 chunk 顶层 ``usage``（OpenAI 流式在
+        最终 chunk 提供）。最终工具参数经 JSON 合法性校验。
+        """
+        text_parts: list[str] = []
+        call_buffers: dict[int, dict[str, str]] = {}
+        usage: dict | None = None
+        for line in body.decode("utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[len("data:"):].strip()
+            if data == "[DONE]":
+                continue
+            try:
+                event = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event.get("usage"), dict):
+                usage = event["usage"]
+            choices = event.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            content = delta.get("content")
+            if content:
+                text_parts.append(content)
+            raw_calls = delta.get("tool_calls")
+            if isinstance(raw_calls, list):
+                for raw in raw_calls:
+                    idx = raw.get("index", 0)
+                    buf = call_buffers.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                    if raw.get("id"):
+                        buf["id"] = raw["id"]
+                    fn = raw.get("function") or {}
+                    if fn.get("name"):
+                        buf["name"] = fn["name"]
+                    if fn.get("arguments"):
+                        buf["arguments"] += fn["arguments"]
+        tool_calls: list[ToolCall] = []
+        for idx in sorted(call_buffers):
+            buf = call_buffers[idx]
+            if not buf["name"]:
+                continue
+            _validate_json_arguments(buf["arguments"])
+            tool_calls.append(ToolCall(id=buf["id"], name=buf["name"], arguments=buf["arguments"]))
+        return LLMResponse(text="".join(text_parts), tool_calls=tool_calls), usage
+
 
 class ResponsesAdapter(ProtocolAdapter):
     """Responses 协议（/v1/responses）。"""

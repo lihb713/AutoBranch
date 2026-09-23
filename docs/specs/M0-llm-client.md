@@ -62,7 +62,7 @@ class LLMSession:
                  session_id: str | None = None): ...   # session_id 覆盖 config.session_id
     def add_user_message(self, content: str) -> None: ...
     def add_tool_result(self, call_id: str, result: ToolResult | str) -> None: ...
-    def request(self, tools: list[ToolSpec] | None = None, stream: bool = False) -> LLMResponse: ...
+    def request(self, tools: list[ToolSpec] | None = None, stream: bool | None = None) -> LLMResponse: ...
     def stream(self, tools: list[ToolSpec] | None = None) -> list[str]: ...  # 流式分段
     def token_used(self) -> int: ...
     def exceeds_budget(self, limit: int) -> bool: ...
@@ -71,6 +71,10 @@ class LLMSession:
 **request() 行为**：携带会话内全量消息序列（system + 用户 + 助手 + 工具结果，全量累积）；
 解析响应后自动将助手回复（含 tool_calls）追加为上下文（OpenAI 要求 tool 消息紧跟
 对应 assistant tool_calls 消息）；请求后读取 usage 累计 token，超预算抛异常。
+**请求形态（自动兼容，无配置项）**：`request(stream=None)` 默认流式（chat 协议），
+端点拒绝（HTTP 400/405/422/501 且提及 `stream`）时自动回落非流式并按端点缓存已工作形态；
+responses 协议恒非流式。流式响应按 SSE 解析（累积 `delta.content`、逐段拼接
+`delta.tool_calls[].function.arguments`，usage 取末段），汇聚结果与非流式一致。
 **会话标识**：每个会话生成一个稳定的 `x-opencode-session` 请求头（`session_id` 显式值、
 否则 `config.session_id`、否则自动 UUID）；同一会话内多轮请求共用同一 ID，供网关
 路由与提示缓存优化（OpenCode Go 网关缺失该头返回 400 `MissingSessionID`）。

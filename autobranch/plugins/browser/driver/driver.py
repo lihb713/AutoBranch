@@ -121,7 +121,7 @@ class BrowserDriver:
         playwright = sync_playwright().start()
         browser_type = getattr(playwright, cfg.browser_type)
         browser = browser_type.launch(headless=cfg.headless)
-        context = browser.new_context()
+        context = browser.new_context(ignore_https_errors=cfg.ignore_https_errors)
         context.on("response", self._http_recorder.record_response)
         self._playwright = playwright
         self._browser = browser

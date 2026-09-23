@@ -106,13 +106,16 @@ conda run -n autobranch python -m playwright install chromium
   },
   "browser": {
     "headless": true,
-    "timeout_ms": 30000
+    "timeout_ms": 30000,
+    "ignore_https_errors": false
   },
   "max_concurrent_runs": 3,
   "experience_feedback": true,
   "experience_retention": 5
 }
 ```
+
+> **LLM 请求方式**：自动兼容流式与非流式（无需配置）——默认流式，仅接受非流式的端点自动回落。**证书豁免**：`browser.ignore_https_errors: true` 关闭所有 HTTPS 证书校验（内网/私有 CA 环境用，默认关）。
 
 ## 使用
 

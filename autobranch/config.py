@@ -52,11 +52,16 @@ class LLMOptions:
 
 @dataclass(frozen=True)
 class BrowserOptions:
-    """浏览器配置项（M1 spec §3.1）。"""
+    """浏览器配置项（M1 spec §3.1）。
+
+    :param ignore_https_errors: 关闭 HTTPS 证书校验（默认 False；内网/私有 CA
+      环境开启后信任所有证书）。
+    """
 
     browser_type: str = "chromium"
     headless: bool = True
     timeout_ms: int = 30000
+    ignore_https_errors: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BrowserOptions:
@@ -64,6 +69,7 @@ class BrowserOptions:
             browser_type=str(data.get("browser_type", cls.browser_type)),
             headless=bool(data.get("headless", cls.headless)),
             timeout_ms=int(data.get("timeout_ms", cls.timeout_ms)),
+            ignore_https_errors=bool(data.get("ignore_https_errors", cls.ignore_https_errors)),
         )
 
 
@@ -187,6 +193,7 @@ class AutoBranchConfig:
             browser_type=self.browser.browser_type,
             headless=self.browser.headless,
             timeout_ms=self.browser.timeout_ms,
+            ignore_https_errors=self.browser.ignore_https_errors,
         )
 
     def to_run_config(self, **overrides: Any) -> Any:

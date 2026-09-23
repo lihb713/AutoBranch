@@ -24,7 +24,7 @@ def test_chat_request_body_structure(config, fake):
 
     body = fake.last_request.json()
     assert body["model"] == config.model
-    assert body["stream"] is False
+    assert body["stream"] is True  # 默认流式（自动兼容；响应形态自动识别回落）
     # messages: [system, user]
     assert body["messages"][0] == {"role": "system", "content": "你是助手"}
     assert body["messages"][1] == {"role": "user", "content": "1+1=?"}

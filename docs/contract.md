@@ -1164,12 +1164,14 @@ get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函�
 ```json
 {
   "llm":     { "base_url", "api_key", "model", "timeout" },
-  "browser": { "browser_type", "headless", "timeout_ms" },
+  "browser": { "browser_type", "headless", "timeout_ms", "ignore_https_errors" },
   "run":     { "timeout", "max_rounds", "no_progress_rounds",
                "session_timeout", "initial_graph_scope",
                "initial_graph_lod", "report_dir", "page_var", "budget_limit" }
 }
 ```
+
+**LLM 请求方式（自动兼容，无配置项）**：叶子请求默认走**流式**（`stream: true`）；对仅接受非流式的端点，响应被拒（HTTP 400/405/422/501 且提及 `stream`）时自动回落非流式，并按端点缓存已工作形态。流式响应按 SSE 解析（含工具调用增量）。**浏览器证书豁免**：`browser.ignore_https_errors: true` 关闭所有 HTTPS 证书校验（默认 false；内网/私有 CA 环境开启）。
 
 加载接口：`AutoBranchConfig.load(path=None)` → `to_llm_config()` /
 `to_browser_config()` / `to_run_config(**overrides)`，供 CLI/服务/M9b 统一接线。

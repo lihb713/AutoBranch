@@ -39,6 +39,19 @@ class TestSessionLifecycle:
         assert not result.ok
         assert result.detail["code"] == ErrorCode.SESSION_NOT_RUNNING
 
+    def test_start_with_ignore_https_errors(self, server_url):
+        """证书豁免开启后会话可正常打开页面（Playwright 接受该 context 参数）。"""
+        from autobranch.browser import BrowserConfig, BrowserDriver
+
+        instance = BrowserDriver()
+        try:
+            instance.start(BrowserConfig(timeout_ms=5000, ignore_https_errors=True))
+            assert instance.running
+            result = instance.open(f"{server_url}/basic.html")
+            assert result.ok, result.error
+        finally:
+            instance.stop()
+
 
 class TestColdStart:
     """每次 start 均为冷启动（任务 2.2，验收标准 §6 第1条）。"""
