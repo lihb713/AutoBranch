@@ -93,7 +93,7 @@ nodes:
     function: ${PLUGIN_NAME}.greet
     args: ["world"]
     returns:
-      问候: str
+      NewParam.greeting: str
 root: n1
 `;
   const treeResp = await api.post("/api/trees", {

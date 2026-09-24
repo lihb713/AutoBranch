@@ -38,3 +38,6 @@ autobranch/frontend/test-results/
 .idea/
 .DS_Store
 Thumbs.db
+
+# 浏览器代理路由本地配置（示例见 proxy.config.example.json）
+autobranch/plugins/browser/proxy.config.json

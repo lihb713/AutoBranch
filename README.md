@@ -115,7 +115,7 @@ conda run -n autobranch python -m playwright install chromium
 }
 ```
 
-> **LLM 请求方式**：自动兼容流式与非流式（无需配置）——默认流式，仅接受非流式的端点自动回落。**证书豁免**：`browser.ignore_https_errors: true` 关闭所有 HTTPS 证书校验（内网/私有 CA 环境用，默认关）。
+> **LLM 请求方式**：自动兼容流式与非流式（无需配置）——默认流式，仅接受非流式的端点自动回落。**证书豁免**：`browser.ignore_https_errors: true` 关闭所有 HTTPS 证书校验（内网/私有 CA 环境用，默认关）。**浏览器代理路由**：在 `autobranch/plugins/browser/proxy.config.json` 配置"哪些站点走哪个代理"（格式见 `proxy.config.example.json`，缺失则不启用；本期无前端管理页，直接编辑文件）。
 
 ## 使用
 

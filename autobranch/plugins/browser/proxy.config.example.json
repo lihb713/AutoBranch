@@ -1,0 +1,16 @@
+{
+  "default": "system",
+  "profiles": {
+    "直连": { "mode": "direct" },
+    "公司代理": {
+      "server": "http://proxy.corp.example:8080",
+      "username": "user",
+      "password": "pass"
+    }
+  },
+  "rules": [
+    { "pattern": "*.corp.example", "proxy": "公司代理" },
+    { "pattern": "*.intranet", "proxy": "直连" },
+    { "pattern": "127.0.0.1", "proxy": "直连" }
+  ]
+}

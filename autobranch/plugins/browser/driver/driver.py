@@ -25,6 +25,7 @@ from autobranch.plugins.browser.driver.config import BrowserConfig
 from autobranch.plugins.browser.driver.errors import BrowserError, FatalBrowserError, PageRefError
 from autobranch.plugins.browser.driver.http import HttpRecorder
 from autobranch.plugins.browser.driver.models import ElementRef, ErrorCode, OpResult, PageRef
+from autobranch.plugins.browser.proxy import ProxyRouter, load_proxy_config, proxy_key
 
 _FATAL_KEYWORDS = (
     "target closed",
@@ -101,39 +102,114 @@ class BrowserDriver:
     def __init__(self) -> None:
         self._playwright = None
         self._browser = None
-        self._context = None
+        self._direct_browser = None
+        self._contexts: dict[str, object] = {}
+        self._page_ctx: dict[str, object] = {}
         self._config: BrowserConfig | None = None
         self._pages: dict[str, Page] = {}
         self._next_page_id = 1
         self._http_recorder = HttpRecorder()
         self._active_id: str | None = None
+        self._router: ProxyRouter | None = None
 
     # ------------------------------------------------------------------ 会话
 
-    def start(self, config: BrowserConfig | None = None) -> None:
-        """创建全新浏览器 context（冷启动，契约 §5.9）。
+    def start(
+        self, config: BrowserConfig | None = None, *, proxy_config: object | None = None
+    ) -> None:
+        """创建全新浏览器（冷启动，契约 §5.9）；会话（context）按代理模式懒建。
 
-        若已有会话则先完整释放（可重复调用），保证第二次 start 无上一次的
-        cookie/localStorage/登录态。
+        :param proxy_config: 代理路由配置——dict（配置对象）/ str（配置文件路径）/
+          None（读插件目录 ``proxy.config.json``，缺失则不启用路由）。
         """
         self.stop()
         cfg = config or BrowserConfig()
+        data = self._resolve_proxy_data(proxy_config)
+        self._router = ProxyRouter(data) if data else None
         playwright = sync_playwright().start()
         browser_type = getattr(playwright, cfg.browser_type)
         browser = browser_type.launch(headless=cfg.headless)
-        context = browser.new_context(ignore_https_errors=cfg.ignore_https_errors)
-        context.on("response", self._http_recorder.record_response)
         self._playwright = playwright
         self._browser = browser
-        self._context = context
+        self._direct_browser = None
         self._config = cfg
+        self._contexts = {}
+        self._page_ctx = {}
         self._pages = {}
+        self._active_id = None
         # 页面 id 驱动级单调递增（跨会话不重置），避免重启后旧引用误绑定新页
         self._http_recorder.clear()
         self._http_recorder.pump = self._pump_events
 
+    @staticmethod
+    def _resolve_proxy_data(proxy_config: object) -> dict | None:
+        if proxy_config is None:
+            return load_proxy_config()
+        if isinstance(proxy_config, dict):
+            return proxy_config or None
+        if isinstance(proxy_config, str):
+            return load_proxy_config(proxy_config)
+        return None
+
+    def _context_args(self, profile: dict) -> dict:
+        """profile → ``new_context`` 参数（含证书豁免）。
+
+        - system：不传 proxy（Chromium 跟随系统代理）；
+        - custom：``proxy={server, username?, password?}``；
+        - direct：不走本方法（经独立 ``--no-proxy-server`` 浏览器承载）。
+        """
+        kwargs: dict = {
+            "ignore_https_errors": self._config.ignore_https_errors if self._config else False
+        }
+        mode = profile.get("mode")
+        if mode == "custom":
+            proxy: dict = {"server": profile["server"]}
+            if profile.get("username"):
+                proxy["username"] = profile["username"]
+            if profile.get("password"):
+                proxy["password"] = profile["password"]
+            kwargs["proxy"] = proxy
+        return kwargs
+
+    def _ensure_direct_browser(self) -> object:
+        """懒启动承载 direct 模式的浏览器（``--no-proxy-server`` 强制直连）。
+
+        Playwright 的 proxy 是 context 级且不支持 ``direct://`` 特殊值（实测报
+        ERR_PROXY_CONNECTION_FAILED），故直连须独立浏览器进程以 ``--no-proxy-server``
+        强制；system/custom 共用一个默认浏览器。
+        """
+        if self._direct_browser is not None:
+            return self._direct_browser
+        browser_type = getattr(self._playwright, self._config.browser_type)
+        self._direct_browser = browser_type.launch(
+            headless=self._config.headless, args=["--no-proxy-server"]
+        )
+        return self._direct_browser
+
+    def _ensure_context(self, profile: dict) -> object | None:
+        """按代理模式取/建会话（context），懒创建并缓存。
+
+        direct 走独立 ``--no-proxy-server`` 浏览器；system/custom 走默认浏览器。
+        """
+        key = proxy_key(profile)
+        ctx = self._contexts.get(key)
+        if ctx is not None:
+            return ctx
+        if self._browser is None:
+            return None
+        if profile.get("mode") == "direct":
+            browser = self._ensure_direct_browser()
+            ctx = browser.new_context(
+                ignore_https_errors=self._config.ignore_https_errors if self._config else False
+            )
+        else:
+            ctx = self._browser.new_context(**self._context_args(profile))
+        ctx.on("response", self._http_recorder.record_response)
+        self._contexts[key] = ctx
+        return ctx
+
     def stop(self) -> None:
-        """释放 context 与全部页面（契约 §5.9：会话结束释放全部资源）。
+        """释放全部会话与页面（契约 §5.9：会话结束释放全部资源）。
 
         页面引用随之全部失效；幂等，重复调用安全。
         """
@@ -143,18 +219,25 @@ class BrowserDriver:
             except Exception:
                 pass
         self._pages = {}
-        if self._context is not None:
+        self._page_ctx = {}
+        for ctx in list(self._contexts.values()):
             try:
-                self._context.close()
+                ctx.close()
             except Exception:
                 pass
-            self._context = None
+        self._contexts = {}
         if self._browser is not None:
             try:
                 self._browser.close()
             except Exception:
                 pass
             self._browser = None
+        if self._direct_browser is not None:
+            try:
+                self._direct_browser.close()
+            except Exception:
+                pass
+            self._direct_browser = None
         if self._playwright is not None:
             try:
                 self._playwright.stop()
@@ -166,7 +249,7 @@ class BrowserDriver:
 
     @property
     def running(self) -> bool:
-        return self._context is not None
+        return self._browser is not None
 
     @property
     def http_recorder(self) -> HttpRecorder:
@@ -194,13 +277,18 @@ class BrowserDriver:
     def open(self, url: str, timeout_ms: int | None = None) -> OpResult:
         """打开页面并返回页面引用（成功时 ``detail["page_ref"]``）。
 
-        加载超时/地址不可达返回 ``ok=False`` + 分类错误码，不产出可用引用；
+        按代理路由选择会话（context）：有路由则按 URL 匹配代理模式，无路由默认
+        system（跟随系统代理）。加载超时/地址不可达返回 ``ok=False`` + 分类错误码；
         浏览器致命错误抛出 ``FatalBrowserError``。
         """
-        if self._context is None:
+        if self._browser is None:
+            return OpResult(False, "浏览器会话未启动", {"code": ErrorCode.SESSION_NOT_RUNNING})
+        profile = self._router.resolve(url) if self._router else {"mode": "system"}
+        ctx = self._ensure_context(profile)
+        if ctx is None:
             return OpResult(False, "浏览器会话未启动", {"code": ErrorCode.SESSION_NOT_RUNNING})
         timeout = timeout_ms or self._timeout()
-        page = self._context.new_page()
+        page = ctx.new_page()
         try:
             # wait_until="domcontentloaded"：重型/流式页面（如 opencode.ai）的 "load"
             # 事件可能永不触发，导致 goto 一直挂到超时；domcontentloaded 在 HTML
@@ -225,6 +313,7 @@ class BrowserDriver:
         ref_id = str(self._next_page_id)
         self._next_page_id += 1
         self._pages[ref_id] = page
+        self._page_ctx[ref_id] = ctx
         self._active_id = ref_id
         return OpResult(True, detail={"page_ref": PageRef(ref_id), "url": url})
 
@@ -233,7 +322,7 @@ class BrowserDriver:
 
         引用无效/已释放返回 ``ok=False`` + INVALID_REF，不作用于任何页面。
         """
-        if self._context is None:
+        if self._browser is None:
             return OpResult(False, "浏览器会话未启动", {"code": ErrorCode.SESSION_NOT_RUNNING})
         page = self._pages.get(page_ref.id)
         if page is None:
@@ -250,7 +339,7 @@ class BrowserDriver:
 
     def current_page(self) -> PageRef | None:
         """返回当前活动页引用（最近 open/activate 的页；无则 None）。"""
-        if self._context is None or self._active_id is None:
+        if self._browser is None or self._active_id is None:
             return None
         if self._active_id not in self._pages:
             return None
@@ -258,7 +347,7 @@ class BrowserDriver:
 
     def activate_page(self, page_ref: PageRef) -> OpResult:
         """把已打开的页设为当前活动页（bring_to_front），后续操作作用于该页。"""
-        if self._context is None:
+        if self._browser is None:
             return OpResult(False, "浏览器会话未启动", {"code": ErrorCode.SESSION_NOT_RUNNING})
         page = self._pages.get(page_ref.id)
         if page is None:
@@ -282,7 +371,7 @@ class BrowserDriver:
 
     def _resolve_page(self, page_ref: PageRef) -> Page:
         """供 DomProbe 等内部使用：解析页面引用，失败抛可分类异常。"""
-        if self._context is None:
+        if self._browser is None:
             raise BrowserError("浏览器会话未启动")
         page = self._pages.get(page_ref.id)
         if page is None:

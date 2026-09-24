@@ -76,7 +76,8 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 ## 关键实现
 
 - **预置插件位于 `autobranch/plugins/`**（工具的一部分，随工具分发）：
-  - `autobranch/plugins/browser/`：浏览器插件——**自包含**浏览器驱动（`driver/` 子包）、语义图生成（`semantic_graph/` 子包）、元素引用映射（`refmap.py`）、页面探针（`probe.py`）+ 插件类（`__init__.py`）。
+  - `autobranch/plugins/browser/`：浏览器插件——**自包含**浏览器驱动（`driver/` 子包）、语义图生成（`semantic_graph/` 子包）、元素引用映射（`refmap.py`）、页面探针（`probe.py`）、**代理路由**（`proxy.py` + `proxy.config.json` 配置 + `proxy.config.example.json` 示例）+ 插件类（`__init__.py`）。
   - `autobranch/plugins/compute/`、`autobranch/plugins/ssh/`、`autobranch/plugins/file/`、`autobranch/plugins/common/`（共享库）。
 - 每个插件包以 `plugin` 变量暴露 `PluginBase` 实例；引擎启动经 `load_builtin_plugins` 扫描 `autobranch/plugins` 注册。
+- **浏览器代理路由**（browser-proxy-routing）：代理决策不进行为树描述，由插件内 `proxy.config.json`（缺失则不启用）按站点规则匹配——`default` + `profiles`（system / direct / 自定义）+ `rules`（首条命中）。`BrowserDriver.open(url)` 按 URL 路由到对应会话（context-per-mode，懒建）；`direct` 经独立 `--no-proxy-server` 浏览器承载（Playwright 不支持 context 级 `direct://`）；system/custom 共用一个默认浏览器。
 - 兼容转发层：`autobranch.browser` / `autobranch.semantic_graph` / `autobranch.engine.probe` / `autobranch.engine.refmap` 为薄转发（物理实现在浏览器插件内），供引擎核心 / 旧非插件路径引用。
