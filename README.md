@@ -4,6 +4,8 @@
 
 它**不限于 Web 自动化**：除了浏览器，还内置计算、SSH、文件等能力，且支持用户编写自定义插件——因此从最初的"网页自动化"演变为通用的自动化执行平台。
 
+> **完整用户手册**：安装部署、参数配置、行为树文档语法、前端编辑器、变量、执行与报告、插件开发、内置插件用法与常见问题，见 **[`docs/user-guide.md`](docs/user-guide.md)**。本 README 为快速入门。
+
 ## 核心特性
 
 - **行为树文档驱动**：`tree / nodes / root` 三段式 YAML，支持 Sequence / Selector / Repeat / LoopUntil / Retry / Step / Branch / ref / **FunctionCall** 等节点。
