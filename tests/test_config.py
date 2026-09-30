@@ -150,6 +150,11 @@ def test_to_run_config(config_file):
     assert rc.timeout == 200.0
     assert rc.report_dir == "custom_reports"
     assert rc.max_rounds == 3  # 覆盖生效
+    # browser_config 注入：浏览器插件启动用配置的浏览器选项（非默认）
+    assert rc.browser_config is not None
+    assert rc.browser_config.browser_type == "firefox"
+    assert rc.browser_config.headless is False
+    assert rc.browser_config.ignore_https_errors is False
 
 
 def test_run_options_from_dict_with_none():

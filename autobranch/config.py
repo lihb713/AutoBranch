@@ -197,7 +197,11 @@ class AutoBranchConfig:
         )
 
     def to_run_config(self, **overrides: Any) -> Any:
-        """构建 M7 ``RunConfig``（额外覆盖参数可直接传入）。"""
+        """构建 M7 ``RunConfig``（额外覆盖参数可直接传入）。
+
+        注入 ``browser_config``（由 ``to_browser_config`` 构建），使浏览器插件启动时
+        使用配置中的 browser_type/headless/timeout_ms/ignore_https_errors，而非默认。
+        """
         from autobranch.orchestrator import RunConfig
 
         base = dict(
@@ -208,6 +212,7 @@ class AutoBranchConfig:
             initial_graph_scope=self.run.initial_graph_scope,
             initial_graph_lod=self.run.initial_graph_lod,
             report_dir=self.run.report_dir,
+            browser_config=self.to_browser_config(),
         )
         base.update(overrides)
         return RunConfig(**base)
