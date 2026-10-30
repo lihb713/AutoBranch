@@ -86,6 +86,8 @@ class LeafResult:
     :param bool_value: Condition 专有布尔值；Action 为 None。
     :param error_source: 失败来源（llm/program）；成功或 Condition 确定判断为 None。
     :param trace: 执行追踪数据（复用 M8 ``LeafTrace``）。
+    :param used_browser: 本次叶子是否实际调用过浏览器插件函数（供 M8 决定是否
+      在节点执行后截图——纯计算叶子不截图）。
     """
 
     status: Literal["success", "failure"]
@@ -93,6 +95,7 @@ class LeafResult:
     error_source: Literal["llm", "program"] | None = None
     trace: LeafTrace = field(default_factory=lambda: LeafTrace(llm_input={}))
     screenshots: tuple[str, ...] = ()
+    used_browser: bool = False
 
 
 @dataclass(frozen=True)

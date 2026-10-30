@@ -9,11 +9,13 @@ from __future__ import annotations
 import os
 
 import pytest
-from orchestrator_helpers import action, leaf_success
+from orchestrator_helpers import action
 
 from autobranch.browser import BrowserConfig, BrowserDriver, ElementRef
+from autobranch.leaf_agent.models import LeafResult
 from autobranch.orchestrator import Engine, RunConfig
 from autobranch.parser.models import BehaviorTree
+from autobranch.reporting.models import LeafTrace
 
 pytestmark = pytest.mark.integration
 
@@ -29,7 +31,11 @@ def test_engine_post_node_screenshot_real_browser(tmp_path, server_url):
         handle = driver.page(opened.detail["page_ref"]).detail["page"]
         clicked = handle.click(ElementRef("#login-btn"))
         assert clicked.ok, clicked.error
-        return leaf_success(node.description)
+        return LeafResult(
+            status="success",
+            trace=LeafTrace(llm_input={"desc": node.description}),
+            used_browser=True,
+        )
 
     try:
         engine = Engine(browser=driver, leaf_executor=leaf)

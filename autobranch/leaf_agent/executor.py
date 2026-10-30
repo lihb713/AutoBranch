@@ -72,6 +72,7 @@ class _LeafOutcome:
     reasoning: list[str] = field(default_factory=list)
     records: list[ToolCallRecord] = field(default_factory=list)
     screenshots: list[str] = field(default_factory=list)
+    used_browser: bool = False
 
 
 #: ``Param.<name>`` 读取引用（叶子执行前程序替换；与 M2 同款正则，ASCII 词边界）
@@ -188,6 +189,7 @@ def _run_agent_loop(
     reasoning: list[str] = []
     decision: str | None = None
     screenshots: list[str] = []
+    used_browser = False
     rounds = 0
     current_tools = list(tools)
     deadline = time.monotonic() + ctx.timeout if ctx.timeout is not None else None
@@ -212,7 +214,7 @@ def _run_agent_loop(
             if response.has_tool_calls:
                 rounds += 1
                 _check_round_limit(rounds, ctx.max_rounds)
-                executed, added, new_shots = _execute_tool_calls(
+                executed, added, new_shots, browser_used = _execute_tool_calls(
                     session,
                     response.tool_calls,
                     ctx,
@@ -225,6 +227,7 @@ def _run_agent_loop(
                     current_tools.extend(added)
                 if new_shots:
                     screenshots.extend(new_shots)
+                used_browser = used_browser or browser_used
                 if progress.record(_fingerprint(executed)):
                     raise LeafTermination("no_progress")
                 _check_deadline(deadline)
@@ -250,14 +253,23 @@ def _run_agent_loop(
                 reasoning=reasoning,
                 records=records,
                 screenshots=screenshots,
+                used_browser=used_browser,
             )
     except LeafTermination as term:
         return _LeafOutcome(
-            "failure", None, "llm", term.terminator, decision, reasoning, records, screenshots
+            "failure",
+            None,
+            "llm",
+            term.terminator,
+            decision,
+            reasoning,
+            records,
+            screenshots,
+            used_browser,
         )
     except DecisionError:
         return _LeafOutcome(
-            "failure", None, "llm", None, decision, reasoning, records, screenshots
+            "failure", None, "llm", None, decision, reasoning, records, screenshots, used_browser
         )
     except Exception as exc:
         outcome = _outcome_for_exception(exc)
@@ -270,6 +282,7 @@ def _run_agent_loop(
             reasoning=reasoning,
             records=records,
             screenshots=screenshots,
+            used_browser=used_browser,
         )
 
 
@@ -281,8 +294,8 @@ def _execute_tool_calls(
     set_targets: tuple[str, ...] = (),
     current_tools: list[ToolSpec] | None = None,
     set_decls: tuple[tuple[str, str], ...] = (),
-) -> tuple[list[tuple[str, str, str]], list[ToolSpec], list[str]]:
-    """执行一轮全部工具调用并回填会话；返回指纹素材与新增工具（插件模式）。
+) -> tuple[list[tuple[str, str, str]], list[ToolSpec], list[str], bool]:
+    """执行一轮全部工具调用并回填会话；返回指纹素材、新增工具、截图与是否用到浏览器。
 
     插件模式（``ctx.registry`` 非空）下处理 ``use_capability`` 与插件函数
     （产出型工具由引擎落笔写变量）；否则走旧引擎路径。
@@ -290,12 +303,15 @@ def _execute_tool_calls(
     executed: list[tuple[str, str, str]] = []
     added: list[ToolSpec] = []
     screenshots: list[str] = []
+    used_browser = False
     for call in tool_calls:
         name = call.name
         arguments = _safe_load_arguments(call.arguments)
-        op, result_text, new_tools, shot = _plugin_tool_call(
+        op, result_text, new_tools, shot, is_browser = _plugin_tool_call(
             ctx, name, arguments, set_targets, set_decls
         )
+        if is_browser:
+            used_browser = True
         if new_tools:
             added.extend(new_tools)
         if shot:
@@ -313,7 +329,7 @@ def _execute_tool_calls(
         executed.append(
             (name, json.dumps(arguments, sort_keys=True, ensure_ascii=False), result_text)
         )
-    return executed, added, screenshots
+    return executed, added, screenshots, used_browser
 
 
 def _plugin_tool_call(
@@ -322,16 +338,17 @@ def _plugin_tool_call(
     arguments: dict,
     set_targets: tuple[str, ...],
     set_decls: tuple[tuple[str, str], ...] = (),
-) -> tuple[FunctionResult, str, list[ToolSpec], str | None]:
+) -> tuple[FunctionResult, str, list[ToolSpec], str | None, bool]:
     """插件路径：use_capability / 插件函数分发（产出型落笔）。
 
-    返回 ``(result, text, new_tools, screenshot)``；``screenshot`` 为
-    semantic_graph 调用产生的截图路径（供叶子报告展示）。
+    返回 ``(result, text, new_tools, screenshot, is_browser)``；``screenshot`` 为
+    semantic_graph 调用产生的截图路径，``is_browser`` 表示本次调用是否属于浏览器插件
+    （供 M8 决定节点执行后是否截图）。
     """
     if name == "use_capability":
         result = handle_use_capability(ctx.registry, arguments, runtime=ctx.runtime)
         new_tools = list(result.detail.get("functions", [])) if result.ok else []
-        return result, _plugin_text(result, "plugin-system"), new_tools, None
+        return result, _plugin_text(result, "plugin-system"), new_tools, None, False
     spec = ctx.registry.function(name)
     full_name = name
     if spec is None:
@@ -344,7 +361,7 @@ def _plugin_tool_call(
         result = FunctionResult.failure(
             f"未知函数: {name}（函数未注册，请先 use_capability 加载对应能力）"
         )
-        return result, _plugin_text(result, ""), [], None
+        return result, _plugin_text(result, ""), [], None, False
     if spec.is_producing:
         target = (arguments or {}).get(spec.output_param)
         declared = {_norm_path(t) for t in set_targets}
@@ -352,13 +369,20 @@ def _plugin_tool_call(
         if not target:
             # 未提供目标 → 不落笔（可选产出，如 open 无 save_to）
             result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
-            return result, _plugin_text(result, ctx.registry.owner(full_name) or ""), [], None
+            owner = ctx.registry.owner(full_name) or ""
+            return (
+                result,
+                _plugin_text(result, owner),
+                [],
+                None,
+                owner == "browser",
+            )
         if _norm_path(target) not in declared:
             result = FunctionResult.failure(
                 f"{full_name} 目标 {target!r} 未在叶子可写变量集内"
                 f"（声明: {', '.join(set_targets) or '无'}；请用 NewParam.x 声明）"
             )
-            return result, _plugin_text(result, ""), [], None
+            return result, _plugin_text(result, ""), [], None, False
         result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
         if result.ok:
             decl_type = dict(set_decls).get(_norm_path(target), "")
@@ -369,7 +393,7 @@ def _plugin_tool_call(
     screenshot = None
     if spec.name == "semantic_graph" and result.ok:
         screenshot = (result.detail or {}).get("screenshot")
-    return result, _plugin_text(result, owner), [], screenshot
+    return result, _plugin_text(result, owner), [], screenshot, owner == "browser"
 
 
 def _initial_tools(ctx: LeafContext) -> list[ToolSpec]:
@@ -475,6 +499,7 @@ def _build_leaf_result(
         error_source=outcome.error_source,
         trace=trace,
         screenshots=tuple(outcome.screenshots),
+        used_browser=outcome.used_browser,
     )
 
 

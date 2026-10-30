@@ -155,6 +155,15 @@ def test_report_path_persisted_from_result(client, mock_engine, session, setting
     resp = client.post(f"/api/trees/{tree['id']}/run")
     run_id = resp.json()["run_id"]
     assert run_id == 1
+    # 队列异步执行，轮询到终态再断言（避免读取早于后台完成）
+    import time
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        session.expire_all()
+        if session.get(Run, run_id).status not in ("pending", "running"):
+            break
+        time.sleep(0.02)
     run = session.get(Run, run_id)
     assert run.status == "success"
     assert run.report_path == f"{run_id}/exec_report.md"

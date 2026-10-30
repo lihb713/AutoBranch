@@ -307,22 +307,23 @@ class Traverser:
 
         screenshot_path = ""
         page_url = None
-        page_ref = self.ctx.browser.current_page()
-        if page_ref is not None:
-            # 节点执行后截图：拍当前页面状态（操作/判断的**结果**），
-            # 而非 LLM"看页面"（semantic_graph）时、动作之前的旧状态。
-            try:
-                handle = self.ctx.browser.page(page_ref)
-                if getattr(handle, "ok", False):
-                    page_url = handle.detail["page"].url
-            except Exception:
-                page_url = None
-            shot = self.ctx.reporter.capture_screenshot(page_ref, node.description)
-            if shot:
-                screenshot_path = self._report_rel_path(shot)
-        if not screenshot_path and result.screenshots:
-            # 兜底：无当前页时用浏览器插件 semantic_graph 产出的截图
-            screenshot_path = self._report_rel_path(result.screenshots[0])
+        if result.used_browser:
+            # 仅浏览器叶子在**执行后**拍当前页面状态（操作/判断结果）；
+            # 纯计算叶子不截图，也不在报告中展示。
+            page_ref = self.ctx.browser.current_page()
+            if page_ref is not None:
+                try:
+                    handle = self.ctx.browser.page(page_ref)
+                    if getattr(handle, "ok", False):
+                        page_url = handle.detail["page"].url
+                except Exception:
+                    page_url = None
+                shot = self.ctx.reporter.capture_screenshot(page_ref, node.description)
+                if shot:
+                    screenshot_path = self._report_rel_path(shot)
+            if not screenshot_path and result.screenshots:
+                # 兜底：无当前页时用浏览器插件 semantic_graph 产出的截图
+                screenshot_path = self._report_rel_path(result.screenshots[0])
         report = NodeReport(
             node_type=node_type,
             node_desc=node.description,
