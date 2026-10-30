@@ -247,7 +247,9 @@ class EmbeddedEngineService(EngineService):
         return Engine(
             browser=browser,
             space_factory=lambda: schema_space,
-            reporter_factory=build_reporter_factory(run_id, report_root),
+            reporter_factory=build_reporter_factory(
+                run_id, report_root, default_screenshotter(browser)
+            ),
             registry=self._registry,
             plugins_dir=self._plugins_dir,
             llm_filler=MockFiller(),

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from datetime import UTC, datetime
@@ -306,9 +307,22 @@ class Traverser:
 
         screenshot_path = ""
         page_url = None
-        if result.screenshots:
-            # 截图由浏览器插件 semantic_graph（看页面）产出
-            screenshot_path = result.screenshots[0]
+        page_ref = self.ctx.browser.current_page()
+        if page_ref is not None:
+            # 节点执行后截图：拍当前页面状态（操作/判断的**结果**），
+            # 而非 LLM"看页面"（semantic_graph）时、动作之前的旧状态。
+            try:
+                handle = self.ctx.browser.page(page_ref)
+                if getattr(handle, "ok", False):
+                    page_url = handle.detail["page"].url
+            except Exception:
+                page_url = None
+            shot = self.ctx.reporter.capture_screenshot(page_ref, node.description)
+            if shot:
+                screenshot_path = self._report_rel_path(shot)
+        if not screenshot_path and result.screenshots:
+            # 兜底：无当前页时用浏览器插件 semantic_graph 产出的截图
+            screenshot_path = self._report_rel_path(result.screenshots[0])
         report = NodeReport(
             node_type=node_type,
             node_desc=node.description,
@@ -505,6 +519,17 @@ class Traverser:
         self.ctx.failure_reason = (
             f"{node_type_name(node)}『{node_desc(node)}』失败: {text}（位于 {loc}）"
         )
+
+    def _report_rel_path(self, path: str) -> str:
+        """截图绝对路径 → 相对报告根（供前端 ``/api/reports/{path}`` 提供）。"""
+        if not path:
+            return ""
+        try:
+            base = os.path.abspath(self.ctx.config.report_dir)
+            rel = os.path.relpath(os.path.abspath(path), base)
+            return rel.replace(os.sep, "/")
+        except Exception:
+            return path
 
     def _check_depth(self) -> None:
         if self._depth >= _MAX_RECURSION_DEPTH:

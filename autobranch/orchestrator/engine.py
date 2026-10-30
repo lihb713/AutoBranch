@@ -229,8 +229,20 @@ class Engine:
         return Reporter(
             run_id=run_id,
             report_dir=config.report_dir,
+            screenshotter=self._default_screenshotter(),
             total_nodes=total_nodes,
         )
+
+    def _default_screenshotter(self):
+        """默认截图器（包装本引擎浏览器）：供 M8 节点执行后截图。"""
+
+        def _shot(page_ref, path):
+            result = self._browser.page(page_ref)
+            if not result.ok:
+                return result
+            return result.detail["page"].screenshot(path)
+
+        return _shot
 
     def _make_runtime(self, config: RunConfig):
         """构造插件运行上下文（浏览器工厂复用引擎浏览器实例）。"""
