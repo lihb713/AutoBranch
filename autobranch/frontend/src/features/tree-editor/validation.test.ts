@@ -35,7 +35,7 @@ nodes:
     name: 处理B
     target: 文档B
     args: [Param.startOrder]
-    returns: {NewParam.result: str}
+    returns: {result: str}
 root: n1
 `;
 
@@ -227,7 +227,7 @@ root: n1
     expect(issues.some((i) => i.code === "syntax.invalid_name")).toBe(true);
   });
 
-  it("returns 裸键（无 NewParam）报 invalid_return_name", () => {
+  it("returns 裸名合法（无 invalid_return_name）", () => {
     const yaml = `tree: 主流程
 nodes:
   n1:
@@ -240,6 +240,26 @@ nodes:
     function: compute.add
     args: [Param.a, Param.b]
     returns: {total: int}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "syntax.invalid_return_name")).toBe(false);
+  });
+
+  it("returns NewParam. 前缀键报 invalid_return_name", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: FunctionCall
+    name: 求和
+    function: compute.add
+    args: [Param.a, Param.b]
+    returns: {NewParam.total: int}
 root: n1
 `;
     const doc = parseDoc(yaml);
@@ -265,5 +285,91 @@ root: n1
     const doc = parseDoc(yaml);
     const issues = validateDoc(doc, ctx());
     expect(issues.some((i) => i.code === "syntax.invalid_return_name")).toBe(true);
+  });
+
+  it("Define 合法：变量名 ASCII、类型合法、值可为字面量或已定义 Param", () => {
+    const yaml = `tree: 主流程
+inputs: {startOrder: str}
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Define
+    name: 声明
+    vars:
+      baseUrl: {type: str, value: "https://e.com"}
+      retries: {type: int, value: "3"}
+      alias: {type: str, value: "Param.startOrder"}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    expect(validateDoc(doc, ctx())).toEqual([]);
+  });
+
+  it("Define 变量名非 ASCII 报 syntax.invalid_name", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Define
+    name: 声明
+    vars:
+      "变量": {type: str, value: "x"}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "syntax.invalid_name")).toBe(true);
+  });
+
+  it("Define 值读取未定义 Param 报 get_undeclared", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Define
+    name: 声明
+    vars:
+      alias: {type: str, value: "Param.nope"}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "get_undeclared")).toBe(true);
+  });
+
+  it("Define 声明的变量视为已定义供后续 Param 读取", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Sequence
+    name: 主流程
+    actions: [n3, n4]
+  n3:
+    type: Define
+    name: 声明
+    vars:
+      token: {type: str, value: "abc"}
+  n4:
+    type: Action
+    name: 用
+    description: 使用 Param.token 登录
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    expect(collectDeclaredVars(doc).has("token")).toBe(true);
+    expect(validateDoc(doc, ctx())).toEqual([]);
   });
 });

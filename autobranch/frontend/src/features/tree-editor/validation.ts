@@ -1,4 +1,5 @@
 import { slotFields, type TreeDoc } from "./treeModel";
+import { TYPE_TOKENS } from "./tokens";
 
 /** 前端即时校验问题（用于红框定位与保存汇总展示）。 */
 export type ClientIssue = {
@@ -67,37 +68,37 @@ const DEPRECATED_RX = /\[\[\s*(?:get|set)\s*:|(?<![\w$])this\//;
 const INVALID_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)/;
 const NON_ASCII_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.[\u0080-\uFFFF]/;
 
-/** returns 接收键合法形：`NewParam.<ASCII名>[:类型]`（强制 NewParam 前缀）。 */
-const RETURN_KEY_RX = /^NewParam\.[A-Za-z_][A-Za-z0-9_]*(?::(str|int|float|bool|page_ref|object))?$/;
+/** returns 接收键合法形：裸 ASCII 名（接收即隐式创建变量）。 */
+const RETURN_KEY_RX = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/** returns 接收键 → 裸接收名（剥离 `NewParam.` 前缀与内联 `:type`）。 */
+/** returns 接收键 → 裸接收名（去空白）。 */
 export function stripReturnName(key: string): string {
-  let k = key.trim();
-  if (k.startsWith("NewParam.")) k = k.slice("NewParam.".length);
-  const colon = k.indexOf(":");
-  if (colon >= 0) k = k.slice(0, colon);
-  return k.trim();
+  return key.trim();
 }
 
-/** returns 接收键强制 `NewParam.<ASCII名>[:类型]` 形式校验。 */
+/** returns 接收键强制裸 ASCII 名校验（拒绝 `.`/非 ASCII）。 */
 function checkReturnKeys(node: { id: string; returns?: Record<string, string> }, issues: ClientIssue[]): void {
   for (const key of Object.keys(node.returns ?? {})) {
     if (!RETURN_KEY_RX.test(key.trim())) {
       issues.push({
         code: "syntax.invalid_return_name",
-        message: `returns 接收名「${key}」必须为 NewParam.<ASCII名>[:类型] 形式（不支持中文/裸键）`,
+        message: `returns 接收名「${key}」必须为裸 ASCII 名（[A-Za-z_][A-Za-z0-9_]*，不支持点号/NewParam. 前缀/中文）`,
         nodeId: node.id,
       });
     }
   }
 }
 
-/** 收集本树已声明变量：文档级 inputs + 各叶子 NewParam. 目标 + ref/FunctionCall returns 接收名。 */
+/** 收集本树已声明变量：文档级 inputs + 各叶子 NewParam. 目标 + ref/FunctionCall returns 接收名 + Define 变量名。 */
 export function collectDeclaredVars(doc: TreeDoc): Set<string> {
   const vars = new Set<string>(Object.keys(doc.inputs));
   for (const node of Object.values(doc.nodes)) {
     if (node.type === "ref" || node.type === "FunctionCall") {
       for (const key of Object.keys(node.returns ?? {})) vars.add(stripReturnName(key));
+    } else if (node.type === "Define") {
+      for (const v of node.vars ?? []) {
+        if (v.name.trim()) vars.add(v.name.trim());
+      }
     } else {
       for (const desc of Object.values(node.fields)) {
         for (const m of desc.matchAll(SET_TMPL)) vars.add(m[1]);
@@ -295,6 +296,33 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
         });
       }
       checkReturnKeys(n, issues);
+    }
+    if (n.type === "Define") {
+      const defined = collectDeclaredVars(doc);
+      (n.vars ?? []).forEach((v, i) => {
+        const name = v.name.trim();
+        if (!name) {
+          issues.push({ code: "missing_var_name", message: "变量缺少变量名", nodeId: n.id });
+        } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+          issues.push({
+            code: "syntax.invalid_name",
+            message: `变量名「${v.name}」仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*），不支持中文/点号`,
+            nodeId: n.id,
+          });
+        }
+        if (!TYPE_TOKENS.includes(v.type as (typeof TYPE_TOKENS)[number])) {
+          issues.push({ code: "invalid_var_type", message: `变量「${name || i + 1}」类型「${v.type}」非法`, nodeId: n.id });
+        }
+        const val = v.value.trim();
+        if (!val) {
+          issues.push({ code: "missing_var_value", message: `变量「${name || i + 1}」缺少值`, nodeId: n.id });
+        } else {
+          const m = val.match(/^Param\.([A-Za-z_][A-Za-z0-9_]*)$/);
+          if (m && !defined.has(m[1])) {
+            issues.push({ code: "get_undeclared", message: `Define 变量「${name}」读取的变量「${m[1]}」未定义`, nodeId: n.id });
+          }
+        }
+      });
     }
   }
 

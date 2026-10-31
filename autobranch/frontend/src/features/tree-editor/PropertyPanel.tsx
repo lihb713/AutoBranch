@@ -11,6 +11,7 @@ import {
   setSlot,
   slotFields,
   type BranchRow,
+  type DefineVar,
   type TreeDoc,
   type TreeNode,
 } from "./treeModel";
@@ -141,6 +142,19 @@ export function PropertyPanel({
 
   const removeBranch = (i: number) => {
     updateNode({ branches: (node.branches ?? []).filter((_, j) => j !== i) });
+  };
+
+  const setVar = (i: number, patch: Partial<DefineVar>) => {
+    const vars = (node.vars ?? []).map((v, j) => (j === i ? { ...v, ...patch } : v));
+    updateNode({ vars });
+  };
+
+  const addVar = () => {
+    updateNode({ vars: [...(node.vars ?? []), { name: "", type: "str", value: "" }] });
+  };
+
+  const removeVar = (i: number) => {
+    updateNode({ vars: (node.vars ?? []).filter((_, j) => j !== i) });
   };
 
   const handleRefTarget = (target: string) => {
@@ -301,6 +315,64 @@ export function PropertyPanel({
           data-testid={`add-branch-${node.id}`}
         >
           + 添加分支
+        </button>
+      ) : null}
+    </section>
+  );
+
+  const renderDefineGroup = () => (
+    <section className="prop-group" data-testid="prop-group-define-vars">
+      <h4 className="prop-group__title">变量</h4>
+      {(node.vars ?? []).map((v, i) => (
+        <div key={i} className="slot-row" data-testid={`define-row-${i}`}>
+          <TextField
+            label="变量名"
+            value={v.name}
+            placeholder="裸 ASCII 名，如 baseUrl"
+            disabled={readonly}
+            data-testid={`define-name-${node.id}-${i}`}
+            onChange={(e) => setVar(i, { name: e.target.value })}
+          />
+          <select
+            className="text-field__input"
+            value={v.type}
+            disabled={readonly}
+            data-testid={`define-type-${node.id}-${i}`}
+            onChange={(e) => setVar(i, { type: e.target.value })}
+          >
+            {TYPE_TOKENS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <HighlightedField
+            label="值（字面量或 Param.x）"
+            value={v.value}
+            disabled={readonly}
+            data-testid={`define-value-${node.id}-${i}`}
+            onChange={(e) => setVar(i, { value: e.target.value })}
+          />
+          {!readonly ? (
+            <button
+              type="button"
+              className="slot-row__add slot-row__add--danger"
+              data-testid={`define-remove-${node.id}-${i}`}
+              onClick={() => removeVar(i)}
+            >
+              删除
+            </button>
+          ) : null}
+        </div>
+      ))}
+      {!readonly ? (
+        <button
+          type="button"
+          className="slot-row__add"
+          data-testid={`add-define-${node.id}`}
+          onClick={addVar}
+        >
+          + 添加变量
         </button>
       ) : null}
     </section>
@@ -488,6 +560,9 @@ export function PropertyPanel({
       break;
     case "FunctionCall":
       groups = [renderFunctionCallGroup()];
+      break;
+    case "Define":
+      groups = [renderDefineGroup()];
       break;
     default:
       groups = [renderSlotGroup("槽位", mounts)];

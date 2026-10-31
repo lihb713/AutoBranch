@@ -11,7 +11,15 @@ export type NodeType =
   | "Retry"
   | "LoopUntil"
   | "ref"
-  | "FunctionCall";
+  | "FunctionCall"
+  | "Define";
+
+/** Define 节点的一行变量声明：名 / 类型 token / 值（字面量或 `Param.x`）。 */
+export type DefineVar = {
+  name: string;
+  type: string;
+  value: string;
+};
 
 /** Branch 的分支行：{when, action: id} 或 {otherwise: id}（otherwise 值即槽位引用）。 */
 export type BranchRow = {
@@ -42,6 +50,7 @@ export type TreeNode = {
   function?: string;
   args?: string[];
   returns?: Record<string, string>;
+  vars?: DefineVar[];
 };
 
 /** 一份行为树文档（自包含：tree/nodes/root + 文档级接口与配置）。 */
@@ -95,6 +104,7 @@ export function makeNode(
     node.args = [];
     node.returns = {};
   }
+  if (type === "Define") node.vars = [];
   if (type === "Sequence") node.actions = [];
   if (type === "Branch") {
     node.branches = [];
@@ -162,7 +172,7 @@ export function freeRoots(doc: TreeDoc): string[] {
 const CONFIG_KEYS = ["timeout", "retry", "browser"];
 const SLOT_KEYS = ["body", "actions", "action", "then", "else", "branches"];
 const REF_KEYS = ["target", "args", "returns"];
-const SKIP_KEYS = new Set([...SLOT_KEYS, ...REF_KEYS, "function", "type", "name", "id"]);
+const SKIP_KEYS = new Set([...SLOT_KEYS, ...REF_KEYS, "function", "type", "name", "id", "vars"]);
 
 /** 从文档 dict 解析为 TreeDoc（统一槽位 DSL）。 */
 export function parseDoc(yamlText: string): TreeDoc {
@@ -217,6 +227,15 @@ export function parseDoc(yamlText: string): TreeDoc {
         ? Object.fromEntries(Object.entries(body["returns"]).map(([k, v]) => [k, String(v)]))
         : {};
     }
+    if (type === "Define") {
+      node.vars = isRecord(body["vars"])
+        ? Object.entries(body["vars"]).map(([k, v]) => ({
+            name: k,
+            type: isRecord(v) && typeof v["type"] === "string" ? (v["type"] as string) : "str",
+            value: isRecord(v) && v["value"] !== undefined ? String(v["value"]) : "",
+          }))
+        : [];
+    }
     for (const [k, v] of Object.entries(body)) {
       if (SKIP_KEYS.has(k)) continue;
       node.fields[k] = String(v);
@@ -262,6 +281,13 @@ export function serializeDoc(doc: TreeDoc): string {
       body["function"] = node.function ?? "";
       if (node.args && node.args.length > 0) body["args"] = node.args;
       if (node.returns && Object.keys(node.returns).length > 0) body["returns"] = node.returns;
+    }
+    if (node.type === "Define") {
+      const vars: Record<string, { type: string; value: string }> = {};
+      for (const v of node.vars ?? []) {
+        if (v.name.trim()) vars[v.name.trim()] = { type: v.type || "str", value: v.value };
+      }
+      body["vars"] = vars;
     }
     nodes[id] = body;
   }

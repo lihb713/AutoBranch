@@ -108,6 +108,17 @@ class FunctionCallNode(Node):
 
 
 @dataclass(frozen=True)
+class DefineNode(Node):
+    """变量声明叶子：运行期确定性创建变量（不经 LLM）。
+
+    :param vars: ``(变量名, 类型 token, value 表达式)`` 列表（数量任意）；value
+      为字面量或 ``Param.<名>``（读取当前帧变量做拷贝重命名）。
+    """
+
+    vars: tuple[tuple[str, str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class ActionNode(Node):
     """动作叶子：自然语言描述 + 可选 CSS 提示（§5.2）。
 

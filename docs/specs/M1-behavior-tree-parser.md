@@ -99,10 +99,13 @@ class RepeatNode(Node):
 @dataclass
 class FinishNode(Node): ...
 @dataclass
+class DefineNode(Node):
+    vars: tuple[tuple[str, str, str], ...]  # (变量名, 类型 token, 值表达式：字面量或 Param.x)
+@dataclass
 class RefNode(Node):
     ref_target: str                      # 目标文档名（单段）
     args: tuple[tuple[str, str], ...]    # (实参名, 实参表达式)；实参 = 父帧裸路径 裸变量名 或字面量
-    returns: tuple[tuple[str, str], ...] # (本树接收名, 类型)；被引文档 SUCCESS 后回收写父帧
+    returns: tuple[tuple[str, str], ...] # (接收名, 类型)；键为裸 ASCII 名；被引文档 SUCCESS 后回收写父帧
 ```
 
 **实现说明（已落地）**：
@@ -113,7 +116,7 @@ class RefNode(Node):
 - `ConditionNode` 扩展可选字段（超出 §5.2 的 description-only，供谓词结构校验与 M6 执行）：`target`（谓词指向对象）、`predicate`（比较谓词）。
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：树名（=文档名） + 基础节点根。
-- 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ref`；`Action` 为真正叶子（`description` 操作描述），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段。
+- 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ref/FunctionCall/Define`；`Action` 为真正叶子（`description` 操作描述），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段；`Define` 为变量声明叶子（`vars: {名: {type, value}}`）。
 
 ### 5.3 复合节点展开规则（§4.3）
 
@@ -148,7 +151,7 @@ class RefNode(Node):
 
 - 统一槽位模型下，分支目标不支持裸字符串 = `ref: <文档名>` 简写（旧 §4.3.2「分支目标 = 文档引用」写法已废除）——`Branch.branches[].action` 与 `otherwise` 均为槽位字段，值为子树根 id；跨文档复用由分支子树里的 `ref` 节点承担。
 - 配置参数覆盖在文档顶层识别（`timeout`/`retry`/`browser` 标量），未声明不要求用户书写（§4.2/§5.7.5）。
-- 变量作用域校验（§5.3.2）：语法 `Param.变量`（读取引用）/`NewParam.变量[:类型]`（写入声明）——**ASCII 裸变量名**（作用于当前文档执行帧），无层级；旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已废弃（解析到 → `syntax.deprecated`）。跨帧传参经 ref args/returns。**读取已定义校验**：`Param.x` 的 x 必须是本文档 inputs 声明、文档内 `NewParam.` 目标或 ref returns 目标，否则 `scope.get_undeclared`（output 声明不构成读取源）。`ActionNode.set_targets` 记录动作的 `NewParam.` 可写集（裸变量名）；`ActionNode.set_decls` 记录类型标注 `NewParam.pageRef:page_ref`（存页签引用 PageRef）与 `NewParam.url:str`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref/object），type 为空串时按动作推断；`Param.x` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
+- 变量作用域校验（§5.3.2）：语法 `Param.变量`（读取：Action/Condition 描述、ref/FunctionCall 的 args）/`NewParam.变量[:类型]`（写入声明，**仅 Action 的 description**）——**ASCII 裸变量名**（作用于当前文档执行帧），无层级；接收 `ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（含 `.` 如 `NewParam.x`/非 ASCII → `syntax.invalid_return_name`）；旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已废弃（解析到 → `syntax.deprecated`）。跨帧传参经 ref args/returns。**读取已定义校验**：`Param.x` 的 x 必须是本文档 inputs 声明、文档内 `NewParam.` 写入声明、ref/FunctionCall returns 目标或 `Define` 声明变量，否则 `scope.get_undeclared`（output 声明不构成读取源）。`ActionNode.set_targets` 记录动作的 `NewParam.` 可写集（裸变量名）；`ActionNode.set_decls` 记录类型标注 `NewParam.pageRef:page_ref`（存页签引用 PageRef）与 `NewParam.url:str`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref/object），type 为空串时按动作推断；`DefineNode.vars` 记录 `(名, 类型, 值表达式)`，值为字面量或 `Param.x`，声明变量计入已定义；`Param.x` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
 - 引用处参数契约（§5.7.3）：被引文档声明的 `inputs` 须由 ref `args` 按数量/类型对应，`outputs` 由 `returns` 按数量对应；不一致 → `ref.args_mismatch` / `ref.returns_mismatch` / `ref.name_conflict`。
 
 ## 6. 验收标准
@@ -181,7 +184,7 @@ class RefNode(Node):
 
 ### 8.1 FunctionCall 节点解析
 
-解析 `type: FunctionCall` 节点：`function`（**全名 `插件名.函数名`**，如 `compute.add`；跨插件可同名）+ `args`（实参列表，元素为本树裸变量名或字面量）+ `returns`（接收名 → 类型，按序对应函数多返回值）。FunctionCall 节点**保留为运行期调用节点**（不展开），运行期经插件框架按全名分发。
+解析 `type: FunctionCall` 节点：`function`（**全名 `插件名.函数名`**，如 `compute.add`；跨插件可同名）+ `args`（实参列表，元素为本帧变量 `Param.x` 或字面量）+ `returns`（**键为裸 ASCII 名** → 类型，按序对应函数多返回值）。FunctionCall 节点**保留为运行期调用节点**（不展开），运行期经插件框架按全名分发。
 
 ### 8.2 函数存在与参数校验
 
@@ -194,3 +197,7 @@ class RefNode(Node):
 ### 8.3 泛型 object 类型 token
 
 文档级 `inputs` / `outputs` / `returns` 支持 `object` 类型 token（承载页面对象 / 会话 / 文件句柄等插件对象），解析层对其不做具体类型校验。
+
+### 8.4 Define 节点解析
+
+解析 `type: Define` 节点：`vars`（名 → `{type, value}` 的映射，数量不固定）。变量名须为 ASCII 标识符（否则 `syntax.invalid_name`）；`type` 须为 TYPE_REGISTRY 合法 token（否则清晰度校验失败并指明非法类型）；`value` 为字面量或 `Param.<ASCII名>`（值引用未定义变量 → `scope.get_undeclared`）。`Define` 为叶子（无槽位、不展开），声明的变量计入"已定义"供后续 `Param` 读取。

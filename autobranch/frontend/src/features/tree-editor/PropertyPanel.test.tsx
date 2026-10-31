@@ -45,7 +45,7 @@ const REF_DOC: TreeDoc = {
       fields: {},
       target: "文档B",
       args: ["url"],
-      returns: { "NewParam.result": "str" },
+      returns: { "result": "str" },
     },
   },
 };
@@ -196,7 +196,7 @@ describe("PropertyPanel", () => {
     expect(labels).not.toContain("主流程");
 
     expect(screen.getByTestId("ref-arg-r2-0")).toHaveValue("url");
-    expect(screen.getByTestId("ref-return-name-r2-0")).toHaveValue("NewParam.result");
+    expect(screen.getByTestId("ref-return-name-r2-0")).toHaveValue("result");
     expect(screen.getByTestId("ref-return-type-r2-0")).toHaveValue("str");
   });
 
@@ -231,10 +231,10 @@ describe("PropertyPanel", () => {
       refMeta: { 文档B: { inputs: { url: "str" }, outputs: ["处理结果"] } },
     });
     fireEvent.change(screen.getByTestId("ref-return-name-r2-0"), {
-      target: { value: "NewParam.result2" },
+      target: { value: "result2" },
     });
     const next = onUpdate.mock.calls[0][0] as TreeDoc;
-    expect(next.nodes.r2.returns).toEqual({ "NewParam.result2": "str" });
+      expect(next.nodes.r2.returns).toEqual({ "result2": "str" });
   });
 
   it("Branch 分支增删与 otherwise 切换", () => {
@@ -414,5 +414,63 @@ describe("PropertyPanel", () => {
     fireEvent.change(argInputs[0], { target: { value: "x" } });
     const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
     expect(next.nodes.fc2.args).toEqual(["x"]);
+  });
+
+  it("Define：变量行展示与增删改", () => {
+    const doc: TreeDoc = {
+      tree: "变量",
+      inputs: {},
+      outputs: [],
+      config: {},
+      root: "n1",
+      nodes: {
+        n1: { id: "n1", type: "Root", name: "根", fields: {}, body: "n2" },
+        n2: {
+          id: "n2",
+          type: "Define",
+          name: "声明",
+          fields: {},
+          vars: [{ name: "baseUrl", type: "str", value: "https://e.com" }],
+        },
+      },
+    };
+    const onUpdate = vi.fn();
+    const StatefulDefine = () => {
+      const [cur, setCur] = useState(doc);
+      return (
+        <PropertyPanel
+          doc={cur}
+          node={cur.nodes.n2}
+          docNames={["变量"]}
+          refMeta={{}}
+          refTargetsOf={() => []}
+          onUpdate={(next) => {
+            setCur(next);
+            onUpdate(next);
+          }}
+          onLoadRefMeta={() => {}}
+          onDeleteNode={() => {}}
+        />
+      );
+    };
+    render(<StatefulDefine />);
+
+    expect(screen.getByTestId("define-name-n2-0")).toHaveValue("baseUrl");
+    expect(screen.getByTestId("define-type-n2-0")).toHaveValue("str");
+    expect(screen.getByTestId("define-value-n2-0")).toHaveValue("https://e.com");
+
+    fireEvent.change(screen.getByTestId("define-value-n2-0"), {
+      target: { value: "Param.url" },
+    });
+    let next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.n2.vars).toEqual([{ name: "baseUrl", type: "str", value: "Param.url" }]);
+
+    fireEvent.click(screen.getByTestId("add-define-n2"));
+    next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.n2.vars).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId("define-remove-n2-0"));
+    next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.n2.vars).toHaveLength(1);
   });
 });

@@ -24,6 +24,7 @@ from autobranch.parser.models import (
     BranchSpec,
     CheckIssue,
     ConditionNode,
+    DefineNode,
     FinishNode,
     FunctionCallNode,
     Loc,
@@ -174,6 +175,16 @@ def _check_get_defined(
                         f"（get 只能读 inputs 声明、块内 set 或 ref returns 目标）",
                         node.loc,
                     )
+        elif isinstance(node, DefineNode):
+            for _var, _typ, value in node.vars:
+                for name in _iter_get_paths(value or ""):
+                    if name not in defined:
+                        ctx.add_issue(
+                            "scope",
+                            "get_undeclared",
+                            f"Define 变量 '{_var}' 读取的变量 '{name}' 未定义",
+                            node.loc,
+                        )
         if isinstance(node, SequenceNode):
             for c in node.children:
                 walk(c)
@@ -202,6 +213,11 @@ def _collect_output_assignment_names_ir(node: Node) -> set[str]:
         for recv, _typ in node.returns:
             if recv:
                 names.add(recv)
+        return names
+    if isinstance(node, DefineNode):
+        for name, _typ, _val in node.vars:
+            if name:
+                names.add(name)
         return names
     if isinstance(node, ActionNode):
         return _set_decl_names(node.description or "")
@@ -248,6 +264,11 @@ def _collect_output_assignment_names(node: IRNode | None) -> set[str]:
         for recv, _typ in node.returns:
             if recv:
                 names.add(recv)
+        return names
+    if node.kind == "Define":
+        for name, _typ, _val in node.vars:
+            if name:
+                names.add(name)
         return names
     if node.kind == "Action":
         return _set_decl_names(node.description or "")
@@ -441,6 +462,8 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
             returns=node.returns,
             loc=node.loc,
         )
+    if kind == "Define":
+        return DefineNode(vars=node.vars, loc=node.loc)
     return SequenceNode(loc=node.loc)
 
 

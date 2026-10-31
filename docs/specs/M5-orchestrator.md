@@ -17,6 +17,7 @@
 | 行为树遍历 | 阻塞式遍历，SUCCESS/FAILURE 聚合，组合节点短路 | §5.7.7 | ✅ `Traverser.tick`（递归，design D1） |
 | 组合节点执行 | Sequence/Selector/Repeat 纯程序遍历，零 LLM | §5.7.7 | ✅ `_tick_sequence/selector/repeat` |
 | 叶子节点触发 | 触发 M6 agent 执行，接收结果 | §5.7.2 | ✅ `_tick_leaf`（经注入的叶子执行器） |
+| 确定性叶子 | FunctionCall 调插件函数 / Define 声明变量，零 LLM、无截图 | §4.1 | ✅ `_tick_function_call` / `_tick_define` |
 | 失败传播 | 叶子失败沿树传播，根统一终止 + 报告 | §5.7.7/§5.7.2.1 | ✅ 组合节点聚合 + `RunResult.failure_reason` |
 | schema 帧管理 | 每次 ref 动态调用建立/退出 schema 帧（M3） | §5.7.4 | ✅ `Traverser._tick_ref`（RefNode 动态建帧/注入/退出）+ `Engine.run` 根帧 |
 | 会话初始化 | 创建全新浏览器 context，注入全局默认配置到根级 schema | §5.9/§9.8 | ✅ `Engine.run` 开头/结尾 |
@@ -132,7 +133,7 @@ class RunConfig:
   - **IfThenElse** → `Selector(if 条件→then 槽位子树, else→else 槽位子树)`
   - **Retry** → `Repeat(mode=retry, body=body 槽位子树)`
   - **LoopUntil** → `Repeat(mode=loop_until, until 条件, body=action 槽位子树)`
-  - **Action** 为真正叶子（`description`），由 M6 agent 执行；`ref` 为调用节点（见 §5.4/§8-6）
+  - **Action** 为真正叶子（`description`），由 M6 agent 执行；`ref` 为调用节点（见 §5.4/§8-6）；`FunctionCall` / `Define` 为确定性叶子（不经 LLM，无截图）
 - **Sequence**：依次执行，第一个 FAILURE 短路 → 整体 FAILURE；全 SUCCESS → SUCCESS
 - **Selector**：按条件分流，分支条件先判（FAILURE 试下一分支），命中分支的子节点
   结果即 Selector 结果并短路；全分支条件 FAILURE → FAILURE（不承载兜底，命中后

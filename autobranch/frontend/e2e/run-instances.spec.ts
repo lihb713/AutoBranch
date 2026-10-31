@@ -30,7 +30,7 @@ nodes:
     name: 求和
     function: compute.add
     args: [Param.a, Param.b]
-    returns: {NewParam.total: int}
+    returns: {total: int}
 root: n1
 `;
 

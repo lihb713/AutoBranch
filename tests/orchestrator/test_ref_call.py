@@ -116,7 +116,7 @@ class TestRefCallFromDsl:
                     "name": "去登录",
                     "target": "登录",
                     "args": ["Param.account"],
-                    "returns": {"NewParam.result": "str"},
+                    "returns": {"result": "str"},
                 },
             },
             "root": "n1",

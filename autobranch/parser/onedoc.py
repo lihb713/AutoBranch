@@ -42,6 +42,7 @@ _NODE_TYPES = frozenset(
         "LoopUntil",
         "ref",
         "FunctionCall",
+        "Define",
     }
 )
 
@@ -398,6 +399,8 @@ def _build_ir_node(
         return _ref_ir(doc_id, nid, body, loc, issues), []
     if ntype == "FunctionCall":
         return _function_call_ir(doc_id, nid, body, loc, issues), []
+    if ntype == "Define":
+        return _define_ir(doc_id, nid, body, loc, issues), []
     if ntype == "Root":
         return IRNode(kind="Root", loc=loc), [_slot("body", _str_or_none(body.get("body")))]
     if ntype == "Sequence":
@@ -581,43 +584,30 @@ def _slot(field: str, child_id: str | None) -> _Slot:
     return _Slot(field, [child_id] if child_id else [], [])
 
 
-#: returns 接收名：``NewParam.<ASCII名>[:类型]``（强制 NewParam 前缀 + ASCII 标识符）。
-_RETURN_KEY_TMPL = re.compile(
-    r"NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object))?"
-)
+#: 合法变量名 / returns 接收名：裸 ASCII 标识符。
+_ASCII_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _strip_return_name(key: object) -> tuple[str, str | None, str | None]:
     """returns 键 → (裸接收名, 内联类型, 错误消息或 None)。
 
-    强制 ``NewParam.<ASCII名>[:类型]`` 形式：裸键（无 ``NewParam.`` 前缀）或非 ASCII
-    变量名 → 返回错误消息（由调用方追加 ``syntax.invalid_return_name`` 校验问题）。
+    returns 键必须是**裸 ASCII 名**（``[A-Za-z_][A-Za-z0-9_]*``）——接收即隐式
+    创建变量。含 ``.``（如 ``NewParam.x``）或非 ASCII → 返回错误消息。
     """
     k = str(key).strip()
-    m = _RETURN_KEY_TMPL.fullmatch(k)
-    if m is None:
-        return _legacy_return_fallback(k)
-    return m.group(1), m.group(2), None
-
-
-def _legacy_return_fallback(k: str) -> tuple[str, str | None, str | None]:
-    """非规范 returns 键：尽力解析出裸名供下游（避免级联报错），并返回校验错误。"""
-    name, inline = k, None
-    if ":" in name:
-        name, inline = name.split(":", 1)
-        name = name.strip()
-        inline = inline.strip() or None
+    if _ASCII_NAME.fullmatch(k):
+        return k, None, None
     error = (
-        f"returns 接收名 {k!r} 必须是 NewParam.<ASCII名>[:类型] 形式"
-        "（变量名仅支持 ASCII 标识符，不支持中文/裸键）"
+        f"returns 接收名 {k!r} 必须是裸 ASCII 名（[A-Za-z_][A-Za-z0-9_]*，"
+        "不支持点号/NewParam. 前缀/中文）"
     )
-    return name, inline, error
+    return k, None, error
 
 
 def _append_returns(
     doc_id: str, nid: str, returns: dict, issues: list
 ) -> list[tuple[str, str]]:
-    """解析 returns 映射；非规范键追加 ``syntax.invalid_return_name`` 校验问题。"""
+    """解析 returns 映射；非裸 ASCII 名追加 ``syntax.invalid_return_name`` 校验问题。"""
     pairs: list[tuple[str, str]] = []
     for k, v in returns.items():
         name, inline, error = _strip_return_name(k)
@@ -715,6 +705,69 @@ def _function_call_ir(
         returns=tuple(returns_pairs),
         loc=loc,
     )
+
+
+def _define_ir(
+    doc_id: str,
+    nid: str,
+    body: dict,
+    loc: Loc,
+    issues: list,
+) -> IRNode:
+    """构建 Define IRNode：``vars`` 映射（名 → {type, value}），数量任意。"""
+    from autobranch.schema import TYPE_REGISTRY
+
+    path = f"nodes/{nid}"
+    raw_vars = body.get("vars")
+    pairs: list[tuple[str, str, str]] = []
+    if not isinstance(raw_vars, dict) or not raw_vars:
+        issues.append(
+            _issue(
+                doc_id,
+                "structure",
+                "missing_field",
+                f"Define 缺少非空 vars 映射（位于 {_path(doc_id, path)}）",
+            )
+        )
+        return IRNode(kind="Define", loc=loc)
+    for name, spec in raw_vars.items():
+        var = str(name).strip()
+        if not _ASCII_NAME.fullmatch(var):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "syntax",
+                    "invalid_name",
+                    f"Define 变量名 {var!r} 必须是 ASCII 标识符"
+                    f"（[A-Za-z_][A-Za-z0-9_]*，位于 {_path(doc_id, path)}）",
+                )
+            )
+            continue
+        if not isinstance(spec, dict):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Define 变量 {var!r} 必须是 {{type, value}}（位于 {_path(doc_id, path)}）",
+                )
+            )
+            continue
+        type_name = str(spec.get("type", "")).strip()
+        if type_name not in TYPE_REGISTRY:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Define 变量 {var!r} 的类型 {type_name!r} 非法（位于 {_path(doc_id, path)}）",
+                )
+            )
+            continue
+        value = spec.get("value")
+        value_expr = "" if value is None else str(value)
+        pairs.append((var, type_name, value_expr))
+    return IRNode(kind="Define", vars=tuple(pairs), loc=loc)
 
 
 def _iter_subtrees(node: IRNode | None) -> list[IRNode]:

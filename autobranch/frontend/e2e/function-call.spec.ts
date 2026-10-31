@@ -29,7 +29,7 @@ const MULTIPLY_TREE = (name: string) =>
       "    function: compute.multiply",
       '    args: ["2", "3"]',
       "    returns:",
-      "      NewParam.result: int",
+      "      result: int",
     ].join("\n"),
   );
 
@@ -154,7 +154,7 @@ nodes:
     function: compute.add
     args: [Param.appleAmount, Param.bananaAmount]
     returns:
-      NewParam.fruitTotal: int
+      fruitTotal: int
 root: n1
 `;
   const api = await apiRequest.newContext(API);

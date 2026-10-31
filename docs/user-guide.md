@@ -45,14 +45,14 @@ AutoBranch 是一个**自然语言驱动的行为树自动化工具**。你不�
 | 概念 | 一句话 | 详细 |
 |---|---|---|
 | 行为树文档 | 一份 YAML 文本，`tree/nodes/root` 三段式 | §6 |
-| 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall） | §6.1 |
-| 变量 | `Param.x` 读、`NewParam.x[:类型]` 写 | §8 |
+| 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall/Define） | §6.1 |
+| 变量 | `Param.x` 读、`NewParam.x[:类型]` 写（仅 Action 描述）、`returns` 裸名接收、`Define` 声明 | §8 |
 | 入参/出参 | 文档级 `inputs`（外部传入）、`outputs`（对外返回） | §6.5 |
 | 插件 | 能力集合（浏览器/计算/SSH/文件/自定义），函数以 `插件名.函数名` 标识 | §10/§11 |
 | 执行实例 | 一次执行 = 自包含实例（快照 + 入参 + 出参） | §9 |
 | 报告 | 执行报告（节点结果+截图）/ 回溯报告（含 LLM 推理） | §9.5 |
 
-**最重要的一条规则**：行为树文档中，**变量名只支持 ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`，不支持中文）；所有变量引用/声明用 `Param.` / `NewParam.` 语法。违反会在保存/执行前被校验拒绝。
+**最重要的一条规则**：行为树文档中，**变量名只支持 ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`，不支持中文）。读取用 `Param.x`，写入声明 `NewParam.x[:类型]` **仅用于 Action 的描述**；`ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（如 `returns: {loginOk: bool}`，不接受 `NewParam.` 前缀）；`Define` 节点用于声明变量。违反会在保存/执行前被校验拒绝。
 
 ---
 
@@ -326,11 +326,14 @@ n12: {type: Action, description: 打开页面 "https://example.com"，点击"登
 
 # ref 跨文档调用
 n13: {type: ref, target: 登录文档, args: [Param.user, Param.pass],
-      returns: {NewParam.loginOk: bool}}
+      returns: {loginOk: bool}}
 
 # FunctionCall 确定性调用
 n14: {type: FunctionCall, function: compute.add, args: [Param.a, 2],
-      returns: {NewParam.total: int}}
+      returns: {total: int}}
+
+# Define 声明变量（确定性叶子）
+n15: {type: Define, vars: {baseUrl: {type: str, value: "https://example.com"}, retries: {type: int, value: "3"}}}
 ```
 
 ### 6.3 `ref` 跨文档调用（把另一份树当子程序）
@@ -342,11 +345,11 @@ n13:
   type: ref
   target: 登录文档          # 被调用的文档名（须存在）
   args: [Param.user, "admin"]   # 实参，按序对应被调文档的 inputs；可为变量或字面量
-  returns: {NewParam.loginOk: bool}   # 回收被调文档 outputs，键必须 NewParam.<名>
+  returns: {loginOk: bool}      # 回收被调文档 outputs，键为裸 ASCII 名
 ```
 
 - 被调文档的 `inputs` 数量/顺序 与 `args` 必须一致；`outputs` 与 `returns` 一致。
-- `returns` 键 = 本树新建变量（`NewParam.<ASCII名>: 类型`）。
+- `returns` 键 = 本树新建变量（裸 ASCII 名，隐式创建；含 `.`/非 ASCII → 校验报错）。
 
 ### 6.4 `FunctionCall` 确定性调用（不经 LLM）
 
@@ -357,11 +360,28 @@ n14:
   type: FunctionCall
   function: compute.add       # 全名：插件名.函数名
   args: [Param.a, 2]          # 实参：本帧变量或字面量，按序对应函数入参
-  returns: {NewParam.total: int}   # 接收名（NewParam.<ASCII名>）→ 类型
+  returns: {total: int}   # 接收名（裸 ASCII 名）→ 类型
 ```
 
 - 函数不存在 / 参数数量不匹配 → 保存或执行前 422 拒绝。
 - 常用函数见 §10。
+
+### 6.4b `Define` 声明变量（确定性叶子）
+
+不调用 LLM，直接在当前文档帧创建变量，供后续节点 `Param.x` 读取：
+
+```yaml
+n15:
+  type: Define
+  vars:
+    baseUrl: {type: str, value: "https://example.com"}   # 字面量
+    retries: {type: int, value: "3"}
+    alias:   {type: str, value: "Param.baseUrl"}          # 从本帧拷贝/重命名
+```
+
+- `vars` 个数不固定；变量名为裸 ASCII 标识符，`type` 为类型 token。
+- `value` 为字面量或 `Param.<名>`；按 `type` coerce 后写入本帧。求值/coerce 失败 → 节点失败。
+- 与 ref/FunctionCall 的 `returns` 一样，声明即在本帧创建变量。
 
 ### 6.5 文档级入参 / 出参
 
@@ -398,7 +418,7 @@ nodes:
     name: 求和
     function: compute.add
     args: [1, 2]
-    returns: {NewParam.total: int}
+    returns: {total: int}
 root: n1
 ```
 
@@ -457,10 +477,10 @@ root: n1
 n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
 ```
 
-- 读取的变量必须是：文档 `inputs` 声明、文档内某处 `NewParam.x` 声明、或 `ref` 的 `returns` 目标。否则清晰度校验报 `scope.get_undeclared`。
+- 读取的变量必须是：文档 `inputs` 声明、文档内某处 `NewParam.x` 写入声明、`ref`/`FunctionCall` 的 `returns` 目标、或 `Define` 声明的变量。否则清晰度校验报 `scope.get_undeclared`。
 - 未定义的读取 → 该叶子直接 FAILURE（程序错误）。
 
-### 8.2 写入：`NewParam.x[:类型]`
+### 8.2 写入：`NewParam.x[:类型]`（仅 Action 描述）
 
 声明"本动作会把结果存到变量 x"（LLM 决定何时调用 extract/产出型工具）：
 
@@ -470,11 +490,27 @@ n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
 
 - 类型 token：`str` / `int` / `float` / `bool` / `page_ref` / `object`（可省略，按动作推断）。
 - 产出型工具的目标必须在 `NewParam.` 声明集内，否则拒绝写入。
+- `NewParam.` **只能出现在 Action 的 `description`**；Condition 描述只能读取，不能声明写入。
+
+### 8.2b 声明：`Define` 节点
+
+确定性创建变量（不经 LLM）：
+
+```yaml
+n15:
+  type: Define
+  vars:
+    token: {type: str, value: "abc"}          # 字面量
+    alias: {type: str, value: "Param.token"}  # 从本帧拷贝/重命名
+```
+
+- 变量名裸 ASCII，`type` 为类型 token；`value` 为字面量或 `Param.<名>`。
+- 按 `type` coerce 后写入本帧；声明的变量可被后续 `Param.x` 读取。
 
 ### 8.3 命名规则（强制）
 
-- 变量名 **ASCII 标识符** `[A-Za-z_][A-Za-z0-9_]*`，**不支持中文**。
-- `ref` / `FunctionCall` 的 `returns` 接收名必须 `NewParam.<名>`（裸键 → 校验错误）。
+- 变量名 **ASCII 标识符** `[A-Za-z_][A-Za-z0-9_]*`，**不支持中文/点号**。
+- `ref` / `FunctionCall` 的 `returns` 接收名必须是**裸 ASCII 名**（含 `.` 如 `NewParam.x` → 校验错误 `syntax.invalid_return_name`）。
 - `args` 实参可为变量或字面量，不强制 Param。
 
 ### 8.4 类型
@@ -489,8 +525,9 @@ n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
 
 - **入参**：文档 `inputs` 声明 → 执行时由外部提供 → 叶子 `Param.x` 读取。
 - **叶子产出**：`NewParam.x[:类型]` 声明 → LLM 调产出型工具（如 `extract`）写入。
-- **ref 回收**：被调文档的 `outputs` 经 `returns` 写入本帧。
-- **FunctionCall 回收**：插件函数多返回值经 `returns` 写入。
+- **ref 回收**：被调文档的 `outputs` 经 `returns`（裸 ASCII 名）写入本帧。
+- **FunctionCall 回收**：插件函数多返回值经 `returns`（裸 ASCII 名）写入。
+- **Define 声明**：`Define` 节点 `vars` 确定性创建（字面量或 `Param.x` 拷贝）。
 
 ---
 
@@ -591,7 +628,7 @@ n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
 | `sort` | `data`（列表）、`desc`（可选） | 排序后的列表 |
 | `sum` | `values`（列表） | 求和 |
 
-FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {NewParam.total: int}`。
+FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: int}`。
 
 ### 10.3 SSH 插件 `ssh`
 
@@ -756,7 +793,7 @@ autobranch/plugins/browser/proxy.config.json
 | 站点需走代理 / 直连 | 配置浏览器代理路由（§12） |
 | LLM 接口只支持流式 / 只支持非流式 | 已自动兼容，无需配置 |
 | 执行失败 | 详情页看失败原因（指向首个失败叶子）+ 回溯报告（LLM 决策过程） |
-| 保存报 `syntax.invalid_return_name` | `returns` 键要用 `NewParam.<名>`，不能裸键/中文 |
+| 保存报 `syntax.invalid_return_name` | `returns` 键要用裸 ASCII 名（如 `loginOk`），不能带 `NewParam.`/点号/中文 |
 | 保存报 `syntax.invalid_name` | 变量名用了中文/非 ASCII；变量名只能是 ASCII 标识符 |
 | 排队中一直不执行 | 并发上限（`max_concurrent_runs`）满了，等前面的结束自动调度 |
 | 端口 5174 / 8001 被占 | AutoBranch 固定用这两个；检查是否被其他程序占用并释放 |
@@ -767,8 +804,8 @@ autobranch/plugins/browser/proxy.config.json
 
 ## 15. 附录：快速参考
 
-- **节点类型**：`Root` `Sequence` `Step` `IfThenElse` `Branch` `Retry` `LoopUntil` `Action` `ref` `FunctionCall`
-- **变量**：`Param.x`（读） / `NewParam.x[:type]`（写） / `returns` 键必须 `NewParam.<ASCII名>` / 变量名仅 ASCII
+- **节点类型**：`Root` `Sequence` `Step` `IfThenElse` `Branch` `Retry` `LoopUntil` `Action` `ref` `FunctionCall` `Define`
+- **变量**：`Param.x`（读） / `NewParam.x[:type]`（写，仅 Action 描述） / `returns` 键为裸 ASCII 名 / `Define` 声明变量 / 变量名仅 ASCII
 - **类型 token**：`str` `int` `float` `bool` `page_ref` `object`
 - **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / experience_*）
 - **代理配置**：`autobranch/plugins/browser/proxy.config.json`

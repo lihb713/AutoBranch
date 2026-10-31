@@ -24,6 +24,7 @@ from autobranch.orchestrator.models import FAILURE, SUCCESS, NodeStatus, Orchest
 from autobranch.parser.models import (
     ActionNode,
     ConditionNode,
+    DefineNode,
     FinishNode,
     FunctionCallNode,
     Node,
@@ -53,6 +54,8 @@ def node_type_name(node: Node) -> str:
         return "Ref"
     if isinstance(node, FunctionCallNode):
         return "FunctionCall"
+    if isinstance(node, DefineNode):
+        return "Define"
     if isinstance(node, SequenceNode):
         return "Sequence"
     if isinstance(node, SelectorNode):
@@ -70,6 +73,8 @@ def node_desc(node: Node) -> str:
         return node.description
     if isinstance(node, FunctionCallNode):
         return f"{node.function}({', '.join(node.args)})"
+    if isinstance(node, DefineNode):
+        return f"Define({', '.join(name for name, _t, _v in node.vars)})"
     return node_type_name(node)
 
 
@@ -180,6 +185,8 @@ class Traverser:
             return self._tick_ref(node)
         if isinstance(node, FunctionCallNode):
             return self._tick_function_call(node)
+        if isinstance(node, DefineNode):
+            return self._tick_define(node)
         if isinstance(node, (ActionNode, ConditionNode)):
             return self._tick_leaf(node)
         if isinstance(node, SequenceNode):
@@ -290,6 +297,33 @@ class Traverser:
                 )
             except SchemaError as exc:
                 return self._note_failure(node, f"返回值写入变量 '{recv}' 失败: {exc}") or FAILURE
+        return SUCCESS
+
+    def _tick_define(self, node: DefineNode) -> NodeStatus:
+        """Define 节点：确定性创建变量（值可 `Param.x` 读当前帧 / 字面量，coerce 后写帧）。"""
+        frame = self.ctx.current_frame
+        for name, type_name, expr in node.vars:
+            value = self._eval_arg(frame, expr or "")
+            if value is _MISSING:
+                return (
+                    self._note_failure(
+                        node, f"Define 变量 '{name}' 的取值 '{expr}' 求值失败（变量未定义）"
+                    )
+                    or FAILURE
+                )
+            try:
+                value = coerce(type_name, value)
+            except SchemaError as exc:
+                return (
+                    self._note_failure(
+                        node, f"Define 变量 '{name}' 类型转换失败（{type_name}）: {exc}"
+                    )
+                    or FAILURE
+                )
+            try:
+                self.ctx.space.write(frame, f"this/{name}", value, type_name)
+            except SchemaError as exc:
+                return self._note_failure(node, f"Define 变量 '{name}' 写入失败: {exc}") or FAILURE
         return SUCCESS
 
     def _tick_leaf(self, node: ActionNode | ConditionNode) -> NodeStatus:

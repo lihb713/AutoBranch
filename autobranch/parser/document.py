@@ -89,6 +89,7 @@ class IRNode:
     args: tuple[str, ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
     function: str | None = None
+    vars: tuple[tuple[str, str, str], ...] = ()
     raw: object = None
 
 

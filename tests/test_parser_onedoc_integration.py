@@ -35,7 +35,7 @@ def test_parse_full_chain():
                 "name": "处理B",
                 "target": "文档B",
                 "args": ["Param.startOrder"],
-                "returns": {"NewParam.result": "str"},
+                "returns": {"result": "str"},
             },
         },
         "root": "n1",

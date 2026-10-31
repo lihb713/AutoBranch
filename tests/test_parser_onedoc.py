@@ -212,7 +212,7 @@ def test_parse_ref_node():
                 "name": "处理B",
                 "target": "文档B",
                 "args": ["起始订单"],
-                "returns": {"NewParam.result": "str"},
+                "returns": {"result": "str"},
             },
         },
         "root": "n1",
@@ -353,7 +353,7 @@ def test_ref_args_mismatch_rejected():
                 "name": "B",
                 "target": "文档B",
                 "args": ["起始订单"],  # 只传 1 个，B 有 2 个 inputs
-                "returns": {"NewParam.result": "str"},
+                "returns": {"result": "str"},
             },
         },
         "root": "n1",
@@ -373,7 +373,7 @@ def test_ref_args_ok_with_literal():
                 "name": "B",
                 "target": "文档B",
                 "args": ["起始订单", "http://x"],  # 变量 + 字面量
-                "returns": {"NewParam.result": "str"},
+                "returns": {"result": "str"},
             },
         },
         "root": "n1",

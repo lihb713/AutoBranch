@@ -156,6 +156,7 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
 | FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`returns` |
+| Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`） |
 
 **Condition 是概念性节点**（用户不可感知独立类型），内嵌为自有字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。
 
@@ -166,7 +167,7 @@ type: FunctionCall
 function: compute.multiply # 全名：插件名.函数名（跨插件可同名）
 args: [a, b]              # 实参列表（本树裸变量名或字面量，按序对应函数入参）
 returns:
-  结果: int               # 接收名 → 类型（按序对应函数多返回值）
+  total: int                # 接收名 → 类型（按序对应函数多返回值）
 ```
 
 - 函数不存在 / 实参求值失败（变量未定义）/ 执行失败 → 该节点 FAILURE，失败原因含函数全名与错误。
@@ -175,6 +176,20 @@ returns:
 - **函数标识 = 全名 `插件名.函数名`**（如 `compute.add`）：同一插件内函数名唯一，**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）。
 - **LLM 工具名转义**：对 LLM 暴露的工具名为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），叶子分发时按转义名反查回全名。
 - **保存/执行前校验**：服务端保存（`/api/trees`）与执行前，经共享插件注册表校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐；函数不存在 / 参数不匹配时保存被 422 拒绝。
+
+**Define 节点**（变量声明，确定性叶子）：
+
+```
+type: Define
+vars:
+  baseUrl: {type: str, value: "https://example.com"}
+  retries: {type: int, value: "3"}
+  alias:   {type: str, value: "Param.baseUrl"}   # 从本帧拷贝/重命名
+```
+
+- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（str/int/float/bool/page_ref/object）。
+- `value` 为字面量，或 `Param.<名>`（读取本帧变量做拷贝）；按 `type` coerce 后写入本帧 `this/<名>`。
+- 声明变量计入"已定义"，供后续 `Param` 读取；`Define` 不经 LLM、无截图。
 
 ### 4.2 配置参数（工具定义名称语义, 用户可覆盖）
 
@@ -409,21 +424,27 @@ n9:
 
 ```
 变量引用统一为裸变量名（作用于当前文档执行帧）:
-  读取:  Param.amount            （叶子执行前程序确定性替换为真实值）
-  写入声明: NewParam.amount[:类型]（声明本动作结果可存入该变量，值由 LLM 决定；类型 ∈ str/int/float/bool/page_ref/object，可省略按动作推断）
-  传参:   ref 处的 args: [Param.x 或字面量...]  （传实参给被引用文档）
-  取返回: ref 处的 returns: {NewParam.名: 类型}  （接收被引用文档的输出，键=本树新建变量）
+  读取:  Param.amount                （叶子描述 / ref·FunctionCall args；执行前替换为真实值）
+  写入声明: NewParam.amount[:类型]    （仅 Action 的 description；声明本动作可写变量，值由 LLM 决定）
+  接收:  returns: {amount: 类型}     （ref / FunctionCall；键=裸 ASCII 名，隐式创建变量）
+  声明变量: Define 节点 vars          （{名: {type, value}}，value=字面量或 Param.x 拷贝重命名）
 ```
 
 > 参数**无层级概念**（一文档一树）：读/写均针对当前文档执行帧，裸变量名即可。
 >
 > **变量命名规则（全部变量，强制）**：
-> - **语法**：一切变量引用/声明一律使用 `Param.<名>`（读取）、`NewParam.<名>[:类型]`（写入/returns 接收名）
->   ——`ref`/`FunctionCall` 的 `returns` 键**必须**为 `NewParam.<名>`（裸键/非 `NewParam.` 前缀 → 校验错误
->   `syntax.invalid_return_name`）；`inputs`/`outputs` 声明的名字即裸变量名（引用处以 `Param.<名>` /
->   `NewParam.<名>` 出现）。实参（`args`）可为常量或字面量，不强制 `Param`。
+> - **读取**：`Param.<名>` 可出现在 Action / Condition 的描述文本中，以及 `ref` / `FunctionCall`
+>   的 `args` 元素（args 也可为字面量）。
+> - **写入声明**：`NewParam.<名>[:类型]` **仅**出现在 Action 的 `description` 中，声明该叶子的可写
+>   变量集（产出型工具 target 须在其中）。
+> - **接收**：`ref` / `FunctionCall` 的 `returns` 键为**裸 ASCII 名**（隐式创建变量）；含 `.`
+>   （如 `NewParam.x`）或非 ASCII → 校验错误 `syntax.invalid_return_name`（不兼容旧写法）。
+> - **声明变量**：`Define` 节点的 `vars` 为 `{名: {type, value}}`，随后在本帧创建变量；
+>   `value` 为字面量或 `Param.<名>`（从本帧拷贝/重命名）。
+> - `inputs` / `outputs` 声明的名字即裸变量名（引用处以 `Param.<名>` 出现）。
 > - **名称字符集**：`<名>` 一律为 **ASCII 标识符 `[A-Za-z_][A-Za-z0-9_]*`**，不支持中文/非 ASCII
->   （`Param.苹果` / `NewParam.金额` → 校验错误 `syntax.invalid_name`；returns 键同理）。
+>   （`Param.苹果` / `NewParam.金额` / returns 键 → 校验错误 `syntax.invalid_name` /
+>   `syntax.invalid_return_name`）。
 > - 反引号包裹（`` `Param` ``/`` `NewParam` ``）为纯文本，不替换。
 > - 旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已彻底废弃，解析到 → `syntax.deprecated`。
 
@@ -432,13 +453,16 @@ n9:
   blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
   读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
 - **读取变量静态校验**：`Param.x` 读取的变量必须是**本文档 inputs 声明**（调用方
-  经 ref args 传入）、**本文档内 `NewParam.x` 声明**或 **ref 的 returns 目标变量**；
-  未定义即读取 → 清晰度校验报 `scope.get_undeclared`（解析期拦截）。output 声明不构成
-  读取源（输出是本文档返回给调用方的值）。引擎运行时写入的变量（open/get_url 的 save_to）
-  也须配 `NewParam.x` 标注才能被读取。
+  经 ref args 传入）、**本文档内 `NewParam.x` 写入声明**、**ref/FunctionCall 的 returns
+  目标变量**或 **`Define` 节点声明的变量**；未定义即读取 → 清晰度校验报
+  `scope.get_undeclared`（解析期拦截）。output 声明不构成读取源（输出是本文档返回给调用方的值）。
+  引擎运行时写入的变量（open/get_url 的 save_to）也须配 `NewParam.x` 标注才能被读取。
 - **写入（NewParam.）声明**：`NewParam.类型:xxx`（类型可省略）声明本动作的可写变量集。
   LLM 决定何时调用 extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**
   （未声明路径拒绝）。
+- **声明（Define）**：`Define` 为确定性叶子（不经 LLM、无截图）。其 `vars` 逐项求值
+  （字面量或 `Param.x` 读本帧）→ 按 `type` coerce → 写入本帧 `this/<名>`；求值/coerce
+  失败 → 节点 FAILURE。声明的变量计入"已定义"，供后续 `Param` 读取。
 
 #### 5.3.1 schema 的层级结构
 
@@ -471,7 +495,7 @@ ref 登录: args: [username]       ← T 给直接子文档传参
 **取返回值 = ref returns 回收（对称）：**
 ```
 导出文档 B 完成后，把结果写到自己的帧 result
-T 经 returns 回收: ref 导出: returns: {NewParam.result: str}   ← 本树新建接收变量（按序对应 B 的 outputs）
+T 经 returns 回收: ref 导出: returns: {result: str}   ← 本树新建接收变量（按序对应 B 的 outputs）
 ```
 
 #### 5.3.3 文档接口（输入输出声明）
@@ -727,12 +751,12 @@ ref 节点:
 
 ```
 nodes:
-  n3: {type: ref, name: 去登录, target: 登录, args: [Param.账号], returns: {NewParam.loginResult: bool}}
+  n3: {type: ref, name: 去登录, target: 登录, args: [Param.账号], returns: {loginResult: bool}}
 ```
 
 **参数绑定**（沿用 §5.3 schema 机制）：
 - `args` 按序对应被引文档 `inputs`；每个元素为 `Param.x`（读本树变量）或字面量（str/int/float/bool）。
-- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量**（`NewParam.名`，内联 `:类型` 兼容），值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `Param.<接收名>` 引用。
+- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量**（裸 ASCII 名，隐式创建），值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `Param.<接收名>` 引用。
 
 **绑定契约（严格执行）**：
 - `args` 数量 ≠ 被引文档 inputs 数量 → `ref.args_mismatch`；`returns` 数量 ≠ outputs 数量 → `ref.returns_mismatch`；接收名与本树 inputs 重名 → `ref.name_conflict`。
@@ -797,7 +821,7 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 导出, actions: [n3, n4]}
   n3: {type: ref, name: 去登录, target: 登录,
-       args: [Param.username, Param.password], returns: {NewParam.loginResult: bool}}   ← 引入登录文档
+       args: [Param.username, Param.password], returns: {loginResult: bool}}   ← 引入登录文档
   n4: {type: Step, name: 导出, action: n4a, expect: 出现"下载成功"}
   n4a: {type: Action, name: 导出, description: 点"导出"（登录结果 Param.loginResult）}
 root: n1
@@ -809,10 +833,10 @@ nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 主流程, actions: [n3]}
   n3: {type: ref, name: 去导出, target: 导出,
-       args: [Param.account, Param.password], returns: {NewParam.exportResult: str}}
+       args: [Param.account, Param.password], returns: {exportResult: str}}
 root: n1
 ```
-> 注：ref 用 `args: [Param.x 或字面量...]` 按序传实参、`returns: {NewParam.接收名: 类型}` 按序接收输出；叶子内变量读写用 `Param.x` / `NewParam.x[:类型]`（旧语法 `[[get]]`/`[[set]]`/`this/` 已废弃）。
+> 注：ref 用 `args: [Param.x 或字面量...]` 按序传实参、`returns: {接收名: 类型}`（裸 ASCII 名）按序接收输出；叶子内变量读写用 `Param.x` / `NewParam.x[:类型]`（旧语法 `[[get]]`/`[[set]]`/`this/` 已废弃）。
 
 **Schema 流转路径追踪（主流程引用导出，导出引用登录）：**
 
@@ -2242,14 +2266,14 @@ M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 type: function
 function: compute.add          # 全名：插件名.函数名（跨插件可同名）
 args: [a, b]                # 实参列表（本树裸变量名或字面量，按序对应函数入参）
-returns: {NewParam.total: int}   # 接收名（NewParam.<ASCII名>）→ 类型（按序对应函数多返回值）
+returns: {total: int}   # 接收名（裸 ASCII 名）→ 类型（按序对应函数多返回值）
 ```
 
 - 引擎核心不感知具体能力；能力全部经插件框架（M3）调用。
 - 插件只返回值（业务值 + 报告附加信息），变量写入由引擎落笔。
 - 泛型 `object` 类型承载插件对象（页面对象/会话等）。
-- **接收名规则**（与 ref 一致）：`returns` 键**必须**为 `NewParam.<ASCII 标识符>[:类型]`——裸键或非 ASCII
-  名 → 校验错误 `syntax.invalid_return_name`；变量名仅 ASCII（§4.2/§5.3，不支持中文）。
+- **接收名规则**（与 ref 一致）：`returns` 键**必须**为**裸 ASCII 名**（隐式创建变量）——含 `.`（如
+  `NewParam.x`）或非 ASCII 名 → 校验错误 `syntax.invalid_return_name`；变量名仅 ASCII（§4.2/§5.3，不支持中文）。
 
 ### 12.3 引擎内嵌形态
 

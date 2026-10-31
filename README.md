@@ -8,9 +8,10 @@
 
 ## 核心特性
 
-- **行为树文档驱动**：`tree / nodes / root` 三段式 YAML，支持 Sequence / Selector / Repeat / LoopUntil / Retry / Step / Branch / ref / **FunctionCall** 等节点。
+- **行为树文档驱动**：`tree / nodes / root` 三段式 YAML，支持 Sequence / Selector / Repeat / LoopUntil / Retry / Step / Branch / ref / **FunctionCall** / **Define** 等节点。
 - **LLM Agent 叶子执行**：Action / Condition 由 LLM 依据语义图决策，调用插件函数并**落笔写变量**（引擎回收返回值，按类型 coerce）。
 - **确定性 FunctionCall 节点**：行为树可直接调用插件函数（`compute.add` 等），不经 LLM，可精确写变量 / 多返回值。
+- **确定性 Define 节点**：在当前文档帧声明变量（字面量或 `Param.x` 拷贝重命名），不经 LLM。
 - **插件框架**：预置浏览器 / 计算 / SSH / 文件插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、插件管理页、执行报告页。
@@ -163,12 +164,12 @@ nodes:
     function: compute.add
     args: [Param.appleAmount, Param.bananaAmount]
     returns:
-      NewParam.fruitTotal: int
+      fruitTotal: int
 root: n1
 ```
 
 - 通过前端「行为树管理」创建 / 保存（保存时做清晰度校验，FunctionCall 会校验函数存在性与参数对齐）。
-- **变量命名规则**：一切变量用 `Param.<名>`（读取）/`NewParam.<名>[:类型]`（写入与 `ref`/`FunctionCall` 的 `returns` 接收名）语法；`<名>` 一律为 **ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`），不支持中文。
+- **变量命名规则**：读取用 `Param.<名>`；写入声明 `NewParam.<名>[:类型]` **仅用于 Action 描述**；`ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（如 `{fruitTotal: int}`，不接受 `NewParam.` 前缀）；`Define` 节点用于声明变量。`<名>` 一律为 **ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`），不支持中文。
 - 点击「执行」→ 若声明了入参则弹框填参（含不可序列化入参的树不显示「执行」按钮）→ 后台异步运行 → 前端轮询状态 → 展示执行报告与出参。
 - 「行为树执行列表」页可查看全部执行实例（进行中/历史）、轮询进度、重试（按当时快照+入参）、查看快照、删除记录。
 - 也可直接调用 API：`POST /api/trees/{id}/run`（可选 body `{"inputs": {...}}`）。
@@ -217,7 +218,7 @@ root: n1
 | M2 变量空间 | 帧命名空间 / 严格作用域 / 类型契约（含泛型 `object`） |
 | M3 插件框架 | 注册表（全名）/ 懒装配 / `use_capability` 两级能力选择 / 统一分发 / 报告接口 |
 | M4 叶子 Agent | Action / Condition 的 LLM agent 式执行 + 变量落笔 |
-| M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall 确定性执行 |
+| M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall·Define 确定性执行 |
 | M6 报告 | 执行报告 / 截图 / 回溯 / 可查询状态 |
 | M7 插件集 | browser / compute / ssh / file + 自定义插件 |
 | M8 管理后端 | FastAPI：trees / runs（执行实例：快照/入参/出参/列表/重试/队列）/ reports / plugins / functions / types |

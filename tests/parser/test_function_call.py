@@ -30,7 +30,7 @@ def _doc(function: str = "compute.multiply", args: list | None = None, returns: 
                     "type": "FunctionCall",
                     "function": function,
                     "args": args or ["a", "b"],
-                    "returns": returns or {"NewParam.total": "int"},
+                    "returns": returns or {"total": "int"},
                 },
             },
             "root": "r",
@@ -68,16 +68,22 @@ def test_without_registry_skips_function_check():
     assert result.checks.ok
 
 
-def test_function_call_bare_return_name_rejected():
-    """returns 接收名必须为 NewParam.<名> 形式（裸键 → syntax.invalid_return_name）。"""
+def test_function_call_bare_return_name_accepted():
+    """returns 接收名为裸 ASCII 名 → 通过（接收即隐式创建变量）。"""
     result = parse(_doc(returns={"total": "int"}), None, function_registry=FakeRegistry())
+    assert result.checks.ok
+
+
+def test_function_call_newparam_prefix_rejected():
+    """returns 键含点号（NewParam.x）→ syntax.invalid_return_name（不接受旧前缀）。"""
+    result = parse(_doc(returns={"NewParam.total": "int"}), None, function_registry=FakeRegistry())
     assert not result.checks.ok
     assert any(i.code.startswith("syntax.invalid_return_name") for i in result.checks.issues)
 
 
 def test_function_call_chinese_return_name_rejected():
-    """returns 接收名不支持中文（NewParam.合计 → syntax.invalid_return_name）。"""
-    result = parse(_doc(returns={"NewParam.合计": "int"}), None, function_registry=FakeRegistry())
+    """returns 接收名不支持中文（合计 → syntax.invalid_return_name）。"""
+    result = parse(_doc(returns={"合计": "int"}), None, function_registry=FakeRegistry())
     assert not result.checks.ok
     assert any(i.code.startswith("syntax.invalid_return_name") for i in result.checks.issues)
 

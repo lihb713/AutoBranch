@@ -15,6 +15,7 @@ AutoBranch 的用户交互界面：行为树编辑器（拖拽节点 → 生成�
 |---|---|---|
 | 行为树编辑器 | 拖拽节点 + 填写信息 → 生成含复合节点的行为树文档 | §12.5/§4.3 |
 | FunctionCall 节点编辑 | 编辑器支持 `type: FunctionCall` 节点：选函数后按函数签名（JSON Schema）自动罗列入参/返回值表单，无需手动增删 | §12.2.1 |
+| Define 节点编辑 | 编辑器支持 `type: Define` 节点：属性面板以「变量名 / 类型 / 值」行表格编辑 `vars`（可增删）；无槽位 | §12.2.1 / tree-editor spec |
 | 可搜索下拉 | 函数名选择器（罗列全名 `插件.函数` + 描述，支持过滤）、ref 目标文档、槽位/分支子节点下拉均支持输入过滤（类型下拉保持原生 select） | §12.2.1 / tree-editor spec |
 | 行为树管理 | 列表/查看/修改/删除（CRUD）；全局页签导航（行为树管理/执行列表/插件管理）；「导入文档」「新建行为树」在页面内容区 | §12.2-M9a |
 | 执行报告页 | 轮询执行状态，实时渲染节点进度 + 截图；顶部「重试」（复制快照+入参）；**实例信息区**展示执行状态/行为树（快照名）/入参/出参/指纹/耗时，及折叠的「执行快照」（触发时刻行为树内容） | §12.4/§5.8.3 |
@@ -85,11 +86,11 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - **根节点**：每文档恰一个 `type: Root`（固定 1 槽 `body`），不可删除/替换；`root` 顶层键引用它。
 - **Action 叶子**：真正叶子节点，无槽位，仅 `fields.description`（自然语言操作描述），可被任意槽位挂载；创建 Step 时自动附带一个 Action 子节点挂入其 `action` 槽位（`createStepWithAction`）。
 - **文档接口编辑**：**行为树级属性**，位于右侧侧栏「树信息」Tab（与行为树名称输入框同区，`DocInterfaceEditor`，不在节点属性面板内）——编辑树 `inputs`（名→类型，类型 str/int/float/bool/page_ref/object）与 `outputs`（名列表），可增删改；ref 参数对齐依据该声明。只读模式（ref 预览）下禁用。
-- **ref 参数编辑**：**文档加载后自动加载全部 ref 目标**的 `inputs`/`outputs`（`loadRefMeta`，幂等、失败去重；也用于 ref 展开与下拉切换）；ref 节点下拉选目标文档 → 自动加载其 `inputs`/`outputs` 生成参数表单，按「引用目标 / 入参 / 出参」分组展示；入参 `args` 为列表（按序对应 inputs，值优先匹配本树已有变量名，未命中作字面量）；出参 `returns` 为字典（键=本树新建接收名，值=类型，按序对应 outputs）；编辑时即时校验对齐/命名冲突/类型，并即时检测跨文档引用环。目标未选/加载中给出提示。
+- **ref 参数编辑**：**文档加载后自动加载全部 ref 目标**的 `inputs`/`outputs`（`loadRefMeta`，幂等、失败去重；也用于 ref 展开与下拉切换）；ref 节点下拉选目标文档 → 自动加载其 `inputs`/`outputs` 生成参数表单，按「引用目标 / 入参 / 出参」分组展示；入参 `args` 为列表（按序对应 inputs，值优先匹配本树已有变量名，未命中作字面量）；出参 `returns` 为字典（键=**裸 ASCII 接收名**（如 `loginOk`），值=类型，按序对应 outputs）；编辑时即时校验对齐/命名冲突/类型（键含 `.`/非 ASCII → `syntax.invalid_return_name`），并即时检测跨文档引用环。目标未选/加载中给出提示。
 - **FunctionCall 签名驱动**：选中函数后按函数 `parameters`（JSON Schema `properties`/`required`，required 在前）自动罗列入参输入框（参数名+映射后类型：string→str/integer→int/number→float/boolean→bool/其余→object），按 `returns` 自动罗列返回值行（返回名 + 接收名 + 类型下拉）；未选函数给出提示；**不提供**手动「添加实参/添加返回值」（参数个数由签名决定）。
 - **ref 展开/收缩**：收缩态为单节点占位（显示目标文档名）；展开态将**被引文档整树并入主树布局**（`layoutDocument` 的 `refExpansions`，节点以 `<refId>:` 前缀隔离，向下生长不遮挡主树），与主树以连线相连、预览内部父子连线一并渲染；逐层懒加载，收缩连同已展开子引用一并收起。展开/收缩按钮位于 ref 节点卡片右上角。**预览节点可点击查看只读属性面板**（展示节点字段/槽位/ref 参数，禁止编辑）。
 - **删除/修改语义**：删槽位=解引用（子节点回游离区）；删单节点=各槽位子节点各自成游离树；删子树=连带后代；改槽位=旧节点回游离区、新节点入主树；删 ref 仅解除引用，被引用文档不受影响。删除/删除子树操作位于**属性面板**（节点卡片上不提供，避免重复），按钮文案无括号描述（「删除此节点」「删除子树」）。
-- **节点属性面板（三段式 + 两级分组）**：第一段**节点信息**（类型徽章 + id、名称输入框）；第二段**节点内部属性**以「整体容器 → 属性分组」两级展示（`.node-props` 整体容器包裹，内部分组卡片 + 组标题；组名按语义统一命名，槽位组一律叫「槽位」）：Root/Sequence 槽位；Step 验证条件+槽位；Action 操作描述；IfThenElse 判断条件+槽位；Branch 前置操作+分支；Retry 重试参数+槽位；LoopUntil 循环参数+槽位；ref 引用目标+入参+出参；FunctionCall 函数+入参+返回值。第三段**操作区**（删除按钮）。
+- **节点属性面板（三段式 + 两级分组）**：第一段**节点信息**（类型徽章 + id、名称输入框）；第二段**节点内部属性**以「整体容器 → 属性分组」两级展示（`.node-props` 整体容器包裹，内部分组卡片 + 组标题；组名按语义统一命名，槽位组一律叫「槽位」）：Root/Sequence 槽位；Step 验证条件+槽位；Action 操作描述；IfThenElse 判断条件+槽位；Branch 前置操作+分支；Retry 重试参数+槽位；LoopUntil 循环参数+槽位；ref 引用目标+入参+出参；FunctionCall 函数+入参+返回值；Define 变量（变量名/类型/值行表格，可增删）。第三段**操作区**（删除按钮）。
 - **即时校验**：节点必填字段（Action `description`、Step `action` 槽位+`expect`、IfThenElse `if`+`then`+`else`、Branch `action`+至少一分支、LoopUntil `until`+`action`+`max`、Retry `body`+`max`、ref `target`）红框标记；保存时汇总校验（单根、主树与各游离树无环、槽位引用存在且无重复引用、ref 目标存在）并经后端 `/check` 权威兜底。
 - **参数记号高亮**：参数读写统一用 `Param.x`（读取）/`NewParam.x[:类型]`（新建）记号（详见 `docs/contract.md` §5.3 与参数语法重构设计文档）；属性面板的描述/条件（Action description、Step expect、IfThenElse if、LoopUntil until、Branch when）与 ref/FunctionCall 的入参、出参/返回值接收名等输入框均用**高亮输入框**（`HighlightedField`）渲染：`Param.x` 蓝色、`NewParam.x[:类型]` 绿色（**纯颜色高亮，不改字重/字体**，保证叠加层与输入框文本布局一致、光标对齐）；反引号转义段（`` `Param` ``/`` `NewParam` ``）不高亮。
 - **节点标识**：`id` 文档内唯一（自动生成 n1/n2...、**文档导入保留原 id**，仅 `[A-Za-z0-9_-]`、≤64）；`name` 用户自定义画布显示名（≤64，不强制唯一，空则显示类型名）。
@@ -98,7 +99,7 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 
 - 工程位置 `autobranch/frontend/`（Vite + React 18 + TS），目录按 `frontend-style.md`：`src/api|components|features|hooks|types`。
 - 路由（react-router-dom）：`/` 列表、`/editor/:id?` 编辑器、`/runs` 执行列表、`/runs/:runId` 报告页；全局页签导航 `GlobalNav`（行为树管理/执行列表/插件管理）。
-- **节点模型**（`features/tree-editor/treeModel.ts`）：`TreeNode = {id, type, name, fields, body?, actions?, action?, then?, else?, branches?, target?, args?, returns?}`（`fields` 存 `description`/`expect`/`if`/`when`/`until`/`max` 等标量字段；槽位字段按类型出现：`body`/`actions`/`action`/`then`/`else`/`branches`；`target`/`args`/`returns` 仅 `ref`）、`TreeDoc = {tree, inputs, outputs, config, nodes, root}`；`parseDoc`/`serializeDoc` 与一文档一树 DSL 无损往返（含 ref args/returns）；`nextNodeId`/`freeRoots`/`referencedIds` 支撑 id 生成、游离判定与重复引用校验。
+- **节点模型**（`features/tree-editor/treeModel.ts`）：`TreeNode = {id, type, name, fields, body?, actions?, action?, then?, else?, branches?, target?, args?, returns?, vars?}`（`fields` 存 `description`/`expect`/`if`/`when`/`until`/`max` 等标量字段；槽位字段按类型出现：`body`/`actions`/`action`/`then`/`else`/`branches`；`target`/`args`/`returns` 仅 `ref`/`FunctionCall`；`vars` 仅 `Define`（`DefineVar = {name, type, value}`））、`TreeDoc = {tree, inputs, outputs, config, nodes, root}`；`parseDoc`/`serializeDoc` 与一文档一树 DSL 无损往返（含 ref/FunctionCall args·returns 与 Define vars）；`nextNodeId`/`freeRoots`/`referencedIds` 支撑 id 生成、游离判定与重复引用校验。
 - **布局引擎**（`features/tree-editor/layout.ts`）：固定尺寸卡片，自底向上算宽、自顶向下定位（根在上、向下生长、兄弟水平均布）；`layoutDocument` 主树在左上、游离树依次排布其下。
 - 状态：`useState`（表单）+ `useReducer`（编辑器节点树）+ `usePolling` hook（1 秒轮询，卸载清理）。
 - 保存前先 `POST /check`，校验失败渲染错误清单阻止保存；`js-yaml` 双向转换（**不展开复合节点**，§12.5）。
@@ -115,6 +116,7 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - [ ] 节点对象池 + 统一槽位：语义命名字段（body/actions/action/then/else/branches）槽位下拉只列游离树根，Sequence.actions/Branch.branches 增删、挂载/剥离迁移正确；Action 叶子可被任意槽位挂载
 - [ ] 每文档恰一 Root 节点且不可删除；游离树可保存（草稿）
 - [ ] ref 参数编辑（选目标文档自动加载 inputs/outputs、args/returns 表单）与展开/收缩（只读预览）
+- [ ] Define 节点编辑（变量行表格，可增删；校验变量名/类型）；ref/FunctionCall `returns` 键为裸 ASCII 名
 - [ ] 删除/修改语义明确：删槽位=解引用回游离区；删单节点=子节点各自成游离树；删子树=连带后代
 - [x] 行为树 CRUD 完整可用；保存时触发校验，校验失败友好提示修正
 - [x] 点击执行 → 触发 run → 1 秒轮询状态 → 实时渲染节点成功/失败 + 截图；执行完毕展示完整执行报告与回溯报告

@@ -37,7 +37,7 @@ const A_YAML =
   "  n3:\n    type: ref\n    name: 打开页面\n" +
   "    target: " + B_NAME + "\n" +
   "    args: [\"http://127.0.0.1:8123/index.html\"]\n" +
-  "    returns: {NewParam.urlText: str}\n" +
+  "    returns: {urlText: str}\n" +
   "  n4:\n    type: Step\n    name: 校验\n    action: n5\n    expect: 页面出现\"AutoBranch 测试站\"\n" +
   "  n5:\n    type: Action\n    name: 校验动作\n" +
   "    description: 校验当前页面出现\"AutoBranch 测试站\" Param.urlText\n" +
