@@ -144,6 +144,28 @@ def test_browser_ignore_https_errors_default_and_override(tmp_path, monkeypatch)
     assert cfg.to_browser_config().ignore_https_errors is True
 
 
+def test_browser_channel_and_executable_path(tmp_path, monkeypatch):
+    """浏览器可选 channel / executable_path（无法下载无头浏览器时用本地浏览器）。"""
+    from autobranch.config import BrowserOptions
+
+    assert BrowserOptions().channel is None
+    assert BrowserOptions().executable_path is None
+
+    path = tmp_path / "autobranch.config.json"
+    path.write_text(
+        '{"browser": {"channel": "chrome", "executable_path": "C:/Chrome/chrome.exe"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("AUTOBRANCH_LLM_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    cfg = AutoBranchConfig.load()
+    assert cfg.browser.channel == "chrome"
+    assert cfg.browser.executable_path == "C:/Chrome/chrome.exe"
+    bc = cfg.to_browser_config()
+    assert bc.channel == "chrome"
+    assert bc.executable_path == "C:/Chrome/chrome.exe"
+
+
 def test_to_run_config(config_file):
     cfg = AutoBranchConfig.load(config_file, apply_env=False)
     rc = cfg.to_run_config(max_rounds=3)

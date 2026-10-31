@@ -126,13 +126,13 @@ class BrowserDriver:
         cfg = config or BrowserConfig()
         data = self._resolve_proxy_data(proxy_config)
         self._router = ProxyRouter(data) if data else None
+        self._config = cfg
         playwright = sync_playwright().start()
         browser_type = getattr(playwright, cfg.browser_type)
-        browser = browser_type.launch(headless=cfg.headless)
+        browser = browser_type.launch(**self._launch_kwargs())
         self._playwright = playwright
         self._browser = browser
         self._direct_browser = None
-        self._config = cfg
         self._contexts = {}
         self._page_ctx = {}
         self._pages = {}
@@ -140,6 +140,24 @@ class BrowserDriver:
         # 页面 id 驱动级单调递增（跨会话不重置），避免重启后旧引用误绑定新页
         self._http_recorder.clear()
         self._http_recorder.pump = self._pump_events
+
+    def _launch_kwargs(self, extra_args: list[str] | None = None) -> dict:
+        """浏览器启动参数：headless + 可选 channel/executable_path（+ 额外 args）。
+
+        - ``executable_path`` 优先（直接指定二进制，适合节点上已有浏览器、无法
+          下载 Playwright 自带浏览器的场景）；
+        - 否则 ``channel``（使用系统已安装的 chrome/msedge 等发行版，无需下载）；
+        - 都未配置则用 Playwright 自带浏览器（需 ``playwright install``）。
+        """
+        cfg = self._config or BrowserConfig()
+        kwargs: dict = {"headless": cfg.headless}
+        if cfg.executable_path:
+            kwargs["executable_path"] = cfg.executable_path
+        elif cfg.channel:
+            kwargs["channel"] = cfg.channel
+        if extra_args:
+            kwargs["args"] = extra_args
+        return kwargs
 
     @staticmethod
     def _resolve_proxy_data(proxy_config: object) -> dict | None:
@@ -182,7 +200,7 @@ class BrowserDriver:
             return self._direct_browser
         browser_type = getattr(self._playwright, self._config.browser_type)
         self._direct_browser = browser_type.launch(
-            headless=self._config.headless, args=["--no-proxy-server"]
+            **self._launch_kwargs(["--no-proxy-server"])
         )
         return self._direct_browser
 

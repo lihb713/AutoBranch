@@ -56,12 +56,16 @@ class BrowserOptions:
 
     :param ignore_https_errors: 关闭 HTTPS 证书校验（默认 False；内网/私有 CA
       环境开启后信任所有证书）。
+    :param channel: 使用系统已安装的浏览器发行版通道（如 chrome/msedge），无需下载。
+    :param executable_path: 直接指定浏览器可执行文件路径（优先于 channel）。
     """
 
     browser_type: str = "chromium"
     headless: bool = True
     timeout_ms: int = 30000
     ignore_https_errors: bool = False
+    channel: str | None = None
+    executable_path: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BrowserOptions:
@@ -70,6 +74,8 @@ class BrowserOptions:
             headless=bool(data.get("headless", cls.headless)),
             timeout_ms=int(data.get("timeout_ms", cls.timeout_ms)),
             ignore_https_errors=bool(data.get("ignore_https_errors", cls.ignore_https_errors)),
+            channel=_opt_str(data.get("channel")),
+            executable_path=_opt_str(data.get("executable_path")),
         )
 
 
@@ -194,6 +200,8 @@ class AutoBranchConfig:
             headless=self.browser.headless,
             timeout_ms=self.browser.timeout_ms,
             ignore_https_errors=self.browser.ignore_https_errors,
+            channel=self.browser.channel,
+            executable_path=self.browser.executable_path,
         )
 
     def to_run_config(self, **overrides: Any) -> Any:
@@ -216,6 +224,14 @@ class AutoBranchConfig:
         )
         base.update(overrides)
         return RunConfig(**base)
+
+
+def _opt_str(value: Any) -> str | None:
+    """可选字符串配置：空/None → None，否则 str。"""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _resolve_path(path: str | Path | None) -> str | None:

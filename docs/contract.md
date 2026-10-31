@@ -1165,14 +1165,15 @@ get_url 产物恒为文本，LLM 据标注选函数，写入类型由引擎函�
 ```json
 {
   "llm":     { "base_url", "api_key", "model", "timeout" },
-  "browser": { "browser_type", "headless", "timeout_ms", "ignore_https_errors" },
+  "browser": { "browser_type", "headless", "timeout_ms", "ignore_https_errors",
+             "channel", "executable_path" },
   "run":     { "timeout", "max_rounds", "no_progress_rounds",
                "session_timeout", "initial_graph_scope",
                "initial_graph_lod", "report_dir", "page_var", "budget_limit" }
 }
 ```
 
-**LLM 请求方式（自动兼容，无配置项）**：叶子请求默认走**流式**（`stream: true`）；对仅接受非流式的端点，响应被拒（HTTP 400/405/422/501 且提及 `stream`）时自动回落非流式，并按端点缓存已工作形态。流式响应按 SSE 解析（含工具调用增量）。**浏览器证书豁免**：`browser.ignore_https_errors: true` 关闭所有 HTTPS 证书校验（默认 false；内网/私有 CA 环境开启）。
+**LLM 请求方式（自动兼容，无配置项）**：叶子请求默认走**流式**（`stream: true`）；对仅接受非流式的端点，响应被拒（HTTP 400/405/422/501 且提及 `stream`）时自动回落非流式，并按端点缓存已工作形态。流式响应按 SSE 解析（含工具调用增量）。**浏览器证书豁免**：`browser.ignore_https_errors: true` 关闭所有 HTTPS 证书校验（默认 false；内网/私有 CA 环境开启）。**浏览器二进制**：默认用 Playwright 自带浏览器（需 `playwright install chromium`）；无法下载时用 `browser.channel`（系统已安装的 chrome/msedge 等，无需下载）或 `browser.executable_path`（指定浏览器可执行文件路径，优先于 channel）。
 
 **浏览器代理路由（浏览器插件内）**：代理决策不进行为树描述，由浏览器插件配置文件（`autobranch/plugins/browser/proxy.config.json`，格式见 `proxy.config.example.json`）按站点规则匹配——`default` 兜底 + `profiles`（system / direct / 自定义 server+凭据）+ `rules`（站点模式 → 代理，首条命中）。`open(url)` 按 URL 匹配规则选择代理：命中走对应会话（context），无命中走 default；文件缺失则不启用（跟随系统代理）。注意：① 代理在**页面打开时定死**（context 级，非 per-request）；② Playwright 强制绕过回环地址（`127.0.0.1` 不走代理）；③ `direct` 模式经独立 `--no-proxy-server` 浏览器承载。
 

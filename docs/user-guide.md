@@ -188,6 +188,13 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
 | `headless` | 无头运行（不弹浏览器窗口） | true |
 | `timeout_ms` | 页面元素操作超时（毫秒） | 30000 |
 | `ignore_https_errors` | 关闭 HTTPS 证书校验（内网/私有 CA 站点用，见 §14） | false |
+| `channel` | 用系统已安装的浏览器发行版通道（如 `chrome` / `msedge`），**无需下载** | 空 |
+| `executable_path` | 指定浏览器可执行文件路径（优先于 `channel`） | 空 |
+
+> **无法下载无头浏览器怎么办？** Playwright 默认用自带 Chromium（需 `playwright install chromium`）；网络受限时可改用本机浏览器：
+> - `"channel": "chrome"`：使用已安装的 Google Chrome；`"channel": "msedge"`：使用 Edge；
+> - 或 `"executable_path": "C:/Program Files/Google/Chrome/Application/chrome.exe"` 直接指定二进制。
+> 二者配置后**无需下载** Playwright 浏览器；未配置则用自带浏览器（需先安装）。
 
 **`run`（引擎运行）**
 

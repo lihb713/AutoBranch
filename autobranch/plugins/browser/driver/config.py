@@ -17,6 +17,10 @@ class BrowserConfig:
     :param screenshot_dir: 截图默认保存目录；screenshot 给出相对路径时拼接于此。
     :param ignore_https_errors: 关闭 HTTPS 证书校验（默认 False；内网/私有 CA
       环境开启后信任所有证书，含自签/中间人）。
+    :param channel: 使用系统已安装的浏览器发行版通道（如 ``chrome`` / ``msedge`` /
+      ``chrome-beta``），无需下载 Playwright 自带浏览器。
+    :param executable_path: 直接指定浏览器可执行文件路径（优先于 ``channel``），
+      适合无法下载无头浏览器、节点上已有浏览器的场景。
     """
 
     browser_type: str = "chromium"
@@ -24,6 +28,8 @@ class BrowserConfig:
     timeout_ms: int = 30000
     screenshot_dir: str | None = None
     ignore_https_errors: bool = False
+    channel: str | None = None
+    executable_path: str | None = None
 
     def __post_init__(self) -> None:
         if self.browser_type not in _BROWSER_TYPES:
