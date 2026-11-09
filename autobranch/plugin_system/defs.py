@@ -3,7 +3,10 @@
 - ``FunctionDef``：结构化函数定义（名字 / 说明 / 参数 / 多返回值 / 变量目标
   参数 / 实现）。
 - ``FunctionResult``：插件函数返回值（业务值 + 报告附加信息）。
-- ``@engine_function``：显式注册装饰器——未标注的函数与类不注册。
+- ``@engine_function``：显式注册装饰器——未标注的函数与类不注册。注册的函数
+  对 LLM 与用户（FunctionCall / 函数清单）均可见。
+- ``@llm_function``：仅对 LLM 可见的注册装饰器——函数进入 LLM 工具集，
+  但不进入 FunctionCall 校验 / 函数选择器（用于语义图等技术性接口）。
 - ``PluginBase``：插件基类（``name`` / ``description`` / ``function_defs()`` /
   ``init(runtime)`` / ``call(name, args)``）。
 
@@ -71,6 +74,8 @@ class FunctionDef:
     :param parameters: JSON Schema 参数定义。
     :param returns: 返回值名列表（多返回值，按序）。
     :param output_param: 产出型工具的变量目标参数名（None = 非产出型）。
+    :param user_visible: 是否对用户可见（FunctionCall / 函数清单）；``False``
+      表示仅对 LLM agent 开放（如语义图等技术性接口）。
     :param impl: 函数实现（装饰器自动绑定）。
     """
 
@@ -80,6 +85,7 @@ class FunctionDef:
     parameters: dict[str, Any] = field(default_factory=dict)
     returns: tuple[str, ...] = ()
     output_param: str | None = None
+    user_visible: bool = True
     impl: Callable[..., Any] | None = None
 
     @property
@@ -117,18 +123,16 @@ class FunctionDef:
         return ToolSpec(name=self.tool_name, description=self.description, parameters=params)
 
 
-def engine_function(
+def _function_decorator(
+    *,
+    user_visible: bool,
     name: str | None = None,
     description: str = "",
     parameters: dict[str, Any] | None = None,
     returns: tuple[str, ...] | list[str] = (),
     output_param: str | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """显式注册装饰器：把函数标注为插件对外函数。
-
-    未标注的函数与类不注册。函数名默认取函数名；``description`` 缺省取
-    函数 docstring。
-    """
+    """注册装饰器实现：``user_visible`` 决定是否进入用户侧函数清单。"""
 
     def deco(fn: Callable[..., Any]) -> Callable[..., Any]:
         spec = FunctionDef(
@@ -137,12 +141,59 @@ def engine_function(
             parameters=parameters or {"type": "object", "properties": {}},
             returns=tuple(returns),
             output_param=output_param,
+            user_visible=user_visible,
             impl=fn,
         )
         fn.__engine_function__ = spec
         return fn
 
     return deco
+
+
+def engine_function(
+    name: str | None = None,
+    description: str = "",
+    parameters: dict[str, Any] | None = None,
+    returns: tuple[str, ...] | list[str] = (),
+    output_param: str | None = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """显式注册插件函数（LLM 与用户均可见）。
+
+    未标注的函数与类不注册。函数名默认取函数名；``description`` 缺省取
+    函数 docstring。用户可见意味着可被 FunctionCall 调用并出现在
+    ``GET /api/functions`` / 编辑器函数选择器中。
+    """
+    return _function_decorator(
+        user_visible=True,
+        name=name,
+        description=description,
+        parameters=parameters,
+        returns=returns,
+        output_param=output_param,
+    )
+
+
+def llm_function(
+    name: str | None = None,
+    description: str = "",
+    parameters: dict[str, Any] | None = None,
+    returns: tuple[str, ...] | list[str] = (),
+    output_param: str | None = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """显式注册 **仅 LLM 可见** 的插件函数（用户侧不可见）。
+
+    与 ``@engine_function`` 完全相同地进入注册表与 LLM 工具集，但：
+    - 不出现在 ``GET /api/functions`` / 编辑器函数选择器；
+    - 不允许被 FunctionCall 节点引用（保存校验拒绝）。
+    """
+    return _function_decorator(
+        user_visible=False,
+        name=name,
+        description=description,
+        parameters=parameters,
+        returns=returns,
+        output_param=output_param,
+    )
 
 
 def _wrap_result(raw: Any) -> FunctionResult:
@@ -202,5 +253,6 @@ __all__ = [
     "FunctionResult",
     "FunctionDef",
     "engine_function",
+    "llm_function",
     "PluginBase",
 ]

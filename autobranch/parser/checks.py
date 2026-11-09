@@ -173,6 +173,16 @@ def _check_function_ref(
             )
         )
         return
+    if getattr(spec, "user_visible", True) is False:
+        issues.append(
+            make_issue(
+                "ref",
+                "function_not_user_visible",
+                f"函数 '{fn}' 仅供 LLM 调用，不能用于 FunctionCall（位于 {at}）",
+                node.loc,
+            )
+        )
+        return
     required = (spec.parameters or {}).get("required", [])
     if node.args and len(node.args) != len(required):
         issues.append(

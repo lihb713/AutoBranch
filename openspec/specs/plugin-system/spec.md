@@ -8,11 +8,12 @@
 
 ### Requirement: 插件定义与显式注册
 
-系统 SHALL 以「插件类」定义能力：`name`、`description`（能力说明）、`function_defs()`（结构化函数定义：名字 / 说明 / 参数 / 多返回值 / 变量目标参数 / 实现）、`init(runtime)`（初始化该插件的公共资源）、`call(name, args)`（分发到具体函数）。函数实现 SHALL 以 `@engine_function` 装饰器显式注册；函数标识 SHALL 为**全名 `插件名.函数名`**（如 `compute.add`），注册后 SHALL 以全名作为注册表键与查找键。**同一插件内函数名 SHALL 唯一**（重名注册拒绝）；**跨插件允许同名函数**（以全名区分，不视为冲突）。对 LLM 暴露的工具名 SHALL 为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），分发时按转义名反查回全名；同一插件重复注册视为重载（幂等覆盖）。`function_defs()` 返回的函数元数据（说明 / 参数 / 多返回值 / 变量目标参数）SHALL 在注册时与实现函数校验匹配，不一致视为注册错误。
+系统 SHALL 以「插件类」定义能力：`name`、`description`（能力说明）、`function_defs()`（结构化函数定义：名字 / 说明 / 参数 / 多返回值 / 变量目标参数 / 实现）、`init(runtime)`（初始化该插件的公共资源）、`call(name, args)`（分发到具体函数）。函数实现 SHALL 以装饰器显式注册：`@engine_function`（用户与 LLM 均可见）或 `@llm_function`（仅 LLM 可见，不进入用户函数清单 / FunctionCall）；函数标识 SHALL 为**全名 `插件名.函数名`**（如 `compute.add`），注册后 SHALL 以全名作为注册表键与查找键。**同一插件内函数名 SHALL 唯一**（重名注册拒绝）；**跨插件允许同名函数**（以全名区分，不视为冲突）。对 LLM 暴露的工具名 SHALL 为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），分发时按转义名反查回全名；同一插件重复注册视为重载（幂等覆盖）。`function_defs()` 返回的函数元数据（说明 / 参数 / 多返回值 / 变量目标参数）SHALL 在注册时与实现函数校验匹配，不一致视为注册错误。
 
 #### Scenario: 插件注册其函数
 - **WHEN** 插件被加载
-- **THEN** 仅其显式标注（`@engine_function`）的函数进入注册表（键为全名 `插件名.函数名`），其余函数 / 类不注册
+- **THEN** 仅其显式标注（`@engine_function` / `@llm_function`）的函数进入注册表（键为全名 `插件名.函数名`），其余函数 / 类不注册
+- **AND** 注册表按可见性提供 `functions()`（全量，供 LLM）/ `user_functions()`（用户可见，供 FunctionCall 与函数清单）
 
 #### Scenario: 跨插件同名函数共存
 - **WHEN** 两个不同插件分别注册同名函数（如 `compute.add` 与 `mylib.add`）

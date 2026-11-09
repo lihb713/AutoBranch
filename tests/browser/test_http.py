@@ -115,6 +115,19 @@ class TestHttpRequestIntegration:
         payload = json.loads(result.detail["response"].body)
         assert "Cookie" not in payload["headers"]
 
+    def test_query_params_and_json_body(self, server_url, driver):
+        result = http_request(
+            "POST",
+            f"{server_url}/api/echo",
+            params={"tag": "params"},
+            json={"hello": "json"},
+        )
+        assert result.ok
+        payload = json.loads(result.detail["response"].body)
+        assert payload["method"] == "POST"
+        assert "tag=params" in payload["path"]
+        assert json.loads(payload["body"]) == {"hello": "json"}
+
     def test_network_failure_returns_classified_result(self):
         result = http_request("GET", "http://127.0.0.1:1/nope", timeout_ms=3000)
         assert not result.ok

@@ -25,6 +25,7 @@ from autobranch.plugin_system.defs import (
     PluginBase,
     PluginError,
     engine_function,
+    llm_function,
 )
 from autobranch.plugin_system.registry import PluginRegistry
 
@@ -89,6 +90,7 @@ def load_plugin_from_source(
         {
             "__name__": f"autobranch_custom_plugin_{name}",
             "engine_function": engine_function,
+            "llm_function": llm_function,
             "PluginBase": PluginBase,
             "FunctionResult": FunctionResult,
         }

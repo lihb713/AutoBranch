@@ -82,16 +82,34 @@ class PluginRegistry:
         return name in self._loaded
 
     def function(self, full_name: str) -> FunctionDef | None:
+        """按全名取函数（含 LLM-only；供引擎分发 / 校验判断可见性）。"""
         return self._functions.get(full_name)
+
+    def user_function(self, full_name: str) -> FunctionDef | None:
+        """按全名取 **用户可见** 函数（FunctionCall 用；LLM-only 返回 None）。"""
+        spec = self._functions.get(full_name)
+        return spec if spec is not None and spec.user_visible else None
 
     def owner(self, full_name: str) -> str | None:
         return self._owner.get(full_name)
 
     def functions(self) -> dict[str, FunctionDef]:
+        """全部注册函数（含 LLM-only；供 LLM 工具集 / 插件管理内部使用）。"""
         return dict(self._functions)
+
+    def user_functions(self) -> dict[str, FunctionDef]:
+        """用户可见函数（供 ``GET /api/functions`` / 编辑器选择器）。"""
+        return {name: spec for name, spec in self._functions.items() if spec.user_visible}
 
     def functions_of(self, plugin_name: str) -> list[FunctionDef]:
         return [s for s in self._functions.values() if self._owner[s.full_name] == plugin_name]
+
+    def user_functions_of(self, plugin_name: str) -> list[FunctionDef]:
+        return [
+            s
+            for s in self._functions.values()
+            if self._owner[s.full_name] == plugin_name and s.user_visible
+        ]
 
     def loaded_functions(self) -> list[FunctionDef]:
         """已加载插件的函数（供 LLM 工具集）。"""

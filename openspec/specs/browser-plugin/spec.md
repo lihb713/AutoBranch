@@ -7,7 +7,7 @@
 ## Requirements
 ### Requirement: 浏览器操作函数
 
-系统 SHALL 通过浏览器插件提供网页操作函数（最小集）：`open` / `activate` / `get_url` / `click` / `type` / `select` / `check` / `uncheck` / `scroll` / `wait` / `download` / `upload` / `extract` / `semantic_graph` / `http`。函数 SHALL 只返回值（业务值 + 报告附加信息），不直接写变量。
+系统 SHALL 通过浏览器插件提供网页操作函数（LLM 全量）：`open` / `activate` / `get_url` / `click` / `type` / `select` / `check` / `uncheck` / `scroll` / `wait` / `download` / `upload` / `extract` / `semantic_graph` / `clear_requests` / `get_response` / `http_request`。函数 SHALL 只返回值（业务值 + 报告附加信息），不直接写变量。用户可见子集 SHALL 为 `open` / `get_url` / `scroll` / `wait` / `http_request`，其余技术性接口 SHALL 用 `@llm_function` 仅对 LLM 开放。HTTP 请求 SHALL 收敛为单一 `http_request(method, url, headers?, params?, body?, json?, timeout?)`，返回 `status` / `body` / `headers`。
 
 #### Scenario: 打开页面并操作
 - **WHEN** LLM 调用 `open(url)`

@@ -595,24 +595,28 @@ n15:
 
 页面对象用 `open` 返回（泛型 `object` 可存变量），元素引用 `ref`（如 `[1]`）来自最近一次 `semantic_graph`（**每次语义图生成后旧 ref 失效**，需重新获取）。
 
-| 函数 | 参数 | 说明 |
-|---|---|---|
-| `open` | `url`（可 `save_to` 存页面对象） | 打开 URL 新建页签并设为当前活动页 |
-| `activate` | `page`（页面对象） | 切换已有页签为活动页 |
-| `get_url` | （产出型，`save_to`） | 取当前活动页 URL 字符串 |
-| `semantic_graph` | `scope`（full 或区域 id）、`lod`（0~3） | 生成当前页语义图（"看页面"），同时截图 |
-| `click` | `ref` | 点击元素 |
-| `type` | `ref`、`text` | 向输入框输入文本（替换现有值） |
-| `select` | `ref`、`option` | 下拉选择（优先文本匹配，其次 value） |
-| `check` / `uncheck` | `ref` | 勾选/取消勾选 checkbox/radio |
-| `scroll` | `direction`（up/down/left/right/top/bottom） | 滚动页面 |
-| `wait` | `condition`（`selector: <CSS>` / `text: <文本>` / `url: <子串>`） | 等待条件满足 |
-| `extract` | `ref`（产出型，`target`） | 提取元素值并写入目标变量 |
-| `download` | `ref` | 触发下载并保存 |
-| `upload` | `ref`、`path` | 上传本地文件到文件控件 |
-| `http_request` | `method`、`url`、`headers`、`body` | 发起独立 HTTP 请求（不经页面，认证走 headers） |
-| `get_response` | `method`、`url_pattern`（`*` 通配） | 读页面已发生的匹配请求响应 |
-| `clear_requests` | — | 清空页面请求记录 |
+| 函数 | 可见性 | 参数 | 说明 |
+|---|---|---|---|
+| `open` | 用户+LLM | `url`（可 `save_to` 存页面对象） | 打开 URL 新建页签并设为当前活动页 |
+| `get_url` | 用户+LLM | （产出型，`save_to`） | 取当前活动页 URL 字符串 |
+| `scroll` | 用户+LLM | `direction`（up/down/left/right/top/bottom） | 滚动页面 |
+| `wait` | 用户+LLM | `condition`（`selector: <CSS>` / `text: <文本>` / `url: <子串>`） | 等待条件满足 |
+| `http_request` | 用户+LLM | `method`、`url`、可选 `headers` / `params` / `body` / `json` / `timeout` | 发起 HTTP 请求，返回 `status` / `body` / `headers`（requests 风格单一入口） |
+| `activate` | 仅 LLM | `page`（页面对象） | 切换已有页签为活动页 |
+| `semantic_graph` | 仅 LLM | `scope`（full 或区域 id）、`lod`（0~3） | 生成当前页语义图（"看页面"），同时截图 |
+| `click` | 仅 LLM | `ref` | 点击元素 |
+| `type` | 仅 LLM | `ref`、`text` | 向输入框输入文本（替换现有值） |
+| `select` | 仅 LLM | `ref`、`option` | 下拉选择（优先文本匹配，其次 value） |
+| `check` / `uncheck` | 仅 LLM | `ref` | 勾选/取消勾选 checkbox/radio |
+| `extract` | 仅 LLM | `ref`（产出型，`target`） | 提取元素值并写入目标变量 |
+| `download` | 仅 LLM | `ref` | 触发下载并保存 |
+| `upload` | 仅 LLM | `ref`、`path` | 上传本地文件到文件控件 |
+| `get_response` | 仅 LLM | `method`、`url_pattern`（`*` 通配） | 读页面已发生的匹配请求响应 |
+| `clear_requests` | 仅 LLM | — | 清空页面请求记录 |
+
+> **可见性**：用户可见 = 可被 FunctionCall 引用、出现在函数选择器与 `GET /api/functions`；
+> 仅 LLM = agent 内部能力，用户侧不可见。依赖 `ref` / 页面上下文的操作对直接写函数调用的用户不友好，
+> 因此仅对 LLM 开放；LLM 的工具集始终是全量的。
 
 **LLM 叶子怎么用浏览器**：你只需在 `description` 里用自然语言说"打开页面 X，点击登录，输入 admin"——LLM 会自动：`semantic_graph` 看页面 → 用 `ref` 定位 → 调 `click`/`type`。不用手写函数调用。
 
@@ -652,7 +656,7 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 
 ### 10.5 函数清单查看
 
-`GET http://localhost:8001/api/functions` 返回全部已注册函数（全名 + 结构化定义），前端函数选择器也据此渲染。
+`GET http://localhost:8001/api/functions` 返回**用户可见**函数（全名 + 结构化定义），前端函数选择器也据此渲染；`@llm_function` 注册的仅 LLM 接口不会出现。
 
 ---
 
@@ -687,7 +691,8 @@ class Demo(PluginBase):
 plugin = Demo()
 ```
 
-- **只有 `@engine_function` 标注的函数才注册**，键 = 全名 `demo.double`。
+- **只有 `@engine_function` / `@llm_function` 标注的函数才注册**，键 = 全名 `demo.double`。
+  `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
 - 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
 - 产出型函数：`output_param` 声明单一变量目标参数（如 `extract` 的 `target`），引擎落笔写变量。
 - `init(runtime)` 可选：初始化插件公共资源；`release()` 释放（运行结束统一调用）。

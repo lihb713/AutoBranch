@@ -176,3 +176,41 @@ root: n1
   // 变量落笔：appleAmount 120 + bananaAmount 35 = 155（黑板）
   await expect(page.getByText("155")).toBeVisible({ timeout: 20_000 });
 });
+test("F6 用户可用单一 http_request 发起请求并回收响应", async ({ page }) => {
+  const name = `e2eHTTP${Date.now()}`;
+  const yaml = `tree: ${name}
+nodes:
+  n1:
+    type: Root
+    body: n2
+  n2:
+    type: FunctionCall
+    function: browser.http_request
+    args: ["GET", "http://127.0.0.1:8123/index.html"]
+    returns:
+      status: int
+      body: str
+root: n1
+`;
+  const api = await apiRequest.newContext(API);
+  const resp = await api.post("/api/trees", { data: { name, content: yaml } });
+  expect(resp.ok()).toBeTruthy();
+  await api.dispose();
+
+  await page.goto("/");
+  const row = page.locator('[data-testid^="tree-row-"]', { hasText: name });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "执行" }).click();
+  await page.waitForURL(/\/runs\/\d+/);
+
+  const panel = page.getByTestId("report-panel");
+  await expect(panel).toBeVisible({ timeout: 120_000 });
+  await page.getByRole("button", { name: "完整执行报告" }).click();
+  await expect(panel.locator("pre")).toContainText("SUCCESS");
+  await expect(panel.locator("pre")).not.toContainText("FAILURE");
+
+  const blackboard = page.getByTestId("blackboard-panel");
+  await expect(blackboard).toBeVisible({ timeout: 10_000 });
+  await expect(blackboard.locator('[data-testid$="/status"]')).toContainText("200");
+  await expect(blackboard.locator('[data-testid$="/body"]')).toContainText("AutoBranch");
+});

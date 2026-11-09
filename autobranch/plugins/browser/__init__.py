@@ -14,7 +14,7 @@ import os
 import time
 from typing import Any
 
-from autobranch.plugin_system import FunctionResult, PluginBase, engine_function
+from autobranch.plugin_system import FunctionResult, PluginBase, engine_function, llm_function
 from autobranch.plugins.browser.driver import BrowserDriver, ElementRef
 from autobranch.plugins.browser.driver.http import http_request as _http_request
 from autobranch.plugins.browser.driver.models import PageRef as BrowserPageRef
@@ -109,7 +109,7 @@ class BrowserPlugin(PluginBase):
         self._current_page = page
         return FunctionResult.success(page, url=page.url, ok=True)
 
-    @engine_function(
+    @llm_function(
         name="activate",
         description="把已打开的页签设为当前活动页（切换焦点，不新建）；page 传页面对象变量",
         parameters=_props(("page",), page={"type": "string", "description": _PAGE_DESC}),
@@ -144,7 +144,7 @@ class BrowserPlugin(PluginBase):
 
     # ------------------------------------------------------------ 操作函数
 
-    @engine_function(
+    @llm_function(
         name="click",
         description="点击语义图元素（作用于当前页面）",
         parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
@@ -156,7 +156,7 @@ class BrowserPlugin(PluginBase):
         result = handle.click(ElementRef(resolution.selector))
         return self._ok_result(result)
 
-    @engine_function(
+    @llm_function(
         name="type",
         description="向输入元素输入文本（替换现有值，作用于当前页面）",
         parameters=_props(
@@ -171,7 +171,7 @@ class BrowserPlugin(PluginBase):
             return failure
         return self._ok_result(handle.type(ElementRef(resolution.selector), text))
 
-    @engine_function(
+    @llm_function(
         name="select",
         description="下拉选择选项（优先按选项文本匹配，其次按 value 匹配）",
         parameters=_props(
@@ -186,7 +186,7 @@ class BrowserPlugin(PluginBase):
             return failure
         return self._ok_result(handle.select(ElementRef(resolution.selector), option))
 
-    @engine_function(
+    @llm_function(
         name="check",
         description="勾选勾选类控件（checkbox/radio，作用于当前页面）",
         parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
@@ -197,7 +197,7 @@ class BrowserPlugin(PluginBase):
             return failure
         return self._ok_result(handle.check(ElementRef(resolution.selector)))
 
-    @engine_function(
+    @llm_function(
         name="uncheck",
         description="取消勾选勾选类控件（checkbox/radio，作用于当前页面）",
         parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
@@ -243,7 +243,7 @@ class BrowserPlugin(PluginBase):
 
     # ------------------------------------------------------------ 文件函数
 
-    @engine_function(
+    @llm_function(
         name="download",
         description="触发下载（点击下载链接/按钮）并保存文件",
         parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
@@ -255,7 +255,7 @@ class BrowserPlugin(PluginBase):
         download_dir = getattr(self._runtime, "download_dir", ".") if self._runtime else "."
         return self._ok_result(handle.download(ElementRef(resolution.selector), download_dir))
 
-    @engine_function(
+    @llm_function(
         name="upload",
         description="上传文件到文件选择控件（作用于当前页面）",
         parameters=_props(
@@ -272,7 +272,7 @@ class BrowserPlugin(PluginBase):
 
     # ------------------------------------------------------------ 语义图
 
-    @engine_function(
+    @llm_function(
         name="semantic_graph",
         description="获取当前页面的语义图（每次完整生成、无缓存，生成后旧 ref 失效；同时截图）",
         parameters=_props(
@@ -329,7 +329,7 @@ class BrowserPlugin(PluginBase):
 
     # ------------------------------------------------------------ HTTP
 
-    @engine_function(
+    @llm_function(
         name="clear_requests",
         description="清理页面请求记录（此后只读取新发生的页面请求）",
         parameters=_props(()),
@@ -340,7 +340,7 @@ class BrowserPlugin(PluginBase):
         self._browser.http_recorder.clear()
         return FunctionResult.success()
 
-    @engine_function(
+    @llm_function(
         name="get_response",
         description="读取页面已发生且与模式匹配的请求响应（无匹配返回失败）",
         parameters=_props(
@@ -361,28 +361,57 @@ class BrowserPlugin(PluginBase):
 
     @engine_function(
         name="http_request",
-        description="发起独立 HTTP 请求（不经页面；认证经 headers 显式提供）",
+        description=(
+            "发起 HTTP 请求并返回响应（类似 requests.request：method/url 必填，"
+            "headers/params/body/json/timeout 可选；返回 status/body/headers；"
+            "不经页面，认证经 headers 显式提供）"
+        ),
         parameters=_props(
             ("method", "url"),
             method={"type": "string", "description": "HTTP 方法，如 GET/POST"},
             url={"type": "string", "description": "请求 URL"},
             headers={"type": "object", "description": "请求头"},
-            body={"type": "string", "description": "请求体"},
+            params={"type": "object", "description": "URL 查询参数"},
+            body={"type": "string", "description": "原始请求体（表单/文本）"},
+            json={"type": "object", "description": "JSON 请求体"},
+            timeout={"type": "number", "description": "超时秒数（默认 30）"},
         ),
+        returns=("status", "body", "headers"),
     )
     def http_request(
         self,
         method: str,
         url: str,
         headers: dict | None = None,
+        params: dict | None = None,
         body: str | None = None,
+        json: dict | None = None,
+        timeout: float | None = None,
     ) -> FunctionResult:
-        result = _http_request(method, url, headers=headers, body=body)
-        return self._ok_result(result)
+        result = _http_request(
+            method,
+            url,
+            headers=headers,
+            params=params,
+            body=body,
+            json=json,
+            timeout=timeout,
+        )
+        if not result.ok:
+            return FunctionResult.failure(
+                result.error or "HTTP 请求失败", **dict(result.detail or {})
+            )
+        response = result.detail["response"]
+        return FunctionResult.success(
+            response.status,
+            response.body,
+            response.headers,
+            response=response,
+        )
 
     # ------------------------------------------------------------ 提取
 
-    @engine_function(
+    @llm_function(
         name="extract",
         description="提取语义图元素的值并返回（产出型：经目标变量保存）",
         parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),

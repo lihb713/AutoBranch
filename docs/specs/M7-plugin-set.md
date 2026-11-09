@@ -12,7 +12,9 @@
 
 浏览器插件 SHALL 自包含浏览器驱动、语义图生成、元素引用映射与页面对象：
 
-- 网页操作函数：`open` / `activate` / `get_url` / `click` / `type` / `select` / `check` / `uncheck` / `scroll` / `wait` / `download` / `upload` / `extract` / `semantic_graph` / `clear_requests` / `get_response` / `http_request`。
+- 网页操作函数（LLM 全量）：`open` / `activate` / `get_url` / `click` / `type` / `select` / `check` / `uncheck` / `scroll` / `wait` / `download` / `upload` / `extract` / `semantic_graph` / `clear_requests` / `get_response` / `http_request`。
+- **用户可见子集**（FunctionCall / 函数清单）：`open` / `get_url` / `scroll` / `wait` / `http_request`；其余（含 `semantic_graph`、`get_response`、`click` 等依赖 ref/页面上下文的接口）用 `@llm_function` 注册为仅 LLM 可见。
+- **HTTP 单一入口**：用户与 LLM 均只使用 `http_request(method, url, headers?, params?, body?, json?, timeout?)` 发起请求并返回 `status` / `body` / `headers`（requests 风格）；`get_response` / `clear_requests` 仅供 LLM 读取页面触发的请求记录，不再作为用户接口暴露。
 - 页面对象（`PageObject`）作为泛型 `object` 值在变量中存储与传递；当前活动页由插件维护。
 
 **元素角色分类（ARIA 对齐）**：`<input type="submit|button|reset">` SHALL 分类为 `button`（其标签存于 `value`）；`checkbox/radio/number/range` 分别映射；其余输入为 `textbox`。语义图序列化时，input 型按钮 SHALL 渲染 `value="..."`（标签），使 LLM 能识别按钮文本。
@@ -64,7 +66,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 **约束与要点**：
 - 仅用 Python 标准库；直接使用 exec 注入的 `PluginBase` / `engine_function` / `FunctionResult`（**不 import**）。
 - 不 import 其他插件 / `common` / 三方库；插件名小写字母/数字/`_`/`-`、不与预置同名。
-- `@engine_function` 显式注册对外函数；未标注不注册。
+- `@engine_function` 显式注册**用户与 LLM 均可见**的函数；`@llm_function` 注册**仅 LLM 可见**的函数（技术性接口）；未标注不注册。
 - 函数只返回值（裸值或 `FunctionResult`）、不写变量（引擎落笔）。
 - `output_param`：产出型工具声明变量目标参数名，引擎按节点 `NewParam.名[:类型]` 声明类型 coerce 后写入变量。
 - 删除插件会置空引用它的行为树 FunctionCall 引用。

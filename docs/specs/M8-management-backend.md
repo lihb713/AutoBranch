@@ -17,7 +17,7 @@ AutoBranch 的后端服务：行为树文档 CRUD API、清晰度校验（复用
 | 功能 | 说明 | 契约依据 | 状态 |
 |---|---|---|---|
 | 行为树文档 CRUD API | 存储/管理行为树文档 | §12.2-M9b | ✅ `routers/trees.py` + `services/trees.py` |
-| 清晰度校验 | 保存时校验（复用 M2 解析器），执行前再校验；**注入共享插件注册表**校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐（函数不存在 / 参数不匹配 → 保存 422 拒绝） | §12.5/§4.4 | ✅ `services/validation.py`（单一入口，两处复用） |
+| 清晰度校验 | 保存时校验（复用 M2 解析器），执行前再校验；**注入共享插件注册表**校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐（函数不存在 / 参数不匹配 / 引用 LLM-only 函数 → 保存 422 拒绝） | §12.5/§4.4 | ✅ `services/validation.py`（单一入口，两处复用） |
 | 执行触发 | 调引擎.run（M7，异步后台执行） | §12.4 | ✅ `routers/trees.py` + `services/runs.py` |
 | 执行状态查询 API | 返回进度/当前节点/已完成报告/截图（供前端轮询） | §12.4 | ✅ `GET /api/runs/{id}/state` |
 | 截图/报告存储与提供 | 持久化报告与截图，HTTP 提供 | §12.4 | ✅ `services/reports.py` + `routers/reports.py` |
@@ -159,7 +159,7 @@ conda run -n autobranch --no-capture-output python -m uvicorn autobranch.server.
 
 ### 8.1 plugin 表
 
-`plugins` 表字段：`name`（唯一，≤128，小写字母/数字/`_`/`-`）、`kind`（`builtin` | `custom`）、`description`、`functions`（JSON **函数全名**清单，如 `compute.add`）、`source`（仅 `custom` 存储；`builtin` 恒 NULL——源码在文件系统）、`created_at` / `updated_at`（UTC）。启动扫描 `plugins/` 初始化 / 刷新 `builtin` 记录（只读）；自定义插件名不得与预置同名。
+`plugins` 表字段：`name`（唯一，≤128，小写字母/数字/`_`/`-`）、`kind`（`builtin` | `custom`）、`description`、`functions`（JSON **用户可见函数全名**清单，如 `compute.add`；`@llm_function` 不计入）、`source`（仅 `custom` 存储；`builtin` 恒 NULL——源码在文件系统）、`created_at` / `updated_at`（UTC）。启动扫描 `plugins/` 初始化 / 刷新 `builtin` 记录（只读）；自定义插件名不得与预置同名。
 
 ### 8.2 插件 API
 
@@ -171,9 +171,9 @@ PUT    /api/plugins/{name}         更新（自定义；重载成功才落库）
 DELETE /api/plugins/{name}         删除（扫描引用其函数的行为树，FunctionCall 引用置空并持久化，返回受影响树名）
 POST   /api/plugins/check          校验（返回行号/列号/类型/约束 错误明细）
 GET    /api/plugins/{name}/references  引用该插件函数的行为树名列表
-GET    /api/functions              函数清单（跨插件聚合：full_name/plugin/name/description/returns/parameters，编辑器选择器用）
+GET    /api/functions              **用户可见**函数清单（跨插件聚合：full_name/plugin/name/description/returns/parameters，编辑器选择器用；LLM-only 不返回）
 ```
 
 ### 8.3 自定义插件加载
 
-源码存 DB，`compile + exec`（注入 `PluginBase` / `engine_function` / `FunctionResult`）加载；仅用 Python 标准库（不 import 其他插件 / `common` / 三方库）；直接使用注入的名字（不 import `autobranch`）。
+源码存 DB，`compile + exec`（注入 `PluginBase` / `engine_function` / `llm_function` / `FunctionResult`）加载；仅用 Python 标准库（不 import 其他插件 / `common` / 三方库）；直接使用注入的名字（不 import `autobranch`）。

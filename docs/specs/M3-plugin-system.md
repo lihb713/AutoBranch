@@ -10,9 +10,14 @@
 
 ### 插件定义与显式注册
 
-系统 SHALL 以「插件类」定义能力：`name` / `description` / `function_defs()`（结构化 `FunctionDef`：名字 / 说明 / 参数 / 多返回值 / 变量目标参数 / 实现）/ `init(runtime)` / `call(name, args)`。函数实现以 `@engine_function` 装饰器显式注册（函数名即插件内注册名），未标注不注册；`function_defs()` 元数据在注册时与实现函数校验匹配。**函数标识为全名 `插件名.函数名`**（如 `compute.add`），注册表键 / 查找 / 分发均用全名；对 LLM 暴露的**工具名为转义全名**（`.`→`__`，如 `compute__add`，多数 OpenAI 兼容 API 拒绝含点号工具名），分发时反查回全名。
+系统 SHALL 以「插件类」定义能力：`name` / `description` / `function_defs()`（结构化 `FunctionDef`：名字 / 说明 / 参数 / 多返回值 / 变量目标参数 / 可见性 / 实现）/ `init(runtime)` / `call(name, args)`。函数实现以装饰器显式注册（函数名即插件内注册名），未标注不注册；`function_defs()` 元数据在注册时与实现函数校验匹配。**函数标识为全名 `插件名.函数名`**（如 `compute.add`），注册表键 / 查找 / 分发均用全名；对 LLM 暴露的**工具名为转义全名**（`.`→`__`，如 `compute__add`，多数 OpenAI 兼容 API 拒绝含点号工具名），分发时反查回全名。
 
-- 场景：仅 `@engine_function` 标注的函数进入注册表（键为全名）。
+**两级可见性**（LLM 全量、用户精选）：
+- `@engine_function`：注册为**用户可见**函数——同时进入 LLM 工具集、`GET /api/functions`、编辑器函数选择器，可被 FunctionCall 引用。
+- `@llm_function`：注册为 **LLM-only** 函数——进入注册表与 LLM 工具集，但不出现在用户函数清单，且 FunctionCall 校验 / 执行拒绝引用（用于语义图等技术性接口）。
+
+- 场景：`@engine_function` / `@llm_function` 标注的函数均进入注册表（键为全名）；未标注不注册。
+- 场景：`user_functions()` / `user_function(full_name)` 仅返回用户可见函数；`functions()` / `function(full_name)` 返回全量（LLM 分发与可见性判断）。
 - 场景：同一插件内函数名唯一（重名去重）；**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）；同一插件重复注册视为重载（幂等覆盖）。
 
 ### 两级能力选择
@@ -50,5 +55,5 @@
 
 ## 关键实现
 
-- `autobranch/plugin_system/`：`defs.py`（FunctionDef/FunctionResult/PluginBase/@engine_function）、`registry.py`（PluginRegistry：注册/懒装配/分发/查询）、`loader.py`（预置扫描 + DB 源码加载 + 校验）、`capability.py`（use_capability/能力概览）、`reporting.py`、`runtime.py`（PluginRuntime）。
+- `autobranch/plugin_system/`：`defs.py`（FunctionDef/FunctionResult/PluginBase/@engine_function/@llm_function）、`registry.py`（PluginRegistry：注册/懒装配/分发/查询）、`loader.py`（预置扫描 + DB 源码加载 + 校验）、`capability.py`（use_capability/能力概览）、`reporting.py`、`runtime.py`（PluginRuntime）。
 - **预置插件位于 `autobranch/plugins/`**（工具的一部分）：`common` 共享库 + `browser`（自包含驱动/语义图）/ `compute` / `ssh` / `file`。

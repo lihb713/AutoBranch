@@ -908,35 +908,37 @@ ExecState: 复用 M8 (未新增模型)
 
 #### 5.8.1 引擎函数集（LLM 可调用的接口）
 
-引擎函数在 Playwright 基础上封装，集中管理底层能力，方便修改/扩充。**agent 式执行下（§5.7.2），LLM 自主决定调用哪些函数**：
+引擎函数在 Playwright 基础上封装，集中管理底层能力，方便修改/扩充。**agent 式执行下（§5.7.2），LLM 自主决定调用哪些函数**。
+
+**两级可见性**：插件函数默认用 `@engine_function` 注册（用户与 LLM 均可见）；
+技术性接口用 `@llm_function` 注册（仅 LLM 可见，不进入 FunctionCall / 函数清单）。
+**LLM 工具集是全量的；用户接口是易用子集。**
 
 ```
-页面函数:
+用户可见函数 (FunctionCall / 函数清单 / 编辑器选择器):
   open(url, save_to?)  打开页面, 新建页签并成为当前活动页; 仅显式 save_to 才写变量 (§5.10)
+  get_url(save_to?)    取当前活动页 URL
+  scroll(direction)    滚动当前页面
+  wait(条件)            等待条件满足
+  http_request(method, url, headers?, params?, body?, json?, timeout?)
+                      发起 HTTP 请求并返回 status/body/headers (requests 风格, §5.8.2)
 
-操作类函数 (Playwright 封装, 作用于当前活动页):
-  click(ref)          点击元素
-  type(ref, text)     输入文本
-  select(ref, opt)    选择下拉
+仅 LLM 可见函数 (agent 内部能力):
+  activate(page)       切换已打开页签到当前活动页
+  click(ref)           点击元素
+  type(ref, text)      输入文本
+  select(ref, opt)     选择下拉
   check(ref) / uncheck(ref)  勾选/取消
-  scroll(direction)   滚动
-  wait(条件)           等待
-
-文件函数:
-  download(ref)     触发下载 (点击下载链接/按钮), 保存文件
-  upload(ref, path) 上传文件到文件选择控件
-
-语义图函数:
+  download(ref)        触发下载并保存文件
+  upload(ref, path)    上传文件到文件选择控件
+  extract(ref, 目标)   提取元素值 → 写入变量 (§5.3)
   semantic_graph(范围, LOD)  获取当前活动页的语义图 (§8.8)
-
-HTTP 函数 (两种形态, 见 §5.8.2):
-  clear_requests()             清理页面请求记录
+  clear_requests()     清理页面请求记录
   get_response(method, url模式) 读取页面已发生的请求响应
-  http_request(method, url, headers, body)  发起独立 HTTP 请求
-
-提取函数:
-  extract(ref, 目标) → 写入变量 (§5.3)
 ```
+
+> 划分依据：依赖 `ref` / 页面上下文 / 语义图的技术性操作对直接写 FunctionCall 的用户不友好，
+> 但 LLM agent 需要它们，因此仅对 LLM 开放；用户侧只保留易用、确定性强的接口。
 
 **引擎函数集是可扩展的**——随需求增减。底层封装供 LLM 调用的 web 操作方法集，后续可按需增加或减少（如新增 download/upload、自定义复合操作等）。
 
@@ -959,9 +961,9 @@ ref 语义:
   - 语义图的 ref 映射 (ref ↔ DOM 元素 id) 归 M4/M5, M1 只做确定性执行
   - PageRef.id 驱动级单调递增 (跨会话不重置, 防旧引用误绑定新页)
 
-形态A 事件泵取: Playwright sync 的事件循环只在主线程 API 调用期间运行,
+页面监听事件泵取: Playwright sync 的事件循环只在主线程 API 调用期间运行,
   get_response/clear 前做 ~50ms wait_for_timeout 泵取 pending response 事件
-  (否则页面请求的响应读不到)
+  (否则页面请求的响应读不到); 这些接口仅对 LLM 开放
 ```
 
 **插件模式落地细节（能力插件化）：**
@@ -995,12 +997,19 @@ M5 编排器 Engine 构造时注入共享 PluginRegistry 与 plugins_dir：
 浏览器插件经 runtime.browser_factory 复用 Engine 的浏览器实例（同一实例）
 ```
 
-#### 5.8.2 HTTP 接口（两种形态）
+#### 5.8.2 HTTP 接口（单一用户入口 + LLM 内部监听）
 
-自动化测试场景中，获取 HTTP 响应往往比理解页面更直观。支持两种形态：
+自动化测试场景中，获取 HTTP 响应往往比理解页面更直观。**用户侧只有一个 requests 风格的方法**：
 
 ```
-形态A (页面上下文请求): 读取页面已发生的请求
+用户 / LLM 共用 (用户可见):
+  http_request(method, url, headers?, params?, body?, json?, timeout?)
+    → 返回响应 status / headers / body（单次调用，传入请求参数，返回响应）
+    认证: 由调用方在 headers 显式提供 (通过变量/参数传入 token/cookie)
+    → 不从页面会话自动提取 (不维护 cookie, 每次执行如第一次, §5.9)
+    → 认证信息由流程文档的变量机制管理 (§5.3)
+
+LLM-only (页面上下文监听, 不进入用户函数清单):
   引擎自动监听页面请求 (Playwright response 事件)
   LLM 操作序列:
     clear_requests()              ← 清理记录
@@ -1008,14 +1017,8 @@ M5 编排器 Engine 构造时注入共享 PluginRegistry 与 plugins_dir：
     get_response(method, url模式)  ← 读取匹配的请求响应
   例: 登录后读 /api/login 的响应, 判断返回的 token
 
-形态B (独立请求): LLM 主动发起, 不经页面
-  http_request(method, url, headers, body)
-  认证: 由用户在流程中显式提供 (通过变量/参数传入 token/cookie)
-  → 不从页面会话自动提取 (不维护 cookie, 每次执行如第一次, §5.9)
-  → 认证信息由流程文档的变量机制管理 (§5.3)
-
-选择依据: 由操作流程决定 —— "点击按钮并获取其触发的请求"用 A;
-          "直接调用接口验证"用 B
+选择依据: 用户确定性调用接口用 http_request;
+          LLM 需要"点击按钮并获取其触发请求"时用页面监听（内部能力）。
 ```
 
 #### 5.8.3 报告机制（执行报告 + 回溯报告）
@@ -2194,8 +2197,8 @@ M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 
 #### M3 插件框架
 ```
-功能: 插件类（FunctionDef/PluginBase/@engine_function）; 注册表（全名 `插件名.函数名`；
-     同插件内唯一，跨插件可同名）;
+功能: 插件类（FunctionDef/PluginBase/@engine_function/@llm_function）; 注册表（全名 `插件名.函数名`；
+     同插件内唯一，跨插件可同名；用户可见子集 vs LLM 全量）;
      双路径加载（预置插件文件系统 + 自定义插件 DB 源码 compile+exec）;
      懒装配（init/释放）; use_capability 两级能力选择;
      统一分发与产出型工具落笔; 统一报告接口; 运行上下文 PluginRuntime
@@ -2434,7 +2437,11 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 
 ### 13.3 函数要点
 
-- **`@engine_function` 显式注册**对外函数；未标注的函数 / 类不注册。
+- **`@engine_function` 显式注册用户与 LLM 均可见的函数**；`@llm_function` 注册**仅 LLM 可见**的技术性函数；未标注的函数 / 类不注册。
+  ```python
+  @llm_function(name="inspect", description="仅供 LLM 的内部能力")
+  def inspect(self): ...
+  ```
 - **只返回值、不写变量**：可返回裸值（str / int / list…）或 `FunctionResult`（携带报告附加信息）。
 - **产出型工具**（`output_param` 声明变量目标参数名，如 `"target"`）：LLM 调用时填该参数为目标变量名，引擎把返回值按节点 `NewParam.名[:类型]` 声明类型 **coerce** 后写入该变量；目标须在声明集内。
 - **多返回值**：`returns` 声明返回值名列表；FunctionCall 节点按序回收进 `returns` 的接收名。

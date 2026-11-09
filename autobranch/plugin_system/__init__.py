@@ -10,6 +10,7 @@ from autobranch.plugin_system.defs import (
     PluginBase,
     PluginError,
     engine_function,
+    llm_function,
 )
 from autobranch.plugin_system.loader import (
     COMMON_PACKAGE,
@@ -26,6 +27,7 @@ __all__ = [
     "FunctionDef",
     "FunctionResult",
     "engine_function",
+    "llm_function",
     "PluginBase",
     "PluginRegistry",
     "PluginRuntime",

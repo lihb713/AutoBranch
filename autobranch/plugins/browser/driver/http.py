@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from typing import Any
 
 import requests
 
@@ -87,25 +88,34 @@ def http_request(
     headers: dict[str, str] | None = None,
     body: str | None = None,
     timeout_ms: int | None = None,
+    *,
+    params: dict[str, str] | None = None,
+    json: Any | None = None,
+    timeout: float | None = None,
 ) -> OpResult:
-    """形态B：发起不经页面的独立 HTTP 请求。
+    """形态B：发起不经页面的独立 HTTP 请求（requests 风格单一入口）。
 
     认证信息由调用方在 ``headers`` 显式提供；请求不带任何页面会话 cookie。
-    传输层失败（连接失败/超时等）返回 ``ok=False`` + 分类错误码（程序侧可重试）；
-    收到 HTTP 状态码即视为成功返回（状态码由调用方在响应中读取）。
+    支持查询参数 ``params``、表单/原始请求体 ``body``、JSON 请求体 ``json``；
+    ``timeout``（秒）优先于 ``timeout_ms``。传输层失败（连接失败/超时等）返回
+    ``ok=False`` + 分类错误码（程序侧可重试）；收到 HTTP 状态码即视为成功返回
+    （状态码由调用方在响应中读取）。
     """
     if not isinstance(method, str) or not method.strip():
         return OpResult(False, "method 非法", {"code": ErrorCode.INVALID_ARGUMENT})
     if not isinstance(url, str) or not url:
         return OpResult(False, "url 为空", {"code": ErrorCode.INVALID_ARGUMENT})
 
-    timeout = (timeout_ms or 30000) / 1000.0
+    if timeout is None:
+        timeout = (timeout_ms or 30000) / 1000.0
     try:
         resp = requests.request(
             method=method.upper(),
             url=url,
             headers=headers or {},
+            params=params,
             data=body,
+            json=json,
             timeout=timeout,
         )
     except requests.RequestException as exc:

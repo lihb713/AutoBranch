@@ -15,6 +15,10 @@ class FakeRegistry:
     def function(self, name):
         if name == "compute.multiply":
             return types.SimpleNamespace(parameters={"required": ["a", "b"]})
+        if name == "browser.semantic_graph":
+            return types.SimpleNamespace(
+                parameters={"required": ["scope", "lod"]}, user_visible=False
+            )
         return None
 
 
@@ -60,6 +64,16 @@ def test_args_mismatch_fails_check():
     result = parse(_doc(args=["a"]), None, function_registry=FakeRegistry())
     assert not result.checks.ok
     assert any(i.code.startswith("ref.args_mismatch") for i in result.checks.issues)
+
+
+def test_llm_only_function_rejected_for_function_call():
+    result = parse(
+        _doc(function="browser.semantic_graph", args=["full", "2"]),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert not result.checks.ok
+    assert any(i.code == "ref.function_not_user_visible" for i in result.checks.issues)
 
 
 def test_without_registry_skips_function_check():

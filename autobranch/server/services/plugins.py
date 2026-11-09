@@ -70,7 +70,8 @@ class PluginService:
             if plugin is None:
                 continue
             funcs = json.dumps(
-                [f"{name}.{s.name}" for s in plugin.function_defs()], ensure_ascii=False
+                [f"{name}.{s.name}" for s in plugin.function_defs() if s.user_visible],
+                ensure_ascii=False,
             )
             row = self._find(name)
             if row is None:
@@ -98,7 +99,7 @@ class PluginService:
         return [PluginOut.model_validate(r) for r in rows]
 
     def list_functions(self) -> list[FunctionInfo]:
-        """跨插件聚合全部已注册函数（全名 + 结构化定义），供编辑器选择器使用。"""
+        """跨插件聚合 **用户可见** 函数（全名 + 结构化定义），供编辑器选择器使用。"""
         return [
             FunctionInfo(
                 full_name=s.full_name,
@@ -108,7 +109,7 @@ class PluginService:
                 returns=list(s.returns),
                 parameters=s.parameters,
             )
-            for s in self.registry.functions().values()
+            for s in self.registry.user_functions().values()
         ]
 
     def get(self, name: str) -> Plugin:
@@ -171,7 +172,7 @@ class PluginService:
         self.db.add(row)
         self._commit_or_conflict()
         load_plugin_from_source(self.registry, payload.name, payload.source)
-        row.functions = json.dumps(self._function_names(payload.name), ensure_ascii=False)
+        row.functions = json.dumps(self._user_function_names(payload.name), ensure_ascii=False)
         self.db.commit()
         self.db.refresh(row)
         return PluginOut.model_validate(row)
@@ -189,7 +190,7 @@ class PluginService:
             raise AppError(422, {"errors": [{"type": "runtime", "message": str(exc)}]}) from exc
         row.source = payload.source
         row.description = self._describe(name, payload.source)
-        row.functions = json.dumps(self._function_names(name), ensure_ascii=False)
+        row.functions = json.dumps(self._user_function_names(name), ensure_ascii=False)
         self.db.commit()
         self.db.refresh(row)
         return PluginOut.model_validate(row)
@@ -221,7 +222,12 @@ class PluginService:
         return self.db.scalars(select(Plugin).where(Plugin.name == name)).first()
 
     def _function_names(self, name: str) -> list[str]:
+        """插件全部函数（含 LLM-only；供引用扫描 / 删除置空）。"""
         return [s.full_name for s in self.registry.functions_of(name)]
+
+    def _user_function_names(self, name: str) -> list[str]:
+        """插件用户可见函数（供插件列表展示）。"""
+        return [s.full_name for s in self.registry.user_functions_of(name)]
 
     def _probe_load(self, name: str, source: str) -> tuple[bool, list[dict]]:
         """试加载（注册后立即撤销，不落库）：验证可执行 + 插件名一致。"""

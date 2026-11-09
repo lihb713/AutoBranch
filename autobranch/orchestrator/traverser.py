@@ -265,6 +265,13 @@ class Traverser:
         spec = registry.function(node.function)
         if spec is None:
             return self._note_failure(node, f"函数不存在: {node.function}") or FAILURE
+        if getattr(spec, "user_visible", True) is False:
+            return (
+                self._note_failure(
+                    node, f"函数 {node.function} 仅供 LLM 调用，不能用于 FunctionCall"
+                )
+                or FAILURE
+            )
         frame = self.ctx.current_frame
         required = list((spec.parameters or {}).get("required", []))
         if len(node.args) != len(required):

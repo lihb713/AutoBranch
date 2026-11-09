@@ -14,6 +14,7 @@ from autobranch.plugin_system import (
     check_plugin_source,
     collect_report_entries,
     engine_function,
+    llm_function,
     load_builtin_plugins,
     load_plugin_from_source,
 )
@@ -72,6 +73,30 @@ def test_registration_only_marked_functions():
     assert set(reg.functions()) == {"demo.multiply", "demo.greet"}
     assert reg.function("demo.multiply").returns == ("result",)
     assert reg.function("demo.greet").is_producing
+
+
+def test_user_visible_and_llm_only_functions():
+    class Scoped(PluginBase):
+        name = "scoped"
+
+        @engine_function(name="public", description="用户可见")
+        def public(self):
+            return 1
+
+        @llm_function(name="internal", description="仅 LLM")
+        def internal(self):
+            return 2
+
+    reg = PluginRegistry()
+    reg.register(Scoped())
+    assert set(reg.functions()) == {"scoped.public", "scoped.internal"}
+    assert set(reg.user_functions()) == {"scoped.public"}
+    assert reg.function("scoped.internal").user_visible is False
+    assert reg.user_function("scoped.internal") is None
+    assert reg.user_function("scoped.public") is not None
+    assert [s.full_name for s in reg.user_functions_of("scoped")] == ["scoped.public"]
+    # 分发层不区分可见性：LLM-only 仍可被 agent 调用
+    assert reg.call("scoped.internal").value == 2
 
 
 def test_cross_plugin_same_name_allowed():
@@ -156,6 +181,27 @@ plugin = MyPlugin()
     assert "mycalc" in reg.known_plugins()
     result = reg.call("mycalc.double", {"x": 21})
     assert result.ok and result.value == 42
+
+
+def test_load_plugin_from_source_supports_llm_function():
+    reg = PluginRegistry()
+    source = '''
+class MyPlugin(PluginBase):
+    name = "scoped_src"
+
+    @engine_function(name="public")
+    def public(self):
+        return "public"
+
+    @llm_function(name="internal")
+    def internal(self):
+        return "internal"
+
+plugin = MyPlugin()
+'''
+    load_plugin_from_source(reg, "scoped_src", source)
+    assert set(reg.user_functions()) == {"scoped_src.public"}
+    assert reg.call("scoped_src.internal").value == "internal"
 
 
 def test_load_plugin_name_mismatch():

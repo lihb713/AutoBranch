@@ -39,6 +39,10 @@ test("P1 插件列表展示预置插件徽标与函数", async ({ page }) => {
   const row = page.locator("tr", { hasText: "browser" });
   await expect(row.getByText("预置")).toBeVisible();
   await expect(row.getByText("browser.open")).toBeVisible();
+  await expect(row.getByText("browser.http_request")).toBeVisible();
+  // 仅 LLM 的技术性接口不进入用户函数清单
+  await expect(row.getByText("browser.semantic_graph")).toHaveCount(0);
+  await expect(row.getByText("browser.get_response")).toHaveCount(0);
 });
 
 test("P2 新增自定义插件并保存生效", async ({ page }) => {

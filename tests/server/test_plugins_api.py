@@ -44,6 +44,7 @@ def test_list_plugins_includes_builtins(client):
     browser = next(p for p in data if p["name"] == "browser")
     assert browser["kind"] == "builtin"
     assert "browser.open" in browser["functions"]
+    assert "browser.semantic_graph" not in browser["functions"]
 
 
 def test_builtin_detail_source_is_null(client):
@@ -70,7 +71,11 @@ def test_list_functions_endpoint(client):
     data = res.json()
     names = {f["full_name"] for f in data}
     assert "browser.open" in names
+    assert "browser.http_request" in names
     assert "compute.add" in names
+    # LLM-only 技术接口不进入用户函数清单
+    assert "browser.semantic_graph" not in names
+    assert "browser.get_response" not in names
     browser_open = next(f for f in data if f["full_name"] == "browser.open")
     assert browser_open["plugin"] == "browser"
     assert browser_open["name"] == "open"
