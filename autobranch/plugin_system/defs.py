@@ -72,7 +72,7 @@ class FunctionDef:
     :param plugin: 所属插件名（注册时填充；未注册时为空）。
     :param description: 函数说明（供 LLM 工具 schema）。
     :param parameters: JSON Schema 参数定义。
-    :param returns: 返回值名列表（多返回值，按序）。
+    :param returns: 返回值声明映射（返回参数名 → 类型 token，按序）。
     :param output_param: 产出型工具的变量目标参数名（None = 非产出型）。
     :param user_visible: 是否对用户可见（FunctionCall / 函数清单）；``False``
       表示仅对 LLM agent 开放（如语义图等技术性接口）。
@@ -83,7 +83,7 @@ class FunctionDef:
     plugin: str = ""
     description: str = ""
     parameters: dict[str, Any] = field(default_factory=dict)
-    returns: tuple[str, ...] = ()
+    returns: dict[str, str] = field(default_factory=dict)
     output_param: str | None = None
     user_visible: bool = True
     impl: Callable[..., Any] | None = None
@@ -129,17 +129,19 @@ def _function_decorator(
     name: str | None = None,
     description: str = "",
     parameters: dict[str, Any] | None = None,
-    returns: tuple[str, ...] | list[str] = (),
+    returns: dict[str, str] | None = None,
     output_param: str | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """注册装饰器实现：``user_visible`` 决定是否进入用户侧函数清单。"""
 
     def deco(fn: Callable[..., Any]) -> Callable[..., Any]:
+        if returns is not None and not isinstance(returns, dict):
+            raise PluginError("returns 必须是 {返回参数名: 类型} 映射")
         spec = FunctionDef(
             name=name or fn.__name__,
             description=description or (fn.__doc__ or "").strip(),
             parameters=parameters or {"type": "object", "properties": {}},
-            returns=tuple(returns),
+            returns=dict(returns or {}),
             output_param=output_param,
             user_visible=user_visible,
             impl=fn,
@@ -154,7 +156,7 @@ def engine_function(
     name: str | None = None,
     description: str = "",
     parameters: dict[str, Any] | None = None,
-    returns: tuple[str, ...] | list[str] = (),
+    returns: dict[str, str] | None = None,
     output_param: str | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """显式注册插件函数（LLM 与用户均可见）。
@@ -177,7 +179,7 @@ def llm_function(
     name: str | None = None,
     description: str = "",
     parameters: dict[str, Any] | None = None,
-    returns: tuple[str, ...] | list[str] = (),
+    returns: dict[str, str] | None = None,
     output_param: str | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """显式注册 **仅 LLM 可见** 的插件函数（用户侧不可见）。

@@ -84,7 +84,7 @@ def test_register_browser_plugin_exposes_functions():
         "browser.type",
     } <= names
     assert reg.function("browser.extract").is_producing  # output_param target
-    assert reg.function("browser.open").returns == ("page",)
+    assert reg.function("browser.open").returns == {"page": "object"}
     # 用户可见 / LLM-only 分层：技术性接口不进入 FunctionCall 清单
     user_names = set(reg.user_functions())
     assert {"browser.open", "browser.get_url", "browser.http_request"} <= user_names
@@ -93,7 +93,11 @@ def test_register_browser_plugin_exposes_functions():
     assert "browser.click" not in user_names
     assert reg.function("browser.semantic_graph").user_visible is False
     assert reg.function("browser.http_request").user_visible is True
-    assert reg.function("browser.http_request").returns == ("status", "body", "headers")
+    assert reg.function("browser.http_request").returns == {
+        "status": "int",
+        "body": "str",
+        "headers": "object",
+    }
 
 
 def test_open_returns_page_object():

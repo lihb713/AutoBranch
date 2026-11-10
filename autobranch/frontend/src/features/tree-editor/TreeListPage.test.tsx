@@ -36,6 +36,7 @@ const TREES: TreeOut[] = [
   {
     id: 1,
     name: "登录流程",
+    status: "published",
     created_at: "2026-01-01T00:00:00",
     updated_at: "2026-01-01T00:00:00",
     inputs: {},
@@ -43,6 +44,7 @@ const TREES: TreeOut[] = [
   {
     id: 2,
     name: "下单流程",
+    status: "published",
     created_at: "2026-01-02T00:00:00",
     updated_at: "2026-01-02T00:00:00",
     inputs: {},
@@ -158,6 +160,7 @@ describe("TreeListPage", () => {
     const withInputs: TreeOut = {
       id: 3,
       name: "带参流程",
+      status: "published",
       created_at: "2026-01-03T00:00:00",
       updated_at: "2026-01-03T00:00:00",
       inputs: { user: "str", n: "int" },
@@ -182,6 +185,7 @@ describe("TreeListPage", () => {
     const withPageRef: TreeOut = {
       id: 4,
       name: "页签流程",
+      status: "published",
       created_at: "2026-01-04T00:00:00",
       updated_at: "2026-01-04T00:00:00",
       inputs: { 页: "page_ref" },

@@ -7,7 +7,7 @@ import type { TreeDoc } from "./treeModel";
 const DOC: TreeDoc = {
   tree: "x",
   inputs: {},
-  outputs: [],
+  outputs: {},
   config: {},
   root: "n1",
   nodes: {
@@ -69,7 +69,7 @@ describe("TreeCanvas", () => {
     const docWithRef: TreeDoc = {
       tree: "A",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -88,7 +88,7 @@ describe("TreeCanvas", () => {
     const preview: TreeDoc = {
       tree: "B",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "b1",
       nodes: {
@@ -118,7 +118,7 @@ describe("TreeCanvas", () => {
     const docWithRef: TreeDoc = {
       tree: "A",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -137,7 +137,7 @@ describe("TreeCanvas", () => {
     const preview: TreeDoc = {
       tree: "B",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "b1",
       nodes: {
@@ -155,7 +155,7 @@ describe("TreeCanvas", () => {
     const docWithRef: TreeDoc = {
       tree: "A",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {

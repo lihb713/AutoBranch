@@ -44,6 +44,8 @@ def test_end_to_end_execution_flow(tmp_path):
     created = client.post("/api/trees", json={"name": "冒烟流程", "content": VALID_YAML})
     assert created.status_code == 201, created.text
     tree_id = created.json()["id"]
+    saved = client.post(f"/api/trees/{tree_id}/save")
+    assert saved.status_code == 200, saved.text
 
     check = client.post(f"/api/trees/{tree_id}/check")
     assert check.status_code == 200
@@ -93,6 +95,8 @@ def test_run_after_rename_matches_content_root_block(tmp_path):
         json={"name": "改名后的流程", "content": make_tree_yaml("改名后的流程")},
     )
     assert renamed.status_code == 200
+    saved = client.post(f"/api/trees/{tree_id}/save", json={"name": "改名后的流程"})
+    assert saved.status_code == 200, saved.text
 
     run = client.post(f"/api/trees/{tree_id}/run")
     assert run.status_code == 202
@@ -158,9 +162,12 @@ def test_cross_doc_ref_end_to_end(tmp_path):
     # 先建被引文档 B（含一个可执行叶子），再建引用文档 A
     b = client.post("/api/trees", json={"name": "文档B", "content": make_tree_yaml("文档B")})
     assert b.status_code == 201, b.text
+    b_id = b.json()["id"]
+    assert client.post(f"/api/trees/{b_id}/save").status_code == 200
     a = client.post("/api/trees", json={"name": "文档A", "content": _ref_doc("文档A", "文档B")})
     assert a.status_code == 201, a.text
     a_id = a.json()["id"]
+    assert client.post(f"/api/trees/{a_id}/save").status_code == 200
 
     # A 校验通过（跨文档 ref 经文档库解析）
     check = client.post(f"/api/trees/{a_id}/check")

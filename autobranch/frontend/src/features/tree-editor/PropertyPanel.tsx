@@ -6,9 +6,7 @@ import { TextField } from "../../components/TextField";
 import type { FunctionInfo } from "../../types/plugin";
 import { schemaTypeToToken, TYPE_TOKENS } from "./tokens";
 import {
-  detachSlot,
   freeRoots,
-  setSlot,
   slotFields,
   type BranchRow,
   type DefineVar,
@@ -44,7 +42,8 @@ type PropertyPanelProps = {
   docNames: string[];
   refMeta: Record<string, RefMeta>;
   refTargetsOf: (name: string) => string[];
-  onUpdate: (doc: TreeDoc) => void;
+  onPatchNode: (nodeId: string, patch: Partial<TreeNode>) => void;
+  onSlotChange: (nodeId: string, slotIndex: number, childId: string | null) => void;
   onLoadRefMeta: (target: string) => void;
   onDeleteNode: (id: string, subtree: boolean) => void;
 };
@@ -61,7 +60,8 @@ export function PropertyPanel({
   docNames,
   refMeta,
   refTargetsOf,
-  onUpdate,
+  onPatchNode,
+  onSlotChange,
   onLoadRefMeta,
   onDeleteNode,
 }: PropertyPanelProps) {
@@ -86,11 +86,12 @@ export function PropertyPanel({
 
   const updateNode = (patch: Partial<TreeNode>) => {
     if (readonly) return;
-    onUpdate({ ...doc, nodes: { ...doc.nodes, [node.id]: { ...node, ...patch } } });
+    onPatchNode(node.id, patch);
   };
 
   const setField = (key: string, value: string) => {
-    updateNode({ fields: { ...node.fields, [key]: value } });
+    if (readonly) return;
+    onPatchNode(node.id, { [key]: value } as Partial<TreeNode>);
   };
 
   const free = freeRoots(doc);
@@ -120,11 +121,8 @@ export function PropertyPanel({
   }));
 
   const handleSlotChange = (index: number, value: string) => {
-    if (value === "") {
-      onUpdate(detachSlot(doc, node.id, index));
-    } else {
-      onUpdate(setSlot(doc, node.id, index, value));
-    }
+    if (readonly) return;
+    onSlotChange(node.id, index, value === "" ? null : value);
   };
 
   const addSequenceSlot = () => {
@@ -191,15 +189,6 @@ export function PropertyPanel({
       if (name.trim()) next[name.trim()] = oldType;
     }
     updateNode({ returns: next });
-  };
-
-  const setReturnType = (i: number, type: string) => {
-    const returns = { ...(node.returns ?? {}) };
-    const key = Object.keys(returns)[i];
-    if (key !== undefined) {
-      returns[key] = type;
-      updateNode({ returns });
-    }
   };
 
   const meta = node.type === "ref" && node.target ? refMeta[node.target] : undefined;
@@ -421,7 +410,7 @@ export function PropertyPanel({
       {meta ? (
         <section className="prop-group" data-testid="prop-group-ref-returns">
           <h4 className="prop-group__title">出参</h4>
-          {meta.outputs.map((out, i) => (
+          {Object.keys(meta.outputs).map((out, i) => (
             <div key={`out-${out}`} className="slot-row">
               <span className="slot-row__label">出参 {out}</span>
               <HighlightedField
@@ -431,19 +420,9 @@ export function PropertyPanel({
                 data-testid={`ref-return-name-${node.id}-${i}`}
                 onChange={(e) => setReturnName(i, e.target.value)}
               />
-              <select
-                className="text-field__input"
-                value={Object.values(node.returns ?? {})[i] ?? "str"}
-                disabled={readonly}
-                data-testid={`ref-return-type-${node.id}-${i}`}
-                onChange={(e) => setReturnType(i, e.target.value)}
-              >
-                {TYPE_TOKENS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              <span className="slot-row__label" data-testid={`ref-return-type-${node.id}-${i}`}>
+                {Object.values(node.returns ?? {})[i] ?? "—"}
+              </span>
             </div>
           ))}
         </section>
@@ -487,7 +466,7 @@ export function PropertyPanel({
         {!selectedFunc ? (
           <p className="property-panel__hint">选择函数后自动列出返回值</p>
         ) : (
-          selectedFunc.returns.map((r, i) => (
+          Object.keys(selectedFunc.returns).map((r, i) => (
             <div key={`fc-out-${r}`} className="slot-row">
               <span className="slot-row__label">返回值 {r}</span>
               <HighlightedField
@@ -497,19 +476,9 @@ export function PropertyPanel({
                 data-testid={`fc-return-name-${node.id}-${i}`}
                 onChange={(e) => setReturnName(i, e.target.value)}
               />
-              <select
-                className="text-field__input"
-                value={Object.values(node.returns ?? {})[i] ?? "str"}
-                disabled={readonly}
-                data-testid={`fc-return-type-${node.id}-${i}`}
-                onChange={(e) => setReturnType(i, e.target.value)}
-              >
-                {TYPE_TOKENS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+              <span className="slot-row__label" data-testid={`fc-return-type-${node.id}-${i}`}>
+                {Object.values(node.returns ?? {})[i] ?? "—"}
+              </span>
             </div>
           ))
         )}

@@ -7,7 +7,18 @@ import { treesApi } from "./api/trees";
 import { typesApi } from "./api/types";
 
 vi.mock("./api/trees", () => ({
-  treesApi: { listTrees: vi.fn(), getTree: vi.fn(), createTree: vi.fn(), updateTree: vi.fn(), deleteTree: vi.fn(), checkTree: vi.fn() },
+  treesApi: {
+    listTrees: vi.fn(),
+    getTree: vi.fn(),
+    getTreeByName: vi.fn(),
+    createDraft: vi.fn(),
+    createTree: vi.fn(),
+    applyCommands: vi.fn(),
+    saveTree: vi.fn(),
+    updateTree: vi.fn(),
+    deleteTree: vi.fn(),
+    checkTree: vi.fn(),
+  },
 }));
 
 vi.mock("./api/runs", () => ({
@@ -35,6 +46,16 @@ beforeEach(() => {
     { token: "page_ref", constructible: false },
   ]);
   vi.mocked(treesApi.listTrees).mockResolvedValue([]);
+  vi.mocked(treesApi.getTree).mockResolvedValue({
+    id: 1,
+    name: "冒烟流程",
+    status: "published",
+    created_at: "x",
+    updated_at: "x",
+    inputs: {},
+    content:
+      "tree: 冒烟流程\nnodes:\n  n1: {type: Root, body: n2}\n  n2: {type: Action, description: x}\nroot: n1\n",
+  });
   vi.mocked(runsApi.getRunState).mockResolvedValue({
     run_id: "5",
     progress: 1,
@@ -77,8 +98,8 @@ describe("路由冒烟", () => {
   });
 
   it("/editor/:id? 渲染编辑器页", async () => {
-    await renderAt("/editor");
-    expect(await screen.findByRole("heading", { name: "新建行为树" })).toBeInTheDocument();
+    await renderAt("/editor/1");
+    expect(await screen.findByRole("heading", { name: /编辑：冒烟流程/ })).toBeInTheDocument();
   });
 
   it("/runs/:runId 渲染执行报告页", async () => {

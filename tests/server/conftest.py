@@ -132,12 +132,16 @@ def make_tree_yaml(name: str) -> str:
 
 
 def create_tree(client: TestClient, name: str = "冒烟流程", content: str | None = None) -> dict:
+    """创建并发布行为树（测试默认拿到正式版，便于执行）。"""
     resp = client.post(
         "/api/trees",
         json={"name": name, "content": content or make_tree_yaml(name)},
     )
     assert resp.status_code == 201, resp.text
-    return resp.json()
+    tree = resp.json()
+    saved = client.post(f"/api/trees/{tree['id']}/save")
+    assert saved.status_code == 200, saved.text
+    return saved.json()
 
 
 __all__ = [

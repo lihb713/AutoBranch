@@ -23,7 +23,7 @@ const makeSource = (name: string) => [
   '            "properties": {"who": {"type": "string", "description": "对象"}},',
   '            "required": ["who"],',
   "        },",
-  '        returns=("message",),',
+  '        returns={"message": "str"},',
   "    )",
   '    def greet(self, who="world"):',
   '        return f"hi {who}"',

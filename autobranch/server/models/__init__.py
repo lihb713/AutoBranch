@@ -3,6 +3,6 @@
 from autobranch.server.models.experience import Experience
 from autobranch.server.models.plugin import Plugin
 from autobranch.server.models.run import Run
-from autobranch.server.models.tree import Tree
+from autobranch.server.models.tree import STATUS_DRAFT, STATUS_PUBLISHED, Tree
 
-__all__ = ["Tree", "Run", "Experience", "Plugin"]
+__all__ = ["Tree", "STATUS_DRAFT", "STATUS_PUBLISHED", "Run", "Experience", "Plugin"]

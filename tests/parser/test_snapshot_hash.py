@@ -13,7 +13,7 @@ tree: 下单流程
 inputs:
   user: str
 outputs:
-  - 结果
+  result: str
 nodes:
   n1:
     type: Root
@@ -77,7 +77,7 @@ nodes:
     name: 根
 root: n1
 outputs:
-  - 结果
+  result: str
 inputs:
   user: str
 """
@@ -86,7 +86,7 @@ inputs:
 
 def test_inputs_outputs_decl_keeps_hash():
     changed = _BASE.replace("inputs:\n  user: str", "inputs:\n  user: int\n  extra: bool").replace(
-        "outputs:\n  - 结果", "outputs:\n  - 结果\n  - 日志"
+        "outputs:\n  result: str", "outputs:\n  result: str\n  log: str"
     )
     assert compute_tree_content_hash(changed) == _hash()
 

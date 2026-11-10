@@ -27,7 +27,7 @@ def _doc(function: str = "compute.multiply", args: list | None = None, returns: 
         id="t",
         data={
             "tree": "t",
-            "inputs": {"会话": "object"},
+            "inputs": {"session": "object"},
             "nodes": {
                 "r": {"type": "Root", "body": "n1"},
                 "n1": {
@@ -142,7 +142,7 @@ def test_function_call_missing_function_field():
 
 def test_object_type_token_declared():
     result = parse(_doc(), None, function_registry=FakeRegistry())
-    assert result.decl_inputs == {"会话": "object"}
+    assert result.decl_inputs == {"session": "object"}
     assert result.checks.ok
 
 

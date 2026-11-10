@@ -193,7 +193,7 @@ def make_run_context(
         blocks_tree=blocks_tree or {},
         resolver=resolver,
         decl_inputs=decl_inputs or {},
-        decl_outputs=decl_outputs or [],
+        decl_outputs=decl_outputs or {},
         config_overrides=config_overrides or {},
     )
     space.enter_frame(tree_name, ctx.schema_decl(tree_name))

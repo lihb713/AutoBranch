@@ -73,7 +73,7 @@ class OneDocResult:
     """一文档一树解析结果。
 
     :param decl_inputs: 文档级入参声明（名→类型）。
-    :param decl_outputs: 文档级出参名列表。
+    :param decl_outputs: 文档级出参声明（名 → 类型）。
     :param config: 全局配置覆盖（timeout/retry/browser）。
     :param main_tree: 主树 IR（从 root 沿槽位递归构建；无 Root 时为 None）。
     :param free_trees: 游离树 IR 列表（未被任何槽位引用的节点为根）。
@@ -81,7 +81,7 @@ class OneDocResult:
     """
 
     decl_inputs: dict[str, str] = field(default_factory=dict)
-    decl_outputs: list[str] = field(default_factory=list)
+    decl_outputs: dict[str, str] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
     main_tree: IRNode | None = None
     free_trees: list[IRNode] = field(default_factory=list)
@@ -205,6 +205,16 @@ def parse_document(doc, resolver=None) -> OneDocResult:
         from autobranch.schema.types import TYPE_REGISTRY
 
         for name, typ in decl_inputs.items():
+            if not isinstance(name, str) or not _ASCII_NAME.fullmatch(name.strip()):
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "syntax",
+                        "invalid_name",
+                        f"输入参数名 {name!r} 必须是 ASCII 标识符"
+                        "（[A-Za-z_][A-Za-z0-9_]*）",
+                    )
+                )
             if typ not in TYPE_REGISTRY:
                 issues.append(
                     _issue(
@@ -215,15 +225,56 @@ def parse_document(doc, resolver=None) -> OneDocResult:
                     )
                 )
         result.decl_inputs = dict(decl_inputs)
-    decl_outputs = raw.get("outputs", [])
-    if isinstance(decl_outputs, list):
-        result.decl_outputs = list(decl_outputs)
+    decl_outputs = raw.get("outputs", {})
+    if isinstance(decl_outputs, dict):
+        from autobranch.schema.types import TYPE_REGISTRY
+
+        for name, typ in decl_outputs.items():
+            if not isinstance(name, str) or not _ASCII_NAME.fullmatch(name.strip()):
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "syntax",
+                        "invalid_name",
+                        f"输出参数名 {name!r} 必须是 ASCII 标识符"
+                        "（[A-Za-z_][A-Za-z0-9_]*）",
+                    )
+                )
+            if typ not in TYPE_REGISTRY:
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "structure",
+                        "invalid_decl",
+                        f"输出参数 '{name}' 类型 '{typ}' 未登记"
+                        f"（支持: {sorted(TYPE_REGISTRY)}）",
+                    )
+                )
+        result.decl_outputs = {str(k): str(v) for k, v in decl_outputs.items()}
+    elif isinstance(decl_outputs, list):
+        issues.append(
+            _issue(
+                doc_id,
+                "structure",
+                "invalid_decl",
+                "outputs 必须是 {名称: 类型} 映射（旧式列表已废弃）",
+            )
+        )
     config = {k: v for k, v in raw.items() if k in ("timeout", "retry", "browser")}
     result.config = config
 
     # 解析每个节点 → (IRNode, 槽位引用列表)，按 id 建表
     nodes: dict[str, tuple[IRNode, list[_Slot]]] = {}
     for nid, body in nodes_raw.items():
+        if not isinstance(nid, str) or not _ASCII_NAME.fullmatch(nid):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "syntax",
+                    "invalid_name",
+                    f"节点 id {nid!r} 必须是 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*）",
+                )
+            )
         if not isinstance(body, dict):
             issues.append(_issue(doc_id, "structure", "invalid_node", f"节点 '{nid}' 不是映射"))
             continue
@@ -608,6 +659,8 @@ def _append_returns(
     doc_id: str, nid: str, returns: dict, issues: list
 ) -> list[tuple[str, str]]:
     """解析 returns 映射；非裸 ASCII 名追加 ``syntax.invalid_return_name`` 校验问题。"""
+    from autobranch.schema.types import TYPE_REGISTRY
+
     pairs: list[tuple[str, str]] = []
     for k, v in returns.items():
         name, inline, error = _strip_return_name(k)
@@ -620,7 +673,18 @@ def _append_returns(
                     f"{error}（位于 {_path(doc_id, f'nodes/{nid}')}）",
                 )
             )
-        pairs.append((name, str(v).strip() or inline or ""))
+        typ = str(v).strip() or inline or ""
+        if typ and typ not in TYPE_REGISTRY:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_decl",
+                    f"接收参数 '{name}' 类型 '{typ}' 未登记"
+                    f"（支持: {sorted(TYPE_REGISTRY)}，位于 {_path(doc_id, f'nodes/{nid}')}）",
+                )
+            )
+        pairs.append((name, typ))
     return pairs
 
 
@@ -836,7 +900,12 @@ def _check_ref_params(doc_id, nodes, resolver, issues) -> None:
             src = resolver.resolve(target)
         except Exception:
             issues.append(
-                _issue(doc_id, "ref", "missing_doc", f"引用目标文档 '{target}' 不存在")
+                _issue(
+                    doc_id,
+                    "ref",
+                    "missing_doc",
+                    f"引用目标文档 '{target}' 不存在或尚未保存为正式版",
+                )
             )
             continue
         try:
@@ -867,7 +936,7 @@ def _check_ref_params(doc_id, nodes, resolver, issues) -> None:
                     f"引用 '{target}' returns 数量 {len(ref.returns)} ≠ 出参数量 {len(out_names)}",
                 )
             )
-        for key, _typ in ref.returns:
+        for i, (key, typ) in enumerate(ref.returns):
             if key in in_types:
                 issues.append(
                     _issue(
@@ -877,6 +946,19 @@ def _check_ref_params(doc_id, nodes, resolver, issues) -> None:
                         f"接收参数 '{key}' 与本树入参重名",
                     )
                 )
+            out_items = list(out_names.items())
+            if i < len(out_items):
+                out_name, out_type = out_items[i]
+                if typ and out_type and typ != out_type:
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "ref",
+                            "type_mismatch",
+                            f"接收参数 '{key}' 类型 {typ} ≠ 目标输出 "
+                            f"'{out_name}' 类型 {out_type}",
+                        )
+                    )
 
 
 def _leads_back_to(target: str, doc_id: str, resolver, seen: set[str]) -> bool:

@@ -43,7 +43,7 @@ function ctx(overrides?: Partial<ValidateContext>): ValidateContext {
   return {
     docNames: ["订单流程", "文档B"],
     refMeta: {
-      文档B: { inputs: { startOrder: "str" }, outputs: ["处理结果"] },
+      文档B: { inputs: { startOrder: "str" }, outputs: { result: "str" } },
     },
     refTargetsOf: () => [],
     ...overrides,
@@ -60,7 +60,7 @@ describe("validation（统一槽位）", () => {
     const doc: TreeDoc = {
       tree: "x",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "n1",
       nodes: {
@@ -76,7 +76,7 @@ describe("validation（统一槽位）", () => {
     const doc: TreeDoc = {
       tree: "x",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "n1",
       nodes: {
@@ -91,7 +91,7 @@ describe("validation（统一槽位）", () => {
     const doc: TreeDoc = {
       tree: "x",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "n1",
       nodes: {
@@ -163,7 +163,7 @@ root: n1
     const doc: TreeDoc = {
       tree: "x",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "n1",
       nodes: {
@@ -203,7 +203,7 @@ root: n1
       doc,
       ctx({
         docNames: ["主流程", "文档B"],
-        refMeta: { 文档B: { inputs: { url: "int" }, outputs: [] } },
+        refMeta: { 文档B: { inputs: { url: "int" }, outputs: {} } },
       }),
     );
     expect(issues.some((i) => i.code === "type_mismatch")).toBe(true);

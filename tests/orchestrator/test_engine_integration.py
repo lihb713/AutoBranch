@@ -173,7 +173,7 @@ class TestEngineRunInputsOutputs:
             frame = space._current
             seen["user"] = space.read(frame, "this/user")
             seen["n"] = space.read(frame, "this/n")
-            space.write(frame, "this/结果", "ok", "str")
+            space.write(frame, "this/result", "ok", "str")
             return leaf_success(node.description)
 
         engine = Engine(browser=mock_browser, leaf_executor=leaf, space_factory=lambda: space)
@@ -182,13 +182,13 @@ class TestEngineRunInputsOutputs:
             tree,
             config,
             decl_inputs={"user": "str", "n": "int"},
-            decl_outputs=["结果"],
+            decl_outputs={"result": "str"},
             run_inputs={"user": "admin", "n": "42", "extra": "ignored"},
         )
         assert result.status == "success"
         assert seen["user"] == "admin"
         assert seen["n"] == 42  # coerce 到声明类型 int
-        assert result.outputs == {"结果": "ok"}
+        assert result.outputs == {"result": "ok"}
 
     def test_no_decl_outputs_returns_empty(self, config, mock_browser) -> None:
         from autobranch.schema import SchemaSpace

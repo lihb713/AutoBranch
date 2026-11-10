@@ -43,6 +43,6 @@ export interface FunctionInfo {
   plugin: string;
   name: string;
   description: string;
-  returns: string[];
+  returns: Record<string, string>;
   parameters: Record<string, unknown>;
 }

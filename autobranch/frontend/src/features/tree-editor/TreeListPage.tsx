@@ -24,6 +24,7 @@ export function TreeListPage() {
   const [importing, setImporting] = useState(false);
   const [constructible, setConstructible] = useState<Set<string>>(new Set());
   const [pendingTree, setPendingTree] = useState<TreeOut | null>(null);
+  const [creating, setCreating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -107,7 +108,21 @@ export function TreeListPage() {
   );
 
   const canRunDirectly = (tree: TreeOut) =>
+    tree.status === "published" &&
     Object.keys(tree.inputs ?? {}).every((name) => constructible.has(tree.inputs[name]));
+
+  const handleCreate = useCallback(async () => {
+    setError(null);
+    setCreating(true);
+    try {
+      const draft = await treesApi.createDraft();
+      navigate(`/editor/${draft.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "新建失败");
+    } finally {
+      setCreating(false);
+    }
+  }, [navigate]);
 
   const handleImport = useCallback(
     async (file: File) => {
@@ -149,8 +164,8 @@ export function TreeListPage() {
         >
           {importing ? "导入中…" : "导入文档"}
         </Button>
-        <Button onClick={() => navigate("/editor")} data-testid="new-tree">
-          新建行为树
+        <Button onClick={() => void handleCreate()} disabled={creating} data-testid="new-tree">
+          {creating ? "创建中…" : "新建行为树"}
         </Button>
       </div>
 
@@ -176,6 +191,7 @@ export function TreeListPage() {
           <thead>
             <tr>
               <th>名称</th>
+              <th>状态</th>
               <th>更新时间</th>
               <th>操作</th>
             </tr>
@@ -189,6 +205,14 @@ export function TreeListPage() {
                 onClick={() => navigate(`/editor/${tree.id}`)}
               >
                 <td>{tree.name}</td>
+                <td>
+                  <span
+                    className={`tree-status tree-status--${tree.status}`}
+                    data-testid={`tree-status-${tree.id}`}
+                  >
+                    {tree.status === "draft" ? "草稿" : "正式"}
+                  </span>
+                </td>
                 <td>{formatTime(tree.updated_at)}</td>
                 <td>
                   <div className="tree-table__actions" onClick={(e) => e.stopPropagation()}>
@@ -199,7 +223,7 @@ export function TreeListPage() {
                     >
                       编辑
                     </Button>
-                    {canRunDirectly(tree) ? (
+                    {tree.status === "published" && canRunDirectly(tree) ? (
                       <Button
                         variant="ghost"
                         onClick={() => handleRunClick(tree)}

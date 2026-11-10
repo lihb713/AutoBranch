@@ -12,29 +12,9 @@ import { NodePalette } from "./NodePalette";
 import { DocInterfaceEditor } from "./DocInterfaceEditor";
 import { PropertyPanel } from "./PropertyPanel";
 import { TreeCanvas } from "./TreeCanvas";
-import {
-  createStepWithAction,
-  deleteSubtree,
-  makeNode,
-  nextNodeId,
-  parseDoc,
-  removeNode,
-  serializeDoc,
-  type NodeType,
-  type TreeDoc,
-} from "./treeModel";
+import { parseDoc, type NodeType, type TreeDoc } from "./treeModel";
+import type { TreeCommand, TreeDetailOut, TreeStatus } from "../../types/tree";
 import { validateDoc, type RefMeta } from "./validation";
-
-function newEmptyDoc(name: string): TreeDoc {
-  return {
-    tree: name,
-    inputs: {},
-    outputs: [],
-    config: {},
-    nodes: { n1: { id: "n1", type: "Root", name: "根", fields: {} } },
-    root: "n1",
-  };
-}
 
 function collectRefTargets(doc: TreeDoc): string[] {
   const targets: string[] = [];
@@ -51,6 +31,7 @@ export function TreeEditorPage() {
 
   const [doc, setDoc] = useState<TreeDoc | null>(null);
   const [name, setName] = useState("");
+  const [status, setStatus] = useState<TreeStatus>("draft");
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [checkIssues, setCheckIssues] = useState<CheckIssue[] | null>(null);
@@ -66,16 +47,66 @@ export function TreeEditorPage() {
   const [activeTab, setActiveTab] = useState<"property" | "nodes" | "tree">("property");
   const refMetaLoading = useRef<Set<string>>(new Set());
   const refMetaFailed = useRef<Set<string>>(new Set());
+  const draftRequested = useRef(false);
+  const pendingPatches = useRef<Map<string, Record<string, unknown>>>(new Map());
+  const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 加载全部文档名（ref 目标下拉）
   useEffect(() => {
     treesApi
-      .listTrees()
+      .listTrees(true)
       .then((list) => setDocNames(list.map((t) => t.name)))
       .catch(() => setDocNames([]));
   }, []);
 
-  // 加载当前文档
+  const applyDetail = useCallback((tree: TreeDetailOut) => {
+    setDoc(parseDoc(tree.content));
+    setName(tree.name);
+    setStatus(tree.status);
+  }, []);
+
+  const runCommands = useCallback(
+    async (commands: TreeCommand[]) => {
+      if (treeId === null) return null;
+      setActionError(null);
+      try {
+        const result = await treesApi.applyCommands(treeId, commands);
+        applyDetail(result.tree);
+        return result.created_node_id;
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "编辑失败");
+        return null;
+      }
+    },
+    [applyDetail, treeId],
+  );
+
+  const flushPendingPatches = useCallback(async () => {
+    if (patchTimer.current) {
+      clearTimeout(patchTimer.current);
+      patchTimer.current = null;
+    }
+    const entries = Array.from(pendingPatches.current.entries());
+    pendingPatches.current.clear();
+    if (entries.length === 0) return;
+    await runCommands(
+      entries.map(([nodeId, patch]) => ({ op: "update_node", node_id: nodeId, patch })),
+    );
+  }, [runCommands]);
+
+  const schedulePatch = useCallback(
+    (nodeId: string, patch: Record<string, unknown>) => {
+      const merged = { ...(pendingPatches.current.get(nodeId) ?? {}), ...patch };
+      pendingPatches.current.set(nodeId, merged);
+      if (patchTimer.current) clearTimeout(patchTimer.current);
+      patchTimer.current = setTimeout(() => {
+        void flushPendingPatches();
+      }, 250);
+    },
+    [flushPendingPatches],
+  );
+
+  // 加载当前文档；/editor 无 id 时立即创建草稿并跳转
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -86,16 +117,29 @@ export function TreeEditorPage() {
     setRefMeta({});
     setDocRefs({});
     if (treeId === null) {
-      setDoc(newEmptyDoc(""));
-      setLoading(false);
-      return;
+      if (draftRequested.current) return;
+      draftRequested.current = true;
+      treesApi
+        .createDraft()
+        .then((tree) => {
+          if (cancelled) return;
+          navigate(`/editor/${tree.id}`, { replace: true });
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setLoadError(err instanceof Error ? err.message : "创建草稿失败");
+          setLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
+    draftRequested.current = false;
     treesApi
       .getTree(treeId)
       .then((tree) => {
         if (cancelled) return;
-        setName(tree.name);
-        setDoc(parseDoc(tree.content));
+        applyDetail(tree);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -107,7 +151,7 @@ export function TreeEditorPage() {
     return () => {
       cancelled = true;
     };
-  }, [treeId]);
+  }, [applyDetail, navigate, treeId]);
 
   const loadRefMeta = useCallback((target: string) => {
     if (refMeta[target] || refMetaLoading.current.has(target) || refMetaFailed.current.has(target)) {
@@ -149,7 +193,9 @@ export function TreeEditorPage() {
 
   const refTargetsOf = useCallback(
     (docName: string) => {
-      if (docName === (doc?.tree ?? "")) return collectRefTargets(doc ?? newEmptyDoc(""));
+      if (docName === (doc?.tree ?? "")) {
+        return doc ? collectRefTargets(doc) : [];
+      }
       return docRefs[docName] ?? [];
     },
     [doc, docRefs],
@@ -207,73 +253,69 @@ export function TreeEditorPage() {
   }, [doc, docNames, refMeta, refTargetsOf]);
 
   const handleAddNode = useCallback(
-    (type: NodeType) => {
-      if (!doc) return;
+    async (type: NodeType) => {
       setActiveTab("property");
-      if (type === "Step") {
-        const { doc: next, stepId } = createStepWithAction(doc);
-        setDoc(next);
-        setSelectedId(stepId);
-        return;
-      }
-      const next = { ...doc };
-      const id = nextNodeId(next.nodes);
-      next.nodes = { ...next.nodes, [id]: makeNode(type, id, next.nodes) };
-      setDoc(next);
-      setSelectedId(id);
+      await flushPendingPatches();
+      const created = await runCommands([{ op: "add_node", node_type: type }]);
+      if (created) setSelectedId(created);
     },
-    [doc],
+    [flushPendingPatches, runCommands],
   );
 
   const handleDeleteNode = useCallback(
-    (nodeId: string, subtree: boolean) => {
-      if (!doc) return;
-      const next = subtree ? deleteSubtree(doc, nodeId) : removeNode(doc, nodeId);
-      if (next === null) {
-        setActionError("根节点不可删除");
-        return;
-      }
-      setDoc(next);
-      if (selectedId === nodeId) setSelectedId(null);
+    async (nodeId: string, subtree: boolean) => {
+      await flushPendingPatches();
+      const result = await runCommands([{ op: "delete_node", node_id: nodeId, subtree }]);
+      if (result !== null && selectedId === nodeId) setSelectedId(null);
     },
-    [doc, selectedId],
+    [flushPendingPatches, runCommands, selectedId],
+  );
+
+  const handlePatchNode = useCallback(
+    (nodeId: string, patch: Partial<Record<string, unknown>>) => {
+      schedulePatch(nodeId, patch as Record<string, unknown>);
+    },
+    [schedulePatch],
+  );
+
+  const handleSlotChange = useCallback(
+    async (nodeId: string, slotIndex: number, childId: string | null) => {
+      await flushPendingPatches();
+      await runCommands([
+        childId
+          ? { op: "set_slot", node_id: nodeId, slot_index: slotIndex, child_id: childId }
+          : { op: "detach_slot", node_id: nodeId, slot_index: slotIndex },
+      ]);
+    },
+    [flushPendingPatches, runCommands],
+  );
+
+  const handlePatchDoc = useCallback(
+    async (patch: Partial<TreeDoc>) => {
+      const payload: Record<string, unknown> = {};
+      if (patch.inputs !== undefined) payload.inputs = patch.inputs;
+      if (patch.outputs !== undefined) payload.outputs = patch.outputs;
+      if (patch.config !== undefined) payload.config = patch.config;
+      if (patch.tree !== undefined) payload.tree = patch.tree;
+      await flushPendingPatches();
+      await runCommands([{ op: "update_doc", patch: payload }]);
+    },
+    [flushPendingPatches, runCommands],
   );
 
   const handleSave = useCallback(async () => {
     setActionError(null);
     setCheckIssues(null);
-    if (!doc) return;
-    const finalDoc: TreeDoc = { ...doc, tree: name.trim() };
-    // 前端汇总校验（阻塞保存）
-    const local = validateDoc(finalDoc, { docNames, refMeta, refTargetsOf });
-    if (local.length > 0) {
-      setCheckIssues(
-        local.map((issue) => ({
-          code: issue.code,
-          message: issue.message,
-          rule: "",
-          loc: null,
-        })),
-      );
-      return;
-    }
+    if (!doc || treeId === null) return;
     if (!name.trim()) {
       setActionError("请填写行为树名称");
       return;
     }
-    const content = serializeDoc(finalDoc);
     setSaving(true);
     try {
-      if (treeId !== null) {
-        const report = await treesApi.checkTree(treeId);
-        if (!report.ok) {
-          setCheckIssues(report.issues);
-          return;
-        }
-        await treesApi.updateTree(treeId, { name: name.trim(), content });
-      } else {
-        await treesApi.createTree({ name: name.trim(), content });
-      }
+      await flushPendingPatches();
+      const detail = await treesApi.saveTree(treeId, name.trim());
+      applyDetail(detail);
       navigate("/");
     } catch (err) {
       if (err instanceof ApiError) {
@@ -288,7 +330,7 @@ export function TreeEditorPage() {
     } finally {
       setSaving(false);
     }
-  }, [doc, name, treeId, navigate, docNames, refMeta, refTargetsOf]);
+  }, [applyDetail, doc, flushPendingPatches, name, navigate, treeId]);
 
   const handleRun = useCallback(async () => {
     if (treeId === null) return;
@@ -300,6 +342,13 @@ export function TreeEditorPage() {
       setActionError(err instanceof Error ? err.message : "触发执行失败");
     }
   }, [treeId, navigate]);
+
+  useEffect(
+    () => () => {
+      if (patchTimer.current) clearTimeout(patchTimer.current);
+    },
+    [],
+  );
 
   const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
@@ -343,7 +392,12 @@ export function TreeEditorPage() {
           <Button variant="ghost" onClick={() => navigate("/")}>
             返回列表
           </Button>
-          <Button variant="ghost" onClick={handleRun} disabled={treeId === null || saving}>
+          <Button
+            variant="ghost"
+            onClick={handleRun}
+            disabled={treeId === null || saving || status !== "published"}
+            title={status === "draft" ? "草稿需保存为正式版后才能执行" : undefined}
+          >
             执行
           </Button>
           <Button onClick={handleSave} disabled={saving || !doc}>
@@ -430,7 +484,8 @@ export function TreeEditorPage() {
                   docNames={docNames}
                   refMeta={refMeta}
                   refTargetsOf={refTargetsOf}
-                  onUpdate={setDoc}
+                  onPatchNode={handlePatchNode}
+                  onSlotChange={handleSlotChange}
                   onLoadRefMeta={loadRefMeta}
                   onDeleteNode={handleDeleteNode}
                 />
@@ -446,7 +501,11 @@ export function TreeEditorPage() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="如：登录流程"
                   />
-                  <DocInterfaceEditor doc={doc} readonly={selectedPreview !== null} onUpdate={setDoc} />
+                  <DocInterfaceEditor
+                    doc={doc}
+                    readonly={selectedPreview !== null}
+                    onPatch={(patch) => void handlePatchDoc(patch)}
+                  />
                 </div>
               ) : null}
             </div>

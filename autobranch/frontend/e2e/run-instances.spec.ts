@@ -1,5 +1,7 @@
 import { expect, test, request as apiRequest } from "@playwright/test";
 
+import { createTree } from "./helpers";
+
 /**
  * Change A E2E：执行列表与实例化（任务 6.1/6.2）。
  *
@@ -19,7 +21,7 @@ inputs:
   a: int
   b: int
 outputs:
-  - total
+  total: object
 nodes:
   n1:
     type: Root
@@ -52,13 +54,8 @@ root: n1
 
 test.beforeAll(async () => {
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
-  for (const tree of [
-    { name: COMPUTE_NAME, content: COMPUTE_YAML },
-    { name: PAGE_REF_NAME, content: PAGE_REF_YAML },
-  ]) {
-    const resp = await api.post("/api/trees", { data: tree });
-    expect(resp.ok()).toBeTruthy();
-  }
+  await createTree(api, COMPUTE_NAME, COMPUTE_YAML);
+  await createTree(api, PAGE_REF_NAME, PAGE_REF_YAML);
   await api.dispose();
 });
 

@@ -78,7 +78,7 @@ describe("layout", () => {
     const preview: TreeDoc = {
       tree: "B",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "b1",
       nodes: {

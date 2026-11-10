@@ -48,22 +48,26 @@ AutoBranch 的后端服务：行为树文档 CRUD API、清晰度校验（复用
 ### 5.1 行为树管理 API
 
 ```
-GET    /api/trees              # 列表（200，元数据数组）
-POST   /api/trees              # 创建（201，元数据；保存时校验 422 拒绝，含树名=文档名强制）
-GET    /api/trees/by-name/{name}  # 按文档名查（200，含 content；ref 展开/参数加载/文档库）
-GET    /api/trees/{id}         # 查看（200，含 content）
-PUT    /api/trees/{id}         # 修改（200；至少提交 name/content 之一，校验 422 拒绝，含树名=文档名强制）
-DELETE /api/trees/{id}         # 删除（204；**保留**执行历史，run.tree_id 置空，报告保留）
+GET    /api/trees              # 列表（200，含 status；?published_only=true 仅正式版）
+POST   /api/trees              # 直接创建（201，草稿；导入用）
+POST   /api/trees/drafts       # 新建草稿（201，临时名 + 空树）
+GET    /api/trees/by-name/{name}  # 按文档名查（仅 published；ref 参数加载）
+GET    /api/trees/{id}         # 查看（200，含 status/content）
+PUT    /api/trees/{id}         # 整文档更新（200，转草稿；兼容旧 API）
+POST   /api/trees/{id}/commands # 命令式编辑（add_node/delete_node/update_node/update_doc/set_slot/detach_slot；返回完整文档）
+POST   /api/trees/{id}/save    # 保存发布（校验 + 改名 + status=published；失败 422 保持 draft）
+DELETE /api/trees/{id}         # 删除（204；草稿/正式版同一记录；保留执行历史，run.tree_id 置空）
 POST   /api/trees/{id}/check   # 清晰度校验（200，CheckReport：ok + issues 错误清单，不落库）
 ```
 
 - 错误：资源不存在 404、重名 409、参数/文档校验失败 422（detail 为 CheckReport 错误清单）。
+- **草稿/正式**：同一棵树只有一份文档；对 published 的任何编辑立即转 draft；draft 不可执行（409），仅 published 可作为 ref 目标。
 - 422 detail 结构：`[{"code", "message", "rule", "loc"}, ...]`（可读、可定位，对齐 §4.4 八类）。
 
 ### 5.2 执行 API（执行实例化，Change A）
 
 ```
-POST   /api/trees/{id}/run            # 触发执行（异步 202 → {"run_id": n}；可选 body {"inputs": {...}}）
+POST   /api/trees/{id}/run            # 触发执行（仅 published；异步 202 → {"run_id": n}；可选 body {"inputs": {...}}）
 GET    /api/runs                      # 执行实例列表（RunOut：快照树名/状态/入参/耗时/指纹/进度）
 GET    /api/runs/{run_id}             # 实例详情（含 content_snapshot，供查看快照）
 POST   /api/runs/{run_id}/retry       # 按快照重试（复制原实例快照+入参新建 Run，202 → run_id）
@@ -119,6 +123,7 @@ class ExecStateOut:
 - `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path（LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
   - `trees`：id、name(unique)、content(Text)、created_at/updated_at
+  - `trees`：id、name(唯一)、content(yaml)、status(draft/published，默认 published)、created_at/updated_at
   - `runs`（执行实例，Change A 快照化）：id、tree_id(FK→trees.id **ON DELETE SET NULL，可空**——删除树保留历史)、status(CheckConstraint pending/running/success/failure)、failure_reason、report_path(相对路径)、`content_snapshot`(Text，触发时刻冻结树内容)、`tree_name_snapshot`、`tree_content_hash`(执行结构指纹，index)、`inputs`(JSON)、`outputs`(JSON，可空)、created_at/updated_at
   - SQLite 开启 `PRAGMA foreign_keys=ON` 使级联/SET NULL 生效；报告/截图文件落盘 `data/reports/<run_id>/`，库中只存相对路径（database-rules §6）。
   - **执行结构指纹**（`parser/snapshot.py::compute_tree_content_hash`）：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys` 规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。

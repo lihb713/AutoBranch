@@ -52,7 +52,7 @@ AutoBranch 是一个**自然语言驱动的行为树自动化工具**。你不�
 | 执行实例 | 一次执行 = 自包含实例（快照 + 入参 + 出参） | §9 |
 | 报告 | 执行报告（节点结果+截图）/ 回溯报告（含 LLM 推理） | §9.5 |
 
-**最重要的一条规则**：行为树文档中，**变量名只支持 ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`，不支持中文）。读取用 `Param.x`，写入声明 `NewParam.x[:类型]` **仅用于 Action 的描述**；`ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（如 `returns: {loginOk: bool}`，不接受 `NewParam.` 前缀）；`Define` 节点用于声明变量。违反会在保存/执行前被校验拒绝。
+**最重要的一条规则**：行为树文档中，**参数名与节点 id 只支持 ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`，不支持中文）。读取用 `Param.x`，写入声明 `NewParam.x[:类型]` **仅用于 Action 的描述**；`ref`/`FunctionCall` 的 `returns` 键为**接收名**（不接受 `NewParam.` 前缀）；`Define` 节点用于声明变量。违反会在保存/执行前被校验拒绝。接收名与类型默认由后端自动生成（`<节点id>_<返回参数名>`），用户只改名称，类型只读。
 
 ---
 
@@ -271,7 +271,7 @@ nodes:                # 节点对象池：所有节点按 id 平铺
 root: n1              # 根节点引用（必须指向 type: Root）
 ```
 
-可选顶层键：`inputs`（入参声明）、`outputs`（出参名）、`timeout`/`retry`/`browser`（配置覆盖）。
+可选顶层键：`inputs`（入参声明）、`outputs`（出参声明 `{名称: 类型}`）、`timeout`/`retry`/`browser`（配置覆盖）。
 
 ### 6.1 节点类型与字段
 
@@ -345,11 +345,12 @@ n13:
   type: ref
   target: 登录文档          # 被调用的文档名（须存在）
   args: [Param.user, "admin"]   # 实参，按序对应被调文档的 inputs；可为变量或字面量
-  returns: {loginOk: bool}      # 回收被调文档 outputs，键为裸 ASCII 名
+  returns: {loginOk: bool}      # 接收名；类型取自目标 outputs（自动生成、只读）
 ```
 
 - 被调文档的 `inputs` 数量/顺序 与 `args` 必须一致；`outputs` 与 `returns` 一致。
-- `returns` 键 = 本树新建变量（裸 ASCII 名，隐式创建；含 `.`/非 ASCII → 校验报错）。
+- `returns` 键 = 本树新建变量（未填写时自动生成 `<节点id>_<输出名>`；含 `.`/非 ASCII → 校验报错）。
+- 类型由目标文档 `outputs` 决定，用户不可编辑；被引目标必须是**正式版**。
 
 ### 6.4 `FunctionCall` 确定性调用（不经 LLM）
 
@@ -360,10 +361,11 @@ n14:
   type: FunctionCall
   function: compute.add       # 全名：插件名.函数名
   args: [Param.a, 2]          # 实参：本帧变量或字面量，按序对应函数入参
-  returns: {total: int}   # 接收名（裸 ASCII 名）→ 类型
+  returns: {total: object}   # 接收名；类型取自函数 returns 声明（只读）
 ```
 
-- 函数不存在 / 参数数量不匹配 → 保存或执行前 422 拒绝。
+- 函数不存在 / 参数数量不匹配 / 引用仅 LLM 函数 → 保存校验 422 拒绝。
+- 未填写接收名时自动生成 `<节点id>_<函数返回参数名>`；类型取函数声明，用户只改名称。
 - 常用函数见 §10。
 
 ### 6.4b `Define` 声明变量（确定性叶子）
@@ -391,7 +393,7 @@ inputs:
   user: str          # 入参：名 → 类型（str/int/float/bool/page_ref/object）
   amount: int
 outputs:
-  - result           # 出参：名列表（执行后对外返回）
+  result: str        # 出参：名称 → 类型（执行后对外返回）
 nodes: ...
 ```
 
@@ -404,7 +406,7 @@ nodes: ...
 ```yaml
 tree: 表格求和演示
 outputs:
-  - total
+  total: object
 nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 主流程, actions: [n3, n5]}
@@ -426,7 +428,9 @@ root: n1
 
 ## 7. 前端编辑器：可视化构建行为树
 
-打开「行为树管理」→ 点「新建行为树」进入编辑器 `/editor`。
+打开「行为树管理」→ 点「新建行为树」。系统会**立即创建草稿**（临时名 `未命名-<时间戳>`）并进入编辑器；首次点「保存」校验通过后改名为你填写的名称并转为**正式版**。
+
+> **草稿/正式版**：同一棵树只有一份文档。对比正式版的任何修改都会让该树立即变为草稿；草稿**不能执行**，也不能被其他行为树 `ref` 引用，直到保存为正式版。列表显示「草稿/正式」徽标；删除按钮删除整棵树。
 
 ### 7.1 界面布局
 
@@ -535,7 +539,7 @@ n15:
 
 ### 9.1 触发执行
 
-「行为树管理」列表每行有「执行」按钮：
+「行为树管理」列表每行对**正式版**显示「执行」按钮（草稿不显示）：
 
 - **无入参** → 直接执行。
 - **有可构造入参**（str/int/float/bool）→ 弹出入参对话框填值后执行。
@@ -632,7 +636,7 @@ n15:
 | `sort` | `data`（列表）、`desc`（可选） | 排序后的列表 |
 | `sum` | `values`（列表） | 求和 |
 
-FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: int}`。
+FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: object}`。接收名默认自动生成（如 `n3_total`），类型取函数声明、用户不可编辑。
 
 ### 10.3 SSH 插件 `ssh`
 
@@ -683,7 +687,7 @@ class Demo(PluginBase):
         name="double",
         description="翻倍",
         parameters={"type": "object", "properties": {"x": {"type": "number"}}, "required": ["x"]},
-        returns=("result",),
+        returns={"result": "object"},
     )
     def double(self, x: float) -> float:
         return x * 2
@@ -692,6 +696,7 @@ plugin = Demo()
 ```
 
 - **只有 `@engine_function` / `@llm_function` 标注的函数才注册**，键 = 全名 `demo.double`。
+- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/page_ref/object`）。
   `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
 - 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
 - 产出型函数：`output_param` 声明单一变量目标参数（如 `extract` 的 `target`），引擎落笔写变量。

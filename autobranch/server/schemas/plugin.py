@@ -64,7 +64,7 @@ class FunctionInfo(BaseModel):
     plugin: str
     name: str
     description: str = ""
-    returns: list[str] = Field(default_factory=list)
+    returns: dict[str, str] = Field(default_factory=dict)
     parameters: dict = Field(default_factory=dict)
 
 

@@ -1,5 +1,7 @@
 import { expect, test, request as apiRequest } from "@playwright/test";
 
+import { createTree } from "./helpers";
+
 /**
  * AutoBranch 端到端测试：跨文档引用（ref 动态调用）执行链路。
  *
@@ -17,7 +19,7 @@ const B_NAME = `e2e-refB-${STAMP}`;
 const B_YAML =
   "tree: " + B_NAME + "\n" +
   "inputs: {url: str}\n" +
-  "outputs: [urlText]\n" +
+  "outputs: {urlText: str}\n" +
   "nodes:\n" +
   "  n1:\n    type: Root\n    name: 根\n    body: n2\n" +
   "  n2:\n    type: Sequence\n    name: 打开页面\n    actions: [n3, n4]\n" +
@@ -45,10 +47,8 @@ const A_YAML =
 
 test.beforeAll(async () => {
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
-  const rb = await api.post("/api/trees", { data: { name: B_NAME, content: B_YAML } });
-  expect(rb.ok()).toBeTruthy();
-  const ra = await api.post("/api/trees", { data: { name: A_NAME, content: A_YAML } });
-  expect(ra.ok()).toBeTruthy();
+  await createTree(api, B_NAME, B_YAML);
+  await createTree(api, A_NAME, A_YAML);
   await api.dispose();
 });
 

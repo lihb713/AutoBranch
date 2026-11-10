@@ -146,7 +146,10 @@ root: n1
 def _create(client, name: str, content: str) -> int:
     resp = client.post("/api/trees", json={"name": name, "content": content})
     assert resp.status_code == 201, resp.text
-    return resp.json()["id"]
+    tree_id = resp.json()["id"]
+    saved = client.post(f"/api/trees/{tree_id}/save")
+    assert saved.status_code == 200, saved.text
+    return tree_id
 
 
 def test_run_with_inputs_stores_snapshot(client, mock_engine, session):

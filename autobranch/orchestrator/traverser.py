@@ -519,7 +519,7 @@ class Traverser:
         decl = FrameDecl(
             name=doc_id,
             inputs=dict(ores.decl_inputs),
-            outputs={name: "" for name in ores.decl_outputs},
+            outputs=dict(ores.decl_outputs),
             config=dict(ores.config),
         )
         return expansion.tree, decl

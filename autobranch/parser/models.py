@@ -249,7 +249,7 @@ class ParseResult:
     :param blocks_tree: 文档名 → 主树（一文档一树；运行期 ref 按文档名经
         resolver 加载，本字段仅承载当前文档主树）。
     :param decl_inputs: 文档级入参声明（名 → 类型）。
-    :param decl_outputs: 文档级出参名列表。
+    :param decl_outputs: 文档级出参声明（名 → 类型）。
     :param config: 全局配置覆盖（timeout/retry/browser）。
     :param checks: 清晰度校验报告。
     """
@@ -258,5 +258,5 @@ class ParseResult:
     checks: CheckReport
     blocks_tree: dict[str, Node] = field(default_factory=dict)
     decl_inputs: dict[str, str] = field(default_factory=dict)
-    decl_outputs: list[str] = field(default_factory=list)
+    decl_outputs: dict[str, str] = field(default_factory=dict)
     config: dict[str, object] = field(default_factory=dict)

@@ -31,7 +31,7 @@
 
 ### 3.2 输出
 - **内部行为树对象**：`BehaviorTree`，主树（基础节点 + `RefNode`）
-- **文档接口声明**：`decl_inputs`（名→类型）/ `decl_outputs`（名列表）
+- **文档接口声明**：`decl_inputs`（名→类型）/ `decl_outputs`（名→类型）
 - **主树映射**：`blocks_tree`（文档名 → 该文档主树；运行期 ref 经 resolver 按文档名加载被引文档）
 - **全局配置覆盖**：`config`（timeout/retry/browser）
 - **校验报告**：清晰度校验通过/失败 + 错误清单（供返回用户修正）
@@ -60,7 +60,7 @@ class ParseResult:
     checks: CheckReport                # 清晰度校验结果
     blocks_tree: dict[str, Node]       # 文档名 → 该文档主树（ref 运行期经 resolver 加载）
     decl_inputs: dict[str, str]        # 文档级入参声明（名 → 类型）
-    decl_outputs: list[str]            # 文档级出参名列表
+    decl_outputs: dict[str, str]       # 文档级出参声明（名 → 类型）
     config: dict[str, object]          # 全局配置覆盖（timeout/retry/browser）
 ```
 
@@ -184,7 +184,7 @@ class RefNode(Node):
 
 ### 8.1 FunctionCall 节点解析
 
-解析 `type: FunctionCall` 节点：`function`（**全名 `插件名.函数名`**，如 `compute.add`；跨插件可同名）+ `args`（实参列表，元素为本帧变量 `Param.x` 或字面量）+ `returns`（**键为裸 ASCII 名** → 类型，按序对应函数多返回值）。FunctionCall 节点**保留为运行期调用节点**（不展开），运行期经插件框架按全名分发。
+解析 `type: FunctionCall` 节点：`function`（**全名 `插件名.函数名`**，如 `compute.add`；跨插件可同名）+ `args`（实参列表，元素为本帧变量 `Param.x` 或字面量）+ `returns`（**键为裸 ASCII 接收名** → 类型，按序对应函数多返回值）。函数返回声明为 `FunctionDef.returns = {返回参数名: 类型}`；未填写接收名时由后端归一化生成 `<节点id>_<返回参数名>`，类型取函数声明（用户不可编辑）。FunctionCall 节点**保留为运行期调用节点**（不展开），运行期经插件框架按全名分发。
 
 ### 8.2 函数存在与参数校验
 
@@ -193,6 +193,7 @@ class RefNode(Node):
 - `function` 未注册 → 清晰度校验失败（`ref.unknown_function`）；
 - `args` 数量与函数入参声明不符 → 校验失败（`ref.args_mismatch`）；
 - 未提供注册表时跳过（运行期 FunctionCall 失败兜底为节点 FAILURE，与编排器一致）。
+- 节点 id、`inputs` 键、`outputs` 键、`returns` 接收名必须为裸 ASCII 标识符；`outputs` 为 `{名: 类型}` 映射。
 
 ### 8.3 泛型 object 类型 token
 

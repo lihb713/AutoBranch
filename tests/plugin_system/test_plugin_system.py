@@ -44,7 +44,7 @@ class DemoPlugin(PluginBase):
             },
             "required": ["a", "b"],
         },
-        returns=("result",),
+        returns={"result": "object"},
     )
     def multiply(self, a, b):
         return a * b
@@ -71,7 +71,7 @@ def test_registration_only_marked_functions():
     reg = PluginRegistry()
     reg.register(DemoPlugin())
     assert set(reg.functions()) == {"demo.multiply", "demo.greet"}
-    assert reg.function("demo.multiply").returns == ("result",)
+    assert reg.function("demo.multiply").returns == {"result": "object"}
     assert reg.function("demo.greet").is_producing
 
 
@@ -293,3 +293,35 @@ def test_report_entries_by_source():
     entries = collect_report_entries(result, "demo")
     assert entries == [{"source": "demo", "sections": [{"title": "t", "body": "b"}]}]
     assert collect_report_entries(FunctionResult.success(), "demo") == []
+
+
+def test_returns_require_ascii_name_and_valid_type():
+    class BadName(PluginBase):
+        name = "badname"
+
+        @engine_function(name="f", returns={"结果": "str"})
+        def f(self):
+            return "x"
+
+    class BadType(PluginBase):
+        name = "badtype"
+
+        @engine_function(name="f", returns={"x": "text"})
+        def f(self):
+            return "x"
+
+    for plugin in (BadName(), BadType()):
+        reg = PluginRegistry()
+        with pytest.raises(PluginError):
+            reg.register(plugin)
+
+
+def test_old_tuple_returns_rejected_at_decoration():
+    with pytest.raises(PluginError):
+
+        class Legacy(PluginBase):
+            name = "legacy"
+
+            @engine_function(name="f", returns=("x",))
+            def f(self):
+                return "x"

@@ -15,6 +15,7 @@
 - **插件框架**：预置浏览器 / 计算 / SSH / 文件插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、插件管理页、执行报告页。
+- **草稿/正式版**：行为树单文档状态机；新建即草稿（临时名），保存校验后转正式；草稿不可执行、不可被 ref 引用；前端命令式编辑，后端权威生成默认接收名与类型。
 - **执行实例化**：每次执行保存**行为树快照 + 入参**（触发时刻冻结，执行/重试不随实时树变化）；支持根级入参注入与出参返回、执行列表页（进行中/历史回看）、FIFO 队列调度（全局并发上限可配置）、按快照重试；含不可序列化入参（如 page_ref）的树仅支持 ref 调用。
 - **经验回灌**：整树成功的历史经验（节点级成功调用路径，去 ref 化）存入经验库，同条件（同行为树快照 + 同入参 + 同节点）重跑时以"参考而非指令"注入叶子提示词（以当前语义图为准、与当前状态不符时忽略），降低 LLM 随机性导致的同树重跑失败；按匹配组自动老化。
 
@@ -80,7 +81,9 @@ conda run -n autobranch python -m playwright install chromium
 
 - **无需手动初始化**：AutoBranch 使用 **SQLite 单文件库**。后端（`uvicorn ... autobranch.server.main:app`）首次启动时自动创建数据库文件并建表（`configure_database` → `create_all`），安装后直接启动即可。
 - 默认数据库文件位于 `data/autobranch.db`（`data/` 目录会自动创建）。
-- **既有库升级**：`runs` 表升级为"执行实例"（新增快照/入参/出参列、`tree_id` 改 SET NULL）时，运行 `conda run -n autobranch python -m scripts.migrate_runs_snapshot`（幂等，可从任意旧版本升级）。
+- **既有库升级**：
+  - `runs` 表升级为"执行实例"（新增快照/入参/出参列、`tree_id` 改 SET NULL）时，运行 `conda run -n autobranch python -m scripts.migrate_runs_snapshot`（幂等，可从任意旧版本升级）。
+  - 默认接收名/typed outputs/ASCII 迁移：运行 `python -m scripts.migrate_default_return_param_names`（迁移 `trees.content`、清空 `experiences`；不改执行快照）。
 
 ## 配置
 
@@ -169,10 +172,13 @@ root: n1
 ```
 
 - 通过前端「行为树管理」创建 / 保存（保存时做清晰度校验，FunctionCall 会校验函数存在性与参数对齐）。
-- **变量命名规则**：读取用 `Param.<名>`；写入声明 `NewParam.<名>[:类型]` **仅用于 Action 描述**；`ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（如 `{fruitTotal: int}`，不接受 `NewParam.` 前缀）；`Define` 节点用于声明变量。`<名>` 一律为 **ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`），不支持中文。
+- **变量命名规则**：读取用 `Param.<名>`；写入声明 `NewParam.<名>[:类型]` **仅用于 Action 描述**；`ref`/`FunctionCall` 的 `returns` 键为接收名（不接受 `NewParam.` 前缀）；`Define` 节点用于声明变量。参数名与节点 id 一律为 **ASCII 标识符**（`[A-Za-z_][A-Za-z0-9_]*`），不支持中文。
+- **默认接收名/类型**：未填写接收名时后端生成 `<节点id>_<返回参数名>`（如 `n2_status`）；类型取函数 `returns` 声明或 ref 目标 `outputs`，用户只改名称、类型只读。
+- **文档 outputs**：`outputs: {名称: 类型}`（不再使用名字列表）。
 - 点击「执行」→ 若声明了入参则弹框填参（含不可序列化入参的树不显示「执行」按钮）→ 后台异步运行 → 前端轮询状态 → 展示执行报告与出参。
 - 「行为树执行列表」页可查看全部执行实例（进行中/历史）、轮询进度、重试（按当时快照+入参）、查看快照、删除记录。
-- 也可直接调用 API：`POST /api/trees/{id}/run`（可选 body `{"inputs": {...}}`）。
+- 也可直接调用 API：`POST /api/trees/{id}/run`（仅正式版；可选 body `{"inputs": {...}}`）。
+- 后端命令式编辑：`POST /api/trees/{id}/commands`；新建草稿 `POST /api/trees/drafts`；保存发布 `POST /api/trees/{id}/save`。
 
 ### 插件管理
 

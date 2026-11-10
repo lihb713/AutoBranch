@@ -106,7 +106,7 @@ class PluginService:
                 plugin=s.plugin,
                 name=s.name,
                 description=s.description,
-                returns=list(s.returns),
+                returns=dict(s.returns),
                 parameters=s.parameters,
             )
             for s in self.registry.user_functions().values()

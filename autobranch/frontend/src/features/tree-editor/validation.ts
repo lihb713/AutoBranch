@@ -12,7 +12,7 @@ export type ClientIssue = {
 /** 被引文档的接口声明（经 by-name API 加载）。 */
 export type RefMeta = {
   inputs: Record<string, string>;
-  outputs: string[];
+  outputs: Record<string, string>;
 };
 
 export type ValidateContext = {
@@ -91,7 +91,7 @@ function checkReturnKeys(node: { id: string; returns?: Record<string, string> },
 
 /** 收集本树已声明变量：文档级 inputs + 各叶子 NewParam. 目标 + ref/FunctionCall returns 接收名 + Define 变量名。 */
 export function collectDeclaredVars(doc: TreeDoc): Set<string> {
-  const vars = new Set<string>(Object.keys(doc.inputs));
+  const vars = new Set<string>([...Object.keys(doc.inputs), ...Object.keys(doc.outputs)]);
   for (const node of Object.values(doc.nodes)) {
     if (node.type === "ref" || node.type === "FunctionCall") {
       for (const key of Object.keys(node.returns ?? {})) vars.add(stripReturnName(key));
@@ -183,6 +183,23 @@ export function wouldCreateCycle(
 export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
   const issues: ClientIssue[] = [];
 
+  // 参数名与节点 id 必须 ASCII
+  for (const id of Object.keys(doc.nodes)) {
+    if (!RETURN_KEY_RX.test(id)) {
+      issues.push({ code: "syntax.invalid_name", message: `节点 id「${id}」仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*）` });
+    }
+  }
+  for (const name of Object.keys(doc.inputs)) {
+    if (!RETURN_KEY_RX.test(name)) {
+      issues.push({ code: "syntax.invalid_name", message: `入参名「${name}」仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*）` });
+    }
+  }
+  for (const name of Object.keys(doc.outputs)) {
+    if (!RETURN_KEY_RX.test(name)) {
+      issues.push({ code: "syntax.invalid_name", message: `出参名「${name}」仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*）` });
+    }
+  }
+
   // 单根
   const roots = Object.values(doc.nodes).filter((n) => n.type === "Root");
   if (roots.length !== 1) {
@@ -267,8 +284,8 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
           issues.push({ code: "args_mismatch", message: `args 数量 ${argCount} ≠ 入参 ${inputNames.length}`, nodeId: n.id });
         }
         const retCount = Object.keys(n.returns ?? {}).length;
-        if (retCount !== meta.outputs.length) {
-          issues.push({ code: "returns_mismatch", message: `returns 数量 ${retCount} ≠ 出参 ${meta.outputs.length}`, nodeId: n.id });
+        if (retCount !== Object.keys(meta.outputs).length) {
+          issues.push({ code: "returns_mismatch", message: `returns 数量 ${retCount} ≠ 出参 ${Object.keys(meta.outputs).length}`, nodeId: n.id });
         }
         for (const key of Object.keys(n.returns ?? {})) {
           const recv = stripReturnName(key);

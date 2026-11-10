@@ -37,7 +37,7 @@ class RunContext:
       加载被引文档，本表仅承载根文档主树）。
     :param resolver: 跨文档引用解析器（ref 按文档名加载被引文档用）。
     :param decl_inputs: 文档级入参声明（名 -> 类型）。
-    :param decl_outputs: 文档级出参名列表。
+    :param decl_outputs: 文档级出参声明（名 → 类型）。
     :param config_overrides: 全局配置覆盖（timeout/retry/browser）。
     :param leaf_executor: 叶子执行器（默认包装 M6 ``execute_leaf``；测试注入 mock）。
     :param failure_reason: 首个失败节点描述（沿树传播到根时作为失败原因）。
@@ -51,7 +51,7 @@ class RunContext:
     blocks_tree: dict[str, Node] = field(default_factory=dict)
     resolver: Any = None
     decl_inputs: dict[str, str] = field(default_factory=dict)
-    decl_outputs: list[str] = field(default_factory=list)
+    decl_outputs: dict[str, str] = field(default_factory=dict)
     config_overrides: dict[str, object] = field(default_factory=dict)
     registry: Any = None
     runtime: Any = None
@@ -67,7 +67,7 @@ class RunContext:
         return FrameDecl(
             name=doc_name,
             inputs=dict(self.decl_inputs),
-            outputs={name: "" for name in self.decl_outputs},
+            outputs=dict(self.decl_outputs),
             config=dict(self.config_overrides),
         )
 

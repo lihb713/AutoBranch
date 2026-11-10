@@ -98,7 +98,7 @@ class TestRefCallFromDsl:
     def test_dsl_ref_args_and_returns_end_to_end(self, config) -> None:
         login = _login_doc(
             inputs={"username": "str"},
-            outputs=["result"],
+            outputs={"result": "str"},
             body=["读参数 Param.username", "输出 NewParam.result:str"],
         )
         main = {
@@ -201,7 +201,7 @@ class TestRefCall:
     def test_ref_injects_args_and_receives_returns(self, config) -> None:
         login = _login_doc(
             inputs={"username": "str"},
-            outputs=["result"],
+            outputs={"result": "str"},
             body=["读参数 Param.username", "输出 NewParam.result:str"],
         )
         resolver = _doc_resolver({"登录": login})
@@ -243,7 +243,7 @@ class TestRefCall:
     def test_same_block_ref_twice_independent_frames(self, config) -> None:
         login = _login_doc(
             inputs={"username": "str"},
-            outputs=["result"],
+            outputs={"result": "str"},
             body=["读参数 Param.username", "输出 NewParam.result:str"],
         )
         resolver = _doc_resolver({"登录": login})
@@ -288,7 +288,7 @@ class TestRefCall:
     def test_child_failure_propagates_and_skips_returns(self, config) -> None:
         login = _login_doc(
             inputs={"username": "str"},
-            outputs=["result"],
+            outputs={"result": "str"},
             body=["块内失败"],
         )
         resolver = _doc_resolver({"登录": login})

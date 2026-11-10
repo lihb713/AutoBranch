@@ -1,5 +1,7 @@
 import { expect, test, request as apiRequest } from "@playwright/test";
 
+import { createTree } from "./helpers";
+
 /**
  * AutoBranch 端到端测试：聚焦「前端执行行为树 + 前端查看执行结果」链路。
  *
@@ -38,8 +40,7 @@ root: n1
 test.beforeAll(async () => {
   // 经前端代理预置行为树（避免编辑器拖拽，编辑器由组件测试覆盖）
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
-  const resp = await api.post("/api/trees", { data: { name: TREE_NAME, content: TREE_YAML } });
-  expect(resp.ok()).toBeTruthy();
+  await createTree(api, TREE_NAME, TREE_YAML);
   await api.dispose();
 });
 
@@ -73,4 +74,20 @@ test("前端执行行为树并查看执行结果", async ({ page }) => {
   // 6. 切换查看「回溯报告」（含 LLM 推理过程）
   await page.getByRole("button", { name: "回溯报告" }).click();
   await expect(panel.locator("pre")).toContainText("回溯报告");
+});
+test("新建行为树立即创建草稿，列表标识草稿且不可执行", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("new-tree").click();
+  await page.waitForURL(/\/editor\/\d+/);
+  const id = Number(page.url().match(/\/editor\/(\d+)/)?.[1]);
+
+  await page.goto("/");
+  const row = page.locator(`[data-testid="tree-row-${id}"]`);
+  await expect(row).toBeVisible();
+  await expect(page.getByTestId(`tree-status-${id}`)).toHaveText("草稿");
+  await expect(row.getByRole("button", { name: "执行" })).toHaveCount(0);
+
+  const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
+  await api.delete(`/api/trees/${id}`);
+  await api.dispose();
 });

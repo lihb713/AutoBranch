@@ -156,24 +156,28 @@ def test_create_missing_content_422(client):
 
 # ----------------------------------------------------------- 保存路径校验（4.2）
 
-def test_create_invalid_document_422_not_saved(client):
+def test_create_invalid_document_allowed_as_draft(client):
     resp = client.post("/api/trees", json={"name": "坏文档", "content": INVALID_REF_YAML})
-    assert resp.status_code == 422
-    detail = resp.json()["detail"]
-    assert any(item["code"].startswith("ref") for item in detail)
-    assert client.get("/api/trees").json() == []
+    assert resp.status_code == 201
+    tree = resp.json()
+    assert tree["status"] == "draft"
+    save = client.post(f"/api/trees/{tree['id']}/save")
+    assert save.status_code == 422
+    assert any(item["code"].startswith("ref") for item in save.json()["detail"])
 
 
-def test_update_invalid_document_422_not_saved(client):
+def test_update_invalid_document_becomes_draft(client):
     tree = create_tree(client)
     resp = client.put(
         f"/api/trees/{tree['id']}",
         json={"name": "坏文档", "content": INVALID_REF_YAML},
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "draft"
+    save = client.post(f"/api/trees/{tree['id']}/save")
+    assert save.status_code == 422
     detail = client.get(f"/api/trees/{tree['id']}").json()
-    assert detail["name"] == "冒烟流程"
-    assert detail["content"] == make_tree_yaml("冒烟流程")
+    assert detail["status"] == "draft"
 
 
 def test_check_endpoint_ok(client):

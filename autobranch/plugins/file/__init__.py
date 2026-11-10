@@ -46,7 +46,7 @@ class FilePlugin(PluginBase):
         name="read",
         description="读取文件内容（UTF-8；相对路径以引擎工作目录为基址）",
         parameters=_params(("path",), path={"type": "string", "description": "文件路径"}),
-        returns=("content",),
+        returns={"content": "str"},
     )
     def read(self, path: str) -> FunctionResult:
         try:
@@ -82,7 +82,7 @@ class FilePlugin(PluginBase):
             file_a={"type": "string", "description": "文件 A 路径"},
             file_b={"type": "string", "description": "文件 B 路径"},
         ),
-        returns=("diff",),
+        returns={"diff": "object"},
     )
     def diff(self, file_a: str, file_b: str) -> FunctionResult:
         try:

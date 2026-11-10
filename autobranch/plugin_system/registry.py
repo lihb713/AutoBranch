@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import Any
 
@@ -21,6 +22,26 @@ from autobranch.plugin_system.defs import (
     PluginBase,
     PluginError,
 )
+
+_ASCII_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _validate_returns(plugin_name: str, spec: FunctionDef) -> None:
+    """校验函数返回声明：名称 ASCII、类型为 TYPE_REGISTRY 合法 token。"""
+    from autobranch.schema.types import TYPE_REGISTRY
+
+    if not isinstance(spec.returns, dict):
+        raise PluginError(f"函数 {plugin_name}.{spec.name} 的 returns 必须是 {{名称: 类型}} 映射")
+    for name, typ in spec.returns.items():
+        if not isinstance(name, str) or not _ASCII_NAME.fullmatch(name):
+            raise PluginError(
+                f"函数 {plugin_name}.{spec.name} 的返回参数名 {name!r} 必须是 ASCII 标识符"
+            )
+        if not isinstance(typ, str) or typ not in TYPE_REGISTRY:
+            raise PluginError(
+                f"函数 {plugin_name}.{spec.name} 的返回参数 {name} 类型 {typ!r} 非法"
+                f"（支持: {sorted(TYPE_REGISTRY)}）"
+            )
 
 
 class PluginRegistry:
@@ -43,6 +64,7 @@ class PluginRegistry:
         if not getattr(plugin, "name", ""):
             raise PluginError("插件缺少 name")
         for spec in plugin.function_defs():
+            _validate_returns(plugin.name, spec)
             full = f"{plugin.name}.{spec.name}"
             existing = self._owner.get(full)
             if existing is not None and existing != plugin.name and not allow_override:

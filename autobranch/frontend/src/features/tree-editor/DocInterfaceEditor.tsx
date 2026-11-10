@@ -4,59 +4,65 @@ import { TYPE_TOKENS } from "./tokens";
 type DocInterfaceEditorProps = {
   doc: TreeDoc;
   readonly?: boolean;
-  onUpdate: (doc: TreeDoc) => void;
+  onPatch: (patch: Partial<TreeDoc>) => void;
 };
 
-/** 文档级接口编辑：`inputs`（名→类型）与 `outputs`（名列表），ref 参数对齐依据。 */
-export function DocInterfaceEditor({ doc, readonly = false, onUpdate }: DocInterfaceEditorProps) {
-  const updateDoc = (patch: Partial<TreeDoc>) => onUpdate({ ...doc, ...patch });
-
+/** 文档级接口编辑：`inputs` / `outputs` 均为 `{名称: 类型}` 映射。 */
+export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterfaceEditorProps) {
   const setInputName = (oldKey: string, newKey: string) => {
     const inputs = { ...doc.inputs };
     const type = inputs[oldKey];
     delete inputs[oldKey];
     if (newKey.trim()) inputs[newKey.trim()] = type;
-    updateDoc({ inputs });
+    onPatch({ inputs });
   };
 
   const setInputType = (key: string, type: string) => {
-    updateDoc({ inputs: { ...doc.inputs, [key]: type } });
+    onPatch({ inputs: { ...doc.inputs, [key]: type } });
   };
 
   const addInput = () => {
-    const base = `入参${Object.keys(doc.inputs).length + 1}`;
-    let name = base;
-    let i = 2;
+    let i = 1;
+    let name = `input${i}`;
     while (name in doc.inputs) {
-      name = `${base}${i}`;
       i += 1;
+      name = `input${i}`;
     }
-    updateDoc({ inputs: { ...doc.inputs, [name]: "str" } });
+    onPatch({ inputs: { ...doc.inputs, [name]: "str" } });
   };
 
   const removeInput = (key: string) => {
     const inputs = { ...doc.inputs };
     delete inputs[key];
-    updateDoc({ inputs });
+    onPatch({ inputs });
   };
 
-  const setOutput = (i: number, name: string) => {
-    updateDoc({ outputs: doc.outputs.map((o, j) => (j === i ? name : o)) });
+  const setOutputName = (oldKey: string, newKey: string) => {
+    const outputs = { ...doc.outputs };
+    const type = outputs[oldKey];
+    delete outputs[oldKey];
+    if (newKey.trim()) outputs[newKey.trim()] = type;
+    onPatch({ outputs });
+  };
+
+  const setOutputType = (key: string, type: string) => {
+    onPatch({ outputs: { ...doc.outputs, [key]: type } });
   };
 
   const addOutput = () => {
-    const base = `出参${doc.outputs.length + 1}`;
-    let name = base;
-    let i = 2;
-    while (doc.outputs.includes(name)) {
-      name = `${base}${i}`;
+    let i = 1;
+    let name = `output${i}`;
+    while (name in doc.outputs) {
       i += 1;
+      name = `output${i}`;
     }
-    updateDoc({ outputs: [...doc.outputs, name] });
+    onPatch({ outputs: { ...doc.outputs, [name]: "str" } });
   };
 
-  const removeOutput = (i: number) => {
-    updateDoc({ outputs: doc.outputs.filter((_, j) => j !== i) });
+  const removeOutput = (key: string) => {
+    const outputs = { ...doc.outputs };
+    delete outputs[key];
+    onPatch({ outputs });
   };
 
   return (
@@ -113,22 +119,35 @@ export function DocInterfaceEditor({ doc, readonly = false, onUpdate }: DocInter
       </div>
 
       <div data-testid="doc-outputs">
-        <p className="slot-row__label">出参 outputs（名列表，ref 按此填 returns）</p>
-        {doc.outputs.map((name, i) => (
-          <div key={i} className="slot-row" data-testid={`doc-output-${i}`}>
+        <p className="slot-row__label">出参 outputs（名：类型，ref 按此接收）</p>
+        {Object.entries(doc.outputs).map(([name, type]) => (
+          <div key={name} className="slot-row" data-testid={`doc-output-${name}`}>
             <input
               className="text-field__input"
               value={name}
               disabled={readonly}
-              data-testid={`doc-output-name-${i}`}
-              onChange={(e) => setOutput(i, e.target.value)}
+              data-testid={`doc-output-name-${name}`}
+              onChange={(e) => setOutputName(name, e.target.value)}
             />
+            <select
+              className="text-field__input"
+              value={type}
+              disabled={readonly}
+              data-testid={`doc-output-type-${name}`}
+              onChange={(e) => setOutputType(name, e.target.value)}
+            >
+              {TYPE_TOKENS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
             {!readonly ? (
               <button
                 type="button"
                 className="slot-row__add slot-row__add--danger"
-                data-testid={`doc-output-remove-${i}`}
-                onClick={() => removeOutput(i)}
+                data-testid={`doc-output-remove-${name}`}
+                onClick={() => removeOutput(name)}
               >
                 删除
               </button>

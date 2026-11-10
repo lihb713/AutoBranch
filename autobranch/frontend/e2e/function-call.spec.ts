@@ -1,5 +1,7 @@
 import { expect, test, request as apiRequest } from "@playwright/test";
 
+import { createTree } from "./helpers";
+
 /**
  * FunctionCall 节点端到端测试：覆盖「前端渲染 FunctionCall 节点 / 确定性执行 /
  * 未知函数校验 / 叶子两级能力选择执行」。
@@ -48,11 +50,7 @@ const CAPABILITY_TREE = (name: string) =>
 test("F1 编辑器渲染 FunctionCall 节点与函数名", async ({ page }) => {
   const name = `e2eFC渲染${Date.now()}`;
   const api = await apiRequest.newContext(API);
-  const resp = await api.post("/api/trees", {
-    data: { name, content: MULTIPLY_TREE(name) },
-  });
-  expect(resp.ok()).toBeTruthy();
-  const tree = await resp.json();
+  const tree = await createTree(api, name, MULTIPLY_TREE(name), { publish: false });
   await api.dispose();
 
   await page.goto(`/editor/${tree.id}`);
@@ -64,10 +62,7 @@ test("F1 编辑器渲染 FunctionCall 节点与函数名", async ({ page }) => {
 test("F2 FunctionCall 行为树执行成功并写变量", async ({ page }) => {
   const name = `e2eFC执行${Date.now()}`;
   const api = await apiRequest.newContext(API);
-  const resp = await api.post("/api/trees", {
-    data: { name, content: MULTIPLY_TREE(name) },
-  });
-  expect(resp.ok()).toBeTruthy();
+  await createTree(api, name, MULTIPLY_TREE(name));
   await api.dispose();
 
   await page.goto("/");
@@ -93,10 +88,9 @@ test("F2 FunctionCall 行为树执行成功并写变量", async ({ page }) => {
 test("F3 未知函数校验失败", async ({ page }) => {
   const name = `e2eFC未知${Date.now()}`;
   const api = await apiRequest.newContext(API);
-  const resp = await api.post("/api/trees", {
-    data: { name, content: UNKNOWN_FN_TREE(name) },
-  });
+  const tree = await createTree(api, name, UNKNOWN_FN_TREE(name), { publish: false });
   // 函数不存在 → 保存被 422 拒绝
+  const resp = await api.post(`/api/trees/${tree.id}/save`);
   expect(resp.status()).toBe(422);
   await api.dispose();
 });
@@ -104,10 +98,7 @@ test("F3 未知函数校验失败", async ({ page }) => {
 test("C1 叶子经两级能力选择执行并调用插件函数", async ({ page }) => {
   const name = `e2e能力${Date.now()}`;
   const api = await apiRequest.newContext(API);
-  const resp = await api.post("/api/trees", {
-    data: { name, content: CAPABILITY_TREE(name) },
-  });
-  expect(resp.ok()).toBeTruthy();
+  await createTree(api, name, CAPABILITY_TREE(name));
   await api.dispose();
 
   await page.goto("/");
@@ -135,21 +126,21 @@ nodes:
     body: n2
   n2:
     type: Sequence
-    actions: [登录步骤, 提取苹果, 提取香蕉, 求和]
-  登录步骤:
+    actions: [n3, n4, n5, n6]
+  n3:
     type: Step
-    action: 登录动作
+    action: n7
     expect: 页面出现"销售数据表"
-  登录动作:
+  n7:
     type: Action
     description: 打开 http://127.0.0.1:8123/summary.html，在用户名输入框输入 admin，密码输入框输入 secret，点击登录按钮
-  提取苹果:
+  n4:
     type: Action
     description: 用 extract 提取表格中"苹果"那一行的金额列值，写入变量 appleAmount NewParam.appleAmount:int
-  提取香蕉:
+  n5:
     type: Action
     description: 用 extract 提取表格中"香蕉"那一行的金额列值，写入变量 bananaAmount NewParam.bananaAmount:int
-  求和:
+  n6:
     type: FunctionCall
     function: compute.add
     args: [Param.appleAmount, Param.bananaAmount]
@@ -158,8 +149,7 @@ nodes:
 root: n1
 `;
   const api = await apiRequest.newContext(API);
-  const resp = await api.post("/api/trees", { data: { name, content: yaml } });
-  expect(resp.ok()).toBeTruthy();
+  await createTree(api, name, yaml);
   await api.dispose();
 
   await page.goto("/");
@@ -193,8 +183,7 @@ nodes:
 root: n1
 `;
   const api = await apiRequest.newContext(API);
-  const resp = await api.post("/api/trees", { data: { name, content: yaml } });
-  expect(resp.ok()).toBeTruthy();
+  await createTree(api, name, yaml);
   await api.dispose();
 
   await page.goto("/");

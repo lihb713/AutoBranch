@@ -19,7 +19,7 @@ def test_parse_full_chain():
     raw = {
         "tree": "主流程",
         "inputs": {"startOrder": "str"},
-        "outputs": ["result"],
+        "outputs": {"result": "str"},
         "nodes": {
             "n1": {"type": "Root", "name": "根", "body": "n2"},
             "n2": {"type": "Sequence", "name": "主流程", "actions": ["n3", "n4"]},
@@ -43,7 +43,7 @@ def test_parse_full_chain():
     b_doc = {
         "tree": "文档B",
         "inputs": {"startOrder": "str"},
-        "outputs": ["result"],
+        "outputs": {"result": "str"},
         "nodes": {
             "n1": {"type": "Root", "name": "根", "body": "n2"},
             "n2": {
@@ -61,7 +61,7 @@ def test_parse_full_chain():
     result = _parse(raw, resolver=resolver)
     assert result.checks.ok, result.checks.issues
     assert result.decl_inputs == {"startOrder": "str"}
-    assert result.decl_outputs == ["result"]
+    assert result.decl_outputs == {"result": "str"}
     assert result.tree.name == "主流程"
     # Step 展开为 Sequence(ActionNode, ConditionNode)；action 槽位子树含 Action
     seq = result.tree.root

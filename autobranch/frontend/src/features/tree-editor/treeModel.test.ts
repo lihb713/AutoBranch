@@ -18,7 +18,7 @@ import {
 
 const DOC_YAML = `tree: 订单流程
 inputs: {起始订单: str}
-outputs: [处理结果]
+outputs: { result: "str" }
 timeout: 30
 nodes:
   n1:
@@ -67,7 +67,7 @@ describe("treeModel（统一槽位）", () => {
     const doc = parseDoc(DOC_YAML);
     expect(doc.tree).toBe("订单流程");
     expect(doc.inputs).toEqual({ 起始订单: "str" });
-    expect(doc.outputs).toEqual(["处理结果"]);
+    expect(doc.outputs).toEqual({ result: "str" });
     expect(doc.config).toEqual({ timeout: 30 });
     expect(doc.root).toBe("n1");
   });
@@ -107,7 +107,7 @@ describe("treeModel（统一槽位）", () => {
     const doc: TreeDoc = {
       tree: "x",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "n1",
       nodes: {

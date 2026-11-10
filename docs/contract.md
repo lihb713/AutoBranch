@@ -124,8 +124,8 @@ AutoBranch 分两个阶段运行：
 
 ```
 tree: <名>                 # 树名（必须 = 文档名）
-inputs: {名: 类型}          # 可选：文档级入参声明（类型 token: str/int/float/bool/page_ref）
-outputs: [名]              # 可选：文档级出参名列表
+inputs: {名: 类型}          # 可选：文档级入参声明（名须为 ASCII 标识符）
+outputs: {名: 类型}         # 可选：文档级出参声明（名须为 ASCII 标识符）
 timeout / retry / browser  # 可选：全局配置覆盖（保留名，见 §4.2）
 nodes:                     # 节点对象池（平铺定义全部节点）
   n1: {type: Root, name: 根, body: n2}
@@ -505,7 +505,7 @@ T 经 returns 回收: ref 导出: returns: {result: str}   ← 本树新建接�
 ```
 tree: 登录
 inputs: {username: str, password: str}   ← 本文档需要什么（调用方经 ref args 按序注入）
-outputs: [login_success]                  ← 本文档产出什么（调用方经 ref returns 按序接收）
+outputs: {login_success: bool}            ← 本文档产出什么（调用方经 ref returns 按序接收）
 nodes: ...
 root: n1
 ```
@@ -746,7 +746,7 @@ ref 节点:
   type: ref
   target: <文档名>              # 单段，总是跨文档
   args: [值...]                 # 列表，按序对应被引文档 inputs；元素为本树变量名（裸变量名）或字面量
-  returns: {本树接收名: 类型}    # 字典，按序对应被引文档 outputs
+  returns: {本树接收名: 类型}    # 字典，按序对应被引文档 outputs；类型自动取目标输出类型
 ```
 
 ```
@@ -756,7 +756,8 @@ nodes:
 
 **参数绑定**（沿用 §5.3 schema 机制）：
 - `args` 按序对应被引文档 `inputs`；每个元素为 `Param.x`（读本树变量）或字面量（str/int/float/bool）。
-- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量**（裸 ASCII 名，隐式创建），值为类型；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `Param.<接收名>` 引用。
+- `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量**（裸 ASCII 名，隐式创建），值为类型（由目标文档 outputs 决定，用户不可编辑）；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `Param.<接收名>` 引用。
+- **默认接收名**：未填写时自动生成 `<节点id>_<返回参数名>`（如 `n3_urlText`）；冲突只对自动名追加 `_1/_2`；名称变更不自动改写其他位置引用。
 
 **绑定契约（严格执行）**：
 - `args` 数量 ≠ 被引文档 inputs 数量 → `ref.args_mismatch`；`returns` 数量 ≠ outputs 数量 → `ref.returns_mismatch`；接收名与本树 inputs 重名 → `ref.name_conflict`。
@@ -799,7 +800,7 @@ nodes:
 登录.yaml:
 tree: 登录
 inputs: {username: str, password: str}
-outputs: [login_success]
+outputs: {login_success: bool}
 nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 登录, actions: [n3, n4, n5, n6]}
@@ -816,7 +817,7 @@ root: n1
 导出.yaml:
 tree: 导出
 inputs: {username: str, password: str}     ← 由调用方经 args 注入
-outputs: [登录结果]
+outputs: {loginResult: str}
 nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 导出, actions: [n3, n4]}
@@ -2244,7 +2245,8 @@ M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 
 #### M8 管理后端
 ```
-功能: 行为树文档 CRUD + 清晰度校验; 执行触发/状态轮询; 报告/截图存储与提供;
+功能: 行为树文档 CRUD + 清晰度校验; 草稿/正式状态（draft/published）与命令式编辑;
+     执行触发/状态轮询; 报告/截图存储与提供;
      插件管理 API（CRUD/校验/关联查询/删除置空）+ plugin 表（builtin/custom）;
      函数清单 API `GET /api/functions`（全名 + 插件 + 结构化定义，跨插件聚合）;
      引擎内嵌（§12.3）
@@ -2253,11 +2255,11 @@ M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 
 #### M9 前端 UI
 ```
-功能: 行为树编辑器（画布/槽位/ref 展开/删除语义）; 行为树管理;
+功能: 行为树编辑器（后端权威文档 + 命令 API + 草稿/正式状态; 画布/槽位/ref 展开）; 行为树管理;
      执行报告页（轮询渲染）; 插件管理页（列表标记预置/自定义 + CodeMirror 6 编辑器
      + 保存校验提示 + 删除关联弹窗）;
      可搜索下拉（Combobox）：函数名选择器（罗列全名 + 描述，支持过滤）、
-     ref 目标文档、槽位 / 分支子节点（类型下拉保持原生 select）
+     ref 目标文档、槽位 / 分支子节点（函数返回类型只读展示，不提供类型编辑）
 依赖: M8
 ```
 
@@ -2269,7 +2271,7 @@ M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 type: function
 function: compute.add          # 全名：插件名.函数名（跨插件可同名）
 args: [a, b]                # 实参列表（本树裸变量名或字面量，按序对应函数入参）
-returns: {total: int}   # 接收名（裸 ASCII 名）→ 类型（按序对应函数多返回值）
+returns: {total: object}   # 接收名 → 类型（类型由函数声明决定，用户只改名称）
 ```
 
 - 引擎核心不感知具体能力；能力全部经插件框架（M3）调用。
@@ -2277,6 +2279,8 @@ returns: {total: int}   # 接收名（裸 ASCII 名）→ 类型（按序对应�
 - 泛型 `object` 类型承载插件对象（页面对象/会话等）。
 - **接收名规则**（与 ref 一致）：`returns` 键**必须**为**裸 ASCII 名**（隐式创建变量）——含 `.`（如
   `NewParam.x`）或非 ASCII 名 → 校验错误 `syntax.invalid_return_name`；变量名仅 ASCII（§4.2/§5.3，不支持中文）。
+- **默认接收名与类型**：未填写时后端生成 `<节点id>_<函数返回参数名>`；类型取 `FunctionDef.returns` 声明（用户不可编辑）。例如 id 为 `n2` 的节点调用 `browser.http_request` 自动得到
+  `n2_status: int`、`n2_body: str`、`n2_headers: object`。
 
 ### 12.3 引擎内嵌形态
 
@@ -2347,6 +2351,19 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   「查看」跳转**执行详情页** `/runs/{id}`——统一展示执行状态、行为树（快照名）、入参/出参、指纹、
   耗时与折叠的「执行快照」（触发时刻行为树内容），外加执行报告/回溯报告；`POST /api/runs/{id}/retry`
   （复制快照+入参）、`DELETE /api/runs/{id}`（删除后列表即时刷新）。
+
+**草稿 / 正式版与后端权威编辑（default-return-param-names 已实现）：**
+- `trees.status ∈ {draft, published}`，同一棵树只有一份文档，不存在“正式版+草稿副本”。
+- `POST /api/trees/drafts` 新建草稿（临时名 `未命名-<时间戳>` + 空树）；首次
+  `POST /api/trees/{id}/save` 校验、改名并转 `published`。
+- 对 `published` 的任何编辑命令立即把同一条记录转为 `draft`；`draft` 不可执行（409）。
+- `ref` 只允许引用 `published` 文档；目标为 draft 时校验失败（`ref.missing_doc`，提示尚未保存为正式版）。
+- 命令式编辑：`POST /api/trees/{id}/commands`，支持 `add_node` / `delete_node` /
+  `update_node` / `update_doc` / `set_slot` / `detach_slot`；后端生成节点 id、补默认接收名/类型、
+  实现删除/槽位语义，返回完整文档。前端只负责渲染与提交命令。
+- `POST /api/trees/{id}/save` 执行完整清晰度校验；失败 422 且保持 draft。
+- 迁移脚本 `scripts.migrate_default_return_param_names`：ASCII 改名、typed outputs、默认接收名、
+  published 状态、清空 experiences；不改 `runs.content_snapshot`。
 ```
 
 ### 12.5 前端行为树的复合节点视图
@@ -2368,7 +2385,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 ```
 
 **清晰度校验位置**：
-- 前端保存时校验一次（友好提示用户修正）
+- 后端保存时校验一次（草稿允许未通过校验；保存失败保持草稿）
 - 后端执行前再校验一次（确保可执行）
 
 ### 12.6 依赖关系图
@@ -2426,7 +2443,7 @@ class MyPlugin(PluginBase):
             "properties": {"who": {"type": "string", "description": "问候对象"}},
             "required": ["who"],
         },
-        returns=("message",),      # 多返回值名（按序；FunctionCall 按此回收）
+        returns={"message": "str"},  # 返回参数名 → 类型（FunctionCall 按此回收）
         output_param=None,         # 产出型工具：变量目标参数名（None=非产出型）
     )
     def hello(self, who="world"):
@@ -2444,7 +2461,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
   ```
 - **只返回值、不写变量**：可返回裸值（str / int / list…）或 `FunctionResult`（携带报告附加信息）。
 - **产出型工具**（`output_param` 声明变量目标参数名，如 `"target"`）：LLM 调用时填该参数为目标变量名，引擎把返回值按节点 `NewParam.名[:类型]` 声明类型 **coerce** 后写入该变量；目标须在声明集内。
-- **多返回值**：`returns` 声明返回值名列表；FunctionCall 节点按序回收进 `returns` 的接收名。
+- **多返回值**：`returns` 声明 `{返回参数名: 类型}` 映射；FunctionCall 节点按序回收进接收名，类型来自该声明（用户只改名称）。
 
 ### 13.4 在「插件管理」页新增
 
@@ -2491,7 +2508,7 @@ class MyCalcPlugin(PluginBase):
             },
             "required": ["a", "b"],
         },
-        returns=("result",),
+        returns={"result": "object"},
     )
     def my_add(self, a, b):
         return a + b
@@ -2506,7 +2523,7 @@ class MyCalcPlugin(PluginBase):
             },
             "required": ["values"],
         },
-        returns=("total",),
+        returns={"total": "float"},
     )
     def my_sum(self, values):
         return sum(values)

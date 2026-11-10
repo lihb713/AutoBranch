@@ -76,7 +76,7 @@ class Engine:
         resolver=None,
         blocks_tree: dict[str, Node] | None = None,
         decl_inputs: dict[str, str] | None = None,
-        decl_outputs: list[str] | None = None,
+        decl_outputs: dict[str, str] | None = None,
         config_overrides: dict[str, object] | None = None,
         run_inputs: dict[str, object] | None = None,
     ) -> RunResult:
@@ -122,7 +122,7 @@ class Engine:
             blocks_tree=blocks_tree or {},
             resolver=resolver,
             decl_inputs=decl_inputs or {},
-            decl_outputs=decl_outputs or [],
+            decl_outputs=decl_outputs or {},
             config_overrides=config_overrides or {},
             registry=registry,
             runtime=runtime,
@@ -182,7 +182,9 @@ class Engine:
             space.write(root_frame, f"this/{name}", value, type_name)
 
     @staticmethod
-    def _read_outputs(space: SchemaSpace, root_frame, decl_outputs: list[str]) -> dict[str, object]:
+    def _read_outputs(
+        space: SchemaSpace, root_frame, decl_outputs: dict[str, str]
+    ) -> dict[str, object]:
         """遍历后读根帧输出（按 ``decl_outputs`` 声明；None 值不收录）。"""
         if root_frame is None or not decl_outputs:
             return {}

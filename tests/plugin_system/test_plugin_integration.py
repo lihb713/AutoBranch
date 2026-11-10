@@ -129,7 +129,7 @@ class _EchoPlugin(PluginBase):
             "properties": {"value": {"type": "string", "description": "值"}},
             "required": ["value"],
         },
-        returns=("v",),
+        returns={"v": "str"},
     )
     def produce(self, value):
         return value

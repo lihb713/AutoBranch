@@ -105,14 +105,14 @@ class TestRunContextDI:
         ctx = make_run_context(
             config,
             decl_inputs={"username": "str"},
-            decl_outputs=["result"],
+            decl_outputs={"result": "str"},
             config_overrides={"timeout": 30},
         )
         decl = ctx.schema_decl("文档B")
         assert decl.name == "文档B"
         assert decl.config == {"timeout": 30}
         assert decl.inputs == {"username": "str"}
-        assert decl.outputs == {"result": ""}
+        assert decl.outputs == {"result": "str"}
 
     def test_current_frame_before_enter_is_none(self, config) -> None:
         ctx = RunContext(

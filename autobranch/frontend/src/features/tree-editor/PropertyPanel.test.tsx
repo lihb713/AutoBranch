@@ -3,7 +3,7 @@ import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PropertyPanel } from "./PropertyPanel";
-import type { TreeDoc, TreeNode } from "./treeModel";
+import { detachSlot, setSlot, type TreeDoc, type TreeNode } from "./treeModel";
 import type { RefMeta } from "./validation";
 
 const functionMocks = vi.hoisted(() => ({
@@ -17,7 +17,7 @@ vi.mock("../../api/plugins", () => ({
 const DOC: TreeDoc = {
   tree: "主流程",
   inputs: {},
-  outputs: [],
+  outputs: {},
   config: {},
   root: "n1",
   nodes: {
@@ -33,7 +33,7 @@ const DOC: TreeDoc = {
 const REF_DOC: TreeDoc = {
   tree: "主流程",
   inputs: {},
-  outputs: [],
+  outputs: {},
   config: {},
   root: "r1",
   nodes: {
@@ -50,22 +50,89 @@ const REF_DOC: TreeDoc = {
   },
 };
 
-function renderPanel(
-  doc: TreeDoc,
-  node: TreeNode | null,
-  props: Partial<Parameters<typeof PropertyPanel>[0]> = {},
-) {
-  return render(
+const DIRECT_KEYS = new Set([
+  "name",
+  "body",
+  "actions",
+  "action",
+  "then",
+  "else",
+  "branches",
+  "target",
+  "function",
+  "args",
+  "returns",
+  "vars",
+]);
+
+function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>): TreeDoc {
+  const node = doc.nodes[nodeId];
+  if (!node) return doc;
+  const next: TreeNode = { ...node, fields: { ...node.fields } };
+  const target = next as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(patch)) {
+    if (DIRECT_KEYS.has(key)) {
+      target[key] = value;
+    } else {
+      next.fields[key] = String(value ?? "");
+    }
+  }
+  return { ...doc, nodes: { ...doc.nodes, [nodeId]: next } };
+}
+
+function Harness({
+  initialDoc,
+  initialNode,
+  onUpdate,
+  panelProps,
+}: {
+  initialDoc: TreeDoc;
+  initialNode: TreeNode | null;
+  onUpdate?: (doc: TreeDoc) => void;
+  panelProps: Record<string, unknown>;
+}) {
+  const [doc, setDoc] = useState(initialDoc);
+  const nodeId = initialNode?.id ?? null;
+  const apply = (next: TreeDoc) => {
+    setDoc(next);
+    onUpdate?.(next);
+  };
+  return (
     <PropertyPanel
       doc={doc}
-      node={node}
+      node={nodeId ? (doc.nodes[nodeId] ?? null) : null}
       docNames={["主流程", "文档B", "文档C"]}
       refMeta={{}}
       refTargetsOf={() => []}
-      onUpdate={() => {}}
+      onPatchNode={(id, patch) => apply(applyNodePatch(doc, id, patch))}
+      onSlotChange={(id, index, childId) =>
+        apply(childId ? setSlot(doc, id, index, childId) : detachSlot(doc, id, index))
+      }
       onLoadRefMeta={() => {}}
       onDeleteNode={() => {}}
-      {...props}
+      {...(panelProps as object)}
+    />
+  );
+}
+
+type PanelTestProps = Partial<Parameters<typeof PropertyPanel>[0]> & {
+  onUpdate?: (next: TreeDoc) => void;
+};
+
+function renderPanel(
+  doc: TreeDoc,
+  node: TreeNode | null,
+  props: PanelTestProps = {},
+) {
+  const { onUpdate, ...panelProps } = props as Record<string, unknown> & {
+    onUpdate?: (next: TreeDoc) => void;
+  };
+  return render(
+    <Harness
+      initialDoc={doc}
+      initialNode={node}
+      onUpdate={onUpdate}
+      panelProps={panelProps}
     />,
   );
 }
@@ -125,7 +192,7 @@ describe("PropertyPanel", () => {
     const doc: TreeDoc = {
       tree: "主流程",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -159,7 +226,7 @@ describe("PropertyPanel", () => {
     const doc: TreeDoc = {
       tree: "主流程",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -187,7 +254,7 @@ describe("PropertyPanel", () => {
 
   it("ref：目标下拉排除本文档并加载参数表单", () => {
     const refMeta: Record<string, RefMeta> = {
-      文档B: { inputs: { url: "str" }, outputs: ["处理结果"] },
+      文档B: { inputs: { url: "str" }, outputs: { result: "str" } },
     };
     renderPanel(REF_DOC, REF_DOC.nodes.r2, { refMeta });
     const labels = openOptions("ref-target-r2");
@@ -197,7 +264,7 @@ describe("PropertyPanel", () => {
 
     expect(screen.getByTestId("ref-arg-r2-0")).toHaveValue("url");
     expect(screen.getByTestId("ref-return-name-r2-0")).toHaveValue("result");
-    expect(screen.getByTestId("ref-return-type-r2-0")).toHaveValue("str");
+    expect(screen.getByTestId("ref-return-type-r2-0")).toHaveTextContent("str");
   });
 
   it("ref：选择目标文档触发 onLoadRefMeta", () => {
@@ -228,7 +295,7 @@ describe("PropertyPanel", () => {
     const onUpdate = vi.fn();
     renderPanel(REF_DOC, REF_DOC.nodes.r2, {
       onUpdate,
-      refMeta: { 文档B: { inputs: { url: "str" }, outputs: ["处理结果"] } },
+      refMeta: { 文档B: { inputs: { url: "str" }, outputs: { result: "str" } } },
     });
     fireEvent.change(screen.getByTestId("ref-return-name-r2-0"), {
       target: { value: "result2" },
@@ -249,7 +316,7 @@ describe("PropertyPanel", () => {
     const doc: TreeDoc = {
       tree: "主流程",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -265,7 +332,7 @@ describe("PropertyPanel", () => {
     onUpdate.mockClear();
 
     fireEvent.click(screen.getByTestId("branch-remove-b1-0"));
-    expect((onUpdate.mock.calls[0][0] as TreeDoc).nodes.b1.branches).toHaveLength(0);
+    expect((onUpdate.mock.calls[0][0] as TreeDoc).nodes.b1.branches).toHaveLength(1);
   });
 
   it("readonly 模式：字段/槽位禁用、无删除与增删按钮", () => {
@@ -278,7 +345,7 @@ describe("PropertyPanel", () => {
 
   it("readonly 模式：ref 节点目标下拉与参数禁用", () => {
     const refMeta: Record<string, RefMeta> = {
-      文档B: { inputs: { url: "str" }, outputs: ["处理结果"] },
+      文档B: { inputs: { url: "str" }, outputs: { result: "str" } },
     };
     renderPanel(REF_DOC, REF_DOC.nodes.r2, { refMeta, readonly: true });
     expect(screen.getByTestId("ref-target-r2")).toBeDisabled();
@@ -292,7 +359,7 @@ describe("PropertyPanel", () => {
         plugin: "compute",
         name: "add",
         description: "加法",
-        returns: [],
+        returns: {},
         parameters: {},
       },
       {
@@ -300,7 +367,7 @@ describe("PropertyPanel", () => {
         plugin: "compute",
         name: "multiply",
         description: "乘法",
-        returns: [],
+        returns: {},
         parameters: {},
       },
     ]);
@@ -316,7 +383,7 @@ describe("PropertyPanel", () => {
     const doc: TreeDoc = {
       tree: "主流程",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -344,7 +411,7 @@ describe("PropertyPanel", () => {
         plugin: "compute",
         name: "add",
         description: "加法",
-        returns: ["result"],
+        returns: { result: "object" },
         parameters: {
           type: "object",
           properties: {
@@ -367,7 +434,7 @@ describe("PropertyPanel", () => {
     const doc: TreeDoc = {
       tree: "主流程",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "r1",
       nodes: {
@@ -376,25 +443,7 @@ describe("PropertyPanel", () => {
       },
     };
     const onUpdate = vi.fn();
-    const StatefulPanel = () => {
-      const [cur, setCur] = useState(doc);
-      return (
-        <PropertyPanel
-          doc={cur}
-          node={cur.nodes.fc2}
-          docNames={["主流程", "文档B", "文档C"]}
-          refMeta={{}}
-          refTargetsOf={() => []}
-          onUpdate={(next) => {
-            setCur(next);
-            onUpdate(next);
-          }}
-          onLoadRefMeta={() => {}}
-          onDeleteNode={() => {}}
-        />
-      );
-    };
-    render(<StatefulPanel />);
+    renderPanel(doc, fc, { onUpdate });
     expect(screen.getByText("选择函数后自动列出参数")).toBeInTheDocument();
 
     const input = screen.getByLabelText("函数名") as HTMLInputElement;
@@ -420,7 +469,7 @@ describe("PropertyPanel", () => {
     const doc: TreeDoc = {
       tree: "变量",
       inputs: {},
-      outputs: [],
+      outputs: {},
       config: {},
       root: "n1",
       nodes: {
@@ -435,25 +484,7 @@ describe("PropertyPanel", () => {
       },
     };
     const onUpdate = vi.fn();
-    const StatefulDefine = () => {
-      const [cur, setCur] = useState(doc);
-      return (
-        <PropertyPanel
-          doc={cur}
-          node={cur.nodes.n2}
-          docNames={["变量"]}
-          refMeta={{}}
-          refTargetsOf={() => []}
-          onUpdate={(next) => {
-            setCur(next);
-            onUpdate(next);
-          }}
-          onLoadRefMeta={() => {}}
-          onDeleteNode={() => {}}
-        />
-      );
-    };
-    render(<StatefulDefine />);
+    renderPanel(doc, doc.nodes.n2, { onUpdate });
 
     expect(screen.getByTestId("define-name-n2-0")).toHaveValue("baseUrl");
     expect(screen.getByTestId("define-type-n2-0")).toHaveValue("str");

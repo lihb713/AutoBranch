@@ -95,7 +95,7 @@ class BrowserPlugin(PluginBase):
         ),
         parameters=_props(("url",), url={"type": "string", "description": "要打开的 URL"}),
         output_param="save_to",
-        returns=("page",),
+        returns={"page": "object"},
     )
     def open(self, url: str) -> FunctionResult:
         browser = self._browser
@@ -113,7 +113,7 @@ class BrowserPlugin(PluginBase):
         name="activate",
         description="把已打开的页签设为当前活动页（切换焦点，不新建）；page 传页面对象变量",
         parameters=_props(("page",), page={"type": "string", "description": _PAGE_DESC}),
-        returns=("page",),
+        returns={"page": "object"},
     )
     def activate(self, page: PageObject) -> FunctionResult:
         browser = self._browser
@@ -134,7 +134,7 @@ class BrowserPlugin(PluginBase):
         description="取当前活动页的 URL 字符串（产出型：经目标变量保存）",
         parameters=_props(()),
         output_param="save_to",
-        returns=("url",),
+        returns={"url": "str"},
     )
     def get_url(self) -> FunctionResult:
         handle = self._current_page_handle()
@@ -285,7 +285,7 @@ class BrowserPlugin(PluginBase):
                 "description": "LOD 级别 0~3（信息量递增）",
             },
         ),
-        returns=("graph",),
+        returns={"graph": "object"},
     )
     def semantic_graph(self, scope: str = "full", lod: int = 2) -> FunctionResult:
         page = self._current_page
@@ -376,7 +376,7 @@ class BrowserPlugin(PluginBase):
             json={"type": "object", "description": "JSON 请求体"},
             timeout={"type": "number", "description": "超时秒数（默认 30）"},
         ),
-        returns=("status", "body", "headers"),
+        returns={"status": "int", "body": "str", "headers": "object"},
     )
     def http_request(
         self,
@@ -416,7 +416,7 @@ class BrowserPlugin(PluginBase):
         description="提取语义图元素的值并返回（产出型：经目标变量保存）",
         parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
         output_param="target",
-        returns=("value",),
+        returns={"value": "str"},
     )
     def extract(self, ref: str) -> FunctionResult:
         handle, resolution, failure = self._bind(ref)

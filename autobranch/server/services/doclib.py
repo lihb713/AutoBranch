@@ -25,9 +25,11 @@ class DbResolver(RefResolver):
         self._db = db
 
     def resolve(self, doc_id: str) -> DocumentSource:
-        from autobranch.server.models.tree import Tree
+        from autobranch.server.models.tree import STATUS_PUBLISHED, Tree
 
-        tree = self._db.scalars(select(Tree).where(Tree.name == doc_id)).first()
+        tree = self._db.scalars(
+            select(Tree).where(Tree.name == doc_id, Tree.status == STATUS_PUBLISHED)
+        ).first()
         if tree is None:
             raise RefNotFoundError(doc_id)
         return DocumentSource(id=tree.name, data=tree.content)

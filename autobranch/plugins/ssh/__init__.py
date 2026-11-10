@@ -66,7 +66,7 @@ class SSHPlugin(PluginBase):
             key={"type": "string", "description": "私钥文件路径（与密码二选一）"},
             timeout={"type": "number", "description": "连接超时秒数（默认 15）"},
         ),
-        returns=("session",),
+        returns={"session": "object"},
     )
     def create_session(
         self,
@@ -109,7 +109,7 @@ class SSHPlugin(PluginBase):
             command={"type": "string", "description": "要执行的命令"},
             timeout={"type": "number", "description": "命令超时秒数（默认 30）"},
         ),
-        returns=("stdout", "stderr", "exit_code"),
+        returns={"stdout": "str", "stderr": "str", "exit_code": "int"},
     )
     def ssh_exec(
         self,

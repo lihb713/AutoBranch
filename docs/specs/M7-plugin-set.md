@@ -54,7 +54,7 @@ class MyPlugin(PluginBase):
         name="hello",              # 插件内函数名（全名 my_plugin.hello；跨插件可同名）
         description="返回问候语",   # 函数说明（供 LLM 工具）
         parameters={...},          # JSON Schema 参数定义
-        returns=("message",),      # 多返回值名（按序）
+        returns={"message": "str"}, # 返回参数名 → 类型（按序）
         output_param=None,         # 产出型工具：变量目标参数名（None=非产出型）
     )
     def hello(self, who="world"):
@@ -67,6 +67,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 - 仅用 Python 标准库；直接使用 exec 注入的 `PluginBase` / `engine_function` / `FunctionResult`（**不 import**）。
 - 不 import 其他插件 / `common` / 三方库；插件名小写字母/数字/`_`/`-`、不与预置同名。
 - `@engine_function` 显式注册**用户与 LLM 均可见**的函数；`@llm_function` 注册**仅 LLM 可见**的函数（技术性接口）；未标注不注册。
+- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法；未填写接收名时后端生成 `<节点id>_<返回参数名>`。
 - 函数只返回值（裸值或 `FunctionResult`）、不写变量（引擎落笔）。
 - `output_param`：产出型工具声明变量目标参数名，引擎按节点 `NewParam.名[:类型]` 声明类型 coerce 后写入变量。
 - 删除插件会置空引用它的行为树 FunctionCall 引用。

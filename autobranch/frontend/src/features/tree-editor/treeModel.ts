@@ -57,7 +57,7 @@ export type TreeNode = {
 export type TreeDoc = {
   tree: string;
   inputs: Record<string, string>;
-  outputs: string[];
+  outputs: Record<string, string>;
   config: Record<string, unknown>;
   nodes: Record<string, TreeNode>;
   root: string;
@@ -247,7 +247,9 @@ export function parseDoc(yamlText: string): TreeDoc {
     inputs: isRecord(data["inputs"])
       ? Object.fromEntries(Object.entries(data["inputs"]).map(([k, v]) => [k, String(v)]))
       : {},
-    outputs: Array.isArray(data["outputs"]) ? data["outputs"].map(String) : [],
+    outputs: isRecord(data["outputs"])
+      ? Object.fromEntries(Object.entries(data["outputs"]).map(([k, v]) => [k, String(v)]))
+      : {},
     config: Object.fromEntries(CONFIG_KEYS.filter((k) => k in data).map((k) => [k, data[k]])),
     nodes,
     root,
@@ -258,7 +260,7 @@ export function parseDoc(yamlText: string): TreeDoc {
 export function serializeDoc(doc: TreeDoc): string {
   const out: Record<string, unknown> = { tree: doc.tree };
   if (Object.keys(doc.inputs).length > 0) out["inputs"] = doc.inputs;
-  if (doc.outputs.length > 0) out["outputs"] = doc.outputs;
+  if (Object.keys(doc.outputs).length > 0) out["outputs"] = doc.outputs;
   for (const [k, v] of Object.entries(doc.config)) out[k] = v;
   const nodes: Record<string, unknown> = {};
   for (const [id, node] of Object.entries(doc.nodes)) {

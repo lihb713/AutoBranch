@@ -1,16 +1,17 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CheckReport } from "../../types/check";
 import { TreeEditorPage } from "./TreeEditorPage";
 
 const mocks = vi.hoisted(() => ({
   listTrees: vi.fn(),
   getTree: vi.fn(),
   getTreeByName: vi.fn(),
-  createTree: vi.fn(),
-  updateTree: vi.fn(),
+  createDraft: vi.fn(),
+  applyCommands: vi.fn(),
+  saveTree: vi.fn(),
+  deleteTree: vi.fn(),
   checkTree: vi.fn(),
   runTree: vi.fn(),
 }));
@@ -20,9 +21,10 @@ vi.mock("../../api/trees", () => ({
     listTrees: mocks.listTrees,
     getTree: mocks.getTree,
     getTreeByName: mocks.getTreeByName,
-    createTree: mocks.createTree,
-    updateTree: mocks.updateTree,
-    deleteTree: vi.fn(),
+    createDraft: mocks.createDraft,
+    applyCommands: mocks.applyCommands,
+    saveTree: mocks.saveTree,
+    deleteTree: mocks.deleteTree,
     checkTree: mocks.checkTree,
   },
 }));
@@ -56,10 +58,16 @@ root: n1
 const TREE = {
   id: 1,
   name: "冒烟流程",
+  status: "published",
   created_at: "2026-01-01T00:00:00",
   updated_at: "2026-01-01T00:00:00",
+  inputs: {},
   content: CONTENT,
 };
+
+function detail(overrides: Record<string, unknown> = {}) {
+  return { ...TREE, ...overrides };
+}
 
 function renderEditor(route = "/editor/1") {
   return render(
@@ -76,283 +84,143 @@ function renderEditor(route = "/editor/1") {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.listTrees.mockResolvedValue([]);
+  mocks.getTree.mockResolvedValue(TREE);
+  mocks.applyCommands.mockImplementation(async (_id: number, commands: unknown[]) => ({
+    tree: detail(),
+    created_node_id: (commands[0] as { op?: string }).op === "add_node" ? "n5" : null,
+  }));
+  mocks.saveTree.mockResolvedValue(detail());
+  mocks.createDraft.mockResolvedValue({
+    id: 9,
+    name: "未命名-1",
+    status: "draft",
+    created_at: "x",
+    updated_at: "x",
+    inputs: {},
+  });
 });
 
-describe("TreeEditorPage（统一槽位模型）", () => {
-  it("加载既有文档：解析并渲染画布节点卡片", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
+describe("TreeEditorPage（后端权威编辑）", () => {
+  it("加载既有文档：渲染画布节点", async () => {
     renderEditor("/editor/1");
-
-    await waitFor(() => {
-      expect(screen.getByTestId("node-card-n1")).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByTestId("node-card-n1")).toBeInTheDocument());
     expect(screen.getByTestId("node-card-n3")).toBeInTheDocument();
     expect(screen.getByTestId("node-card-n4")).toBeInTheDocument();
   });
 
-  it("选中节点后在属性面板展示字段", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
+  it("选中节点展示字段", async () => {
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n3")).toBeInTheDocument());
-
     fireEvent.click(screen.getByTestId("node-card-n3"));
     expect(screen.getByTestId("node-type-badge")).toHaveTextContent("Step");
     expect(screen.getByTestId("field-n3-expect")).toHaveValue('出现"工作台"');
   });
 
-  it("保存：先 /check 后 updateTree，内容为 serializeDoc 结果", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
-    mocks.checkTree.mockResolvedValue({ ok: true, issues: [] } satisfies CheckReport);
-    mocks.updateTree.mockResolvedValue({ id: 1, name: "冒烟流程", updated_at: "x" });
+  it("字段编辑通过 update_node 命令提交", async () => {
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
-
     fireEvent.click(screen.getByTestId("node-card-n4"));
     fireEvent.change(screen.getByTestId("field-n4-description"), {
       target: { value: "点击登录按钮" },
     });
-
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => expect(mocks.checkTree).toHaveBeenCalledWith(1));
-    await waitFor(() => expect(mocks.updateTree).toHaveBeenCalled());
-    expect(mocks.checkTree.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.updateTree.mock.invocationCallOrder[0],
-    );
-    const payload = mocks.updateTree.mock.calls[0][1];
-    expect(payload.name).toBe("冒烟流程");
-    expect(payload.content).toContain("点击登录按钮");
-    expect(screen.getByText("列表页占位")).toBeInTheDocument();
-  });
-
-  it("即时校验不通过：展示错误清单且不发送保存请求", async () => {
-    renderEditor("/editor");
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("check-issues")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.applyCommands).toHaveBeenCalled());
+    const commands = mocks.applyCommands.mock.calls[0][1];
+    expect(commands[0]).toMatchObject({
+      op: "update_node",
+      node_id: "n4",
+      patch: { description: "点击登录按钮" },
     });
-    expect(within(screen.getByTestId("check-issues")).getByText(/缺少必需槽位 body/)).toBeInTheDocument();
-    expect(mocks.createTree).not.toHaveBeenCalled();
   });
 
-  it("新建：点击面板创建 Step 并自动附 Action", async () => {
-    renderEditor("/editor");
-    fireEvent.click(screen.getByTestId("side-tab-nodes"));
-    await screen.findByTestId("palette-Step");
-    fireEvent.click(screen.getByTestId("palette-Step"));
-
-    expect(screen.getByTestId("node-card-n2")).toBeInTheDocument();
-    expect(screen.getByTestId("node-type-n2")).toHaveTextContent("Step");
-    expect(screen.getByTestId("node-card-n3")).toBeInTheDocument();
-    expect(screen.getByTestId("node-type-n3")).toHaveTextContent("Action");
-  });
-
-  it("新建：构建合法文档后保存调用 createTree", async () => {
-    mocks.createTree.mockResolvedValue({ id: 9, name: "新树", updated_at: "x" });
-    renderEditor("/editor");
-
-    fireEvent.click(screen.getByTestId("side-tab-tree"));
-    fireEvent.change(screen.getByPlaceholderText("如：登录流程"), { target: { value: "新树" } });
-    fireEvent.click(screen.getByTestId("side-tab-nodes"));
-    fireEvent.click(screen.getByTestId("palette-Step"));
-
-    // 把 Step(n2) 挂到 Root(n1).body
-    fireEvent.click(screen.getByTestId("node-card-n1"));
-    fireEvent.focus(screen.getByTestId("slot-n1-0"));
-    const stepOpt = screen
-      .getAllByRole("option")
-      .find((o) => o.textContent?.trim() === "步骤");
-    expect(stepOpt).toBeDefined();
-    fireEvent.mouseDown(stepOpt!);
-
-    // 补齐 Action(n3).description 与 Step(n2).expect
-    fireEvent.click(screen.getByTestId("node-card-n3"));
-    fireEvent.change(screen.getByTestId("field-n3-description"), {
-      target: { value: "点击登录" },
-    });
-    fireEvent.click(screen.getByTestId("node-card-n2"));
-    fireEvent.change(screen.getByTestId("field-n2-expect"), {
-      target: { value: "出现工作台" },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => expect(mocks.createTree).toHaveBeenCalled());
-    const payload = mocks.createTree.mock.calls[0][0];
-    expect(payload.name).toBe("新树");
-    expect(payload.content).toContain("type: Step");
-    expect(payload.content).toContain("出现工作台");
-    expect(screen.getByText("列表页占位")).toBeInTheDocument();
-  });
-
-  it("删除中间节点：其子节点回游离区（属性面板删除）", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
+  it("保存调用 saveTree 并返回列表", async () => {
     renderEditor("/editor/1");
-    await waitFor(() => expect(screen.getByTestId("node-card-n3")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId("node-card-n3"));
-    await waitFor(() => expect(screen.getByTestId("property-panel")).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId("delete-node"));
-    await waitFor(() => {
-      expect(screen.queryByTestId("node-card-n3")).not.toBeInTheDocument();
-    });
-    // n4（原 n3 的子节点）回游离区
-    expect(screen.getByTestId("free-tree-label-n4")).toHaveTextContent("游离");
+    await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(mocks.saveTree).toHaveBeenCalledWith(1, "冒烟流程"));
+    expect(await screen.findByText("列表页占位")).toBeInTheDocument();
   });
 
-  it("根节点删除按钮禁用（属性面板）", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
+  it("/editor 无 id：创建草稿并跳转", async () => {
+    mocks.getTree.mockResolvedValue(detail({ id: 9, name: "未命名-1", status: "draft" }));
+    renderEditor("/editor");
+    await waitFor(() => expect(mocks.createDraft).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.getTree).toHaveBeenCalledWith(9));
+  });
+
+  it("新增节点由后端 add_node 生成 id", async () => {
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n1")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId("node-card-n1"));
-    await waitFor(() => expect(screen.getByTestId("delete-node")).toBeInTheDocument());
-    expect(screen.getByTestId("delete-node")).toBeDisabled();
-    expect(screen.getByTestId("delete-subtree")).toBeDisabled();
+    fireEvent.click(screen.getByTestId("side-tab-nodes"));
+    fireEvent.click(screen.getByTestId("palette-Action"));
+    await waitFor(() => expect(mocks.applyCommands).toHaveBeenCalled());
+    expect(mocks.applyCommands.mock.calls[0][1][0]).toMatchObject({
+      op: "add_node",
+      node_type: "Action",
+    });
   });
 
-  it("ref 展开后收缩：预览消失且按钮回到「展开」", async () => {
-    const refContent = `tree: A
+  it("删除节点提交 delete_node 命令", async () => {
+    renderEditor("/editor/1");
+    await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("node-card-n4"));
+    fireEvent.click(screen.getByTestId("delete-node"));
+    await waitFor(() => expect(mocks.applyCommands).toHaveBeenCalled());
+    expect(mocks.applyCommands.mock.calls[0][1][0]).toMatchObject({
+      op: "delete_node",
+      node_id: "n4",
+      subtree: false,
+    });
+  });
+
+  it("ref 目标加载 typed outputs 并展示只读类型", async () => {
+    const refContent = `tree: 引用流程
 nodes:
   n1:
     type: Root
-    name: 根
     body: n2
   n2:
     type: ref
-    name: 去B
-    target: B
+    target: 文档B
     args: []
-    returns: {}
+    returns:
+      r_urlText: str
 root: n1
 `;
-    const refTree = {
-      id: 7,
-      name: "A",
-      created_at: "2026-01-01T00:00:00",
-      updated_at: "2026-01-01T00:00:00",
-      content: refContent,
-    };
-    mocks.getTree.mockResolvedValue(refTree);
+    mocks.getTree.mockResolvedValue(
+      detail({ id: 2, name: "引用流程", content: refContent }),
+    );
+    mocks.listTrees.mockResolvedValue([{ ...TREE, name: "文档B" }]);
     mocks.getTreeByName.mockResolvedValue({
-      id: 8,
-      name: "B",
-      created_at: "2026-01-01T00:00:00",
-      updated_at: "2026-01-01T00:00:00",
-      content: `tree: B
-nodes:
-  n1:
-    type: Root
-    name: B根
-    body: n2
-  n2:
-    type: Action
-    name: 动作
-    description: x
-root: n1
-`,
+      id: 3,
+      name: "文档B",
+      status: "published",
+      created_at: "x",
+      updated_at: "x",
+      inputs: {},
+      content: "tree: 文档B\noutputs: {urlText: str}\nnodes:\n  n1: {type: Root, body: n2}\n  n2: {type: Action, description: x}\nroot: n1\n",
     });
-    renderEditor("/editor/1");
+    renderEditor("/editor/2");
     await waitFor(() => expect(screen.getByTestId("node-card-n2")).toBeInTheDocument());
-
-    // 展开 → 预览子树出现
-    fireEvent.click(screen.getByTestId("node-toggle-n2"));
-    await waitFor(() => expect(screen.getByTestId("preview-node-n1")).toBeInTheDocument());
-    expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("收缩");
-
-    // 收缩 → 预览消失、按钮回「展开」
-    fireEvent.click(screen.getByTestId("node-toggle-n2"));
-    await waitFor(() => {
-      expect(screen.queryByTestId("preview-node-n1")).not.toBeInTheDocument();
-    });
-    expect(screen.getByTestId("node-toggle-n2")).toHaveTextContent("展开");
-  });
-
-  it("已有 ref 节点：加载文档后自动加载目标文档 inputs/outputs，属性面板展示入参/出参", async () => {
-    mocks.getTree.mockResolvedValue({
-      id: 7,
-      name: "A",
-      created_at: "2026-01-01T00:00:00",
-      updated_at: "2026-01-01T00:00:00",
-      content: `tree: A
-nodes:
-  n1:
-    type: Root
-    name: A根
-    body: n2
-  n2:
-    type: ref
-    name: 去B
-    target: B
-root: n1
-`,
-    });
-    mocks.getTreeByName.mockResolvedValue({
-      id: 8,
-      name: "B",
-      created_at: "2026-01-01T00:00:00",
-      updated_at: "2026-01-01T00:00:00",
-      content: `tree: B
-inputs:
-  param1: str
-outputs:
-  - param2
-nodes:
-  n1:
-    type: Root
-    name: B根
-    body: n2
-  n2:
-    type: Action
-    name: 动作
-    description: x
-root: n1
-`,
-    });
-    renderEditor("/editor/1");
-    await waitFor(() => expect(screen.getByTestId("node-card-n2")).toBeInTheDocument());
-
-    await waitFor(() => expect(mocks.getTreeByName).toHaveBeenCalledWith("B"));
-
     fireEvent.click(screen.getByTestId("node-card-n2"));
-    await waitFor(() => expect(screen.getByText("入参 param1（str）")).toBeInTheDocument());
-    expect(screen.getByText("出参 param2")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.getTreeByName).toHaveBeenCalledWith("文档B"));
+    expect(screen.getByTestId("ref-return-name-n2-0")).toHaveValue("r_urlText");
+    expect(screen.getByTestId("ref-return-type-n2-0")).toHaveTextContent("str");
   });
 
-  it("行为树级文档接口（入参/出参）在「树信息」Tab 可编辑", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
+  it("文档接口新增输入使用 ASCII 默认名并提交 update_doc", async () => {
     renderEditor("/editor/1");
-    await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
-
+    await waitFor(() => expect(screen.getByTestId("node-card-n1")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("side-tab-tree"));
-    expect(screen.getByTestId("doc-interface")).toBeInTheDocument();
-    expect(screen.getByText("树名：冒烟流程")).toBeInTheDocument();
-
     fireEvent.click(screen.getByTestId("doc-input-add"));
-    expect(screen.getByTestId("doc-input-入参1")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.applyCommands).toHaveBeenCalled());
+    const cmd = mocks.applyCommands.mock.calls[0][1][0];
+    expect(cmd.op).toBe("update_doc");
+    expect(cmd.patch.inputs).toHaveProperty("input1");
   });
 
-  it("侧栏 Tab 切换：节点/树信息/属性仅显示当前项，选节点自动回属性", async () => {
-    mocks.getTree.mockResolvedValue(TREE);
+  it("草稿树不显示可执行按钮标题禁用", async () => {
+    mocks.getTree.mockResolvedValue(detail({ status: "draft" }));
     renderEditor("/editor/1");
-    await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
-
-    expect(screen.getByText("未选中节点")).toBeInTheDocument();
-    expect(screen.queryByTestId("palette-Step")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("side-tab-tree-content")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("side-tab-nodes"));
-    expect(screen.getByTestId("palette-Step")).toBeInTheDocument();
-    expect(screen.queryByText("未选中节点")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("side-tab-tree"));
-    expect(screen.getByTestId("side-tab-tree-content")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("如：登录流程")).toBeInTheDocument();
-    expect(screen.queryByTestId("palette-Step")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId("node-card-n3"));
-    expect(screen.getByTestId("node-props")).toBeInTheDocument();
-    expect(screen.queryByTestId("palette-Step")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "执行" })).toBeDisabled());
   });
 });
