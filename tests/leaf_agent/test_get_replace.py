@@ -51,9 +51,9 @@ def test_get_replaced_with_real_value(llm_config, space):
     result = execute_leaf(node, ctx)
     assert result.status == "success"
     body = transport.last_request.json()
-    joined = " ".join(m["content"] for m in body["messages"])
-    assert "98.0" in joined
-    assert "Param." not in joined
+    user_text = " ".join(m["content"] for m in body["messages"] if m["role"] == "user")
+    assert "98.0" in user_text
+    assert "Param." not in user_text
 
 
 def test_get_undefined_fails_leaf(llm_config, space):

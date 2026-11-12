@@ -325,3 +325,14 @@ def test_old_tuple_returns_rejected_at_decoration():
             @engine_function(name="f", returns=("x",))
             def f(self):
                 return "x"
+
+
+def test_dynamic_capability_injects_save_to_for_producing_function():
+    reg = PluginRegistry()
+    reg.register(DemoPlugin())
+    result = handle_use_capability(reg, {"capability": "demo"})
+    assert result.ok
+    tools = {tool.name: tool for tool in result.detail["functions"]}
+    greet = tools["demo__greet"]
+    assert "target" in greet.parameters["properties"]
+    assert "save_to" not in greet.parameters["properties"]

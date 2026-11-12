@@ -450,16 +450,22 @@ n9:
 
 **机制**：
 - **读取（Param.）确定性**：`Param.xxx` 出现在叶子描述中，引擎在叶子执行前从
-  blackboard 读取真实值替换后注入 LLM——**LLM 看到的永远是值**，不调函数读变量。
+  blackboard 读取：
+  - 基本类型（str/int/float/bool）：替换为真实值文本；
+  - 对象类型（object/page_ref）：**保留 `Param.xxx` 原文**，并在用户消息的「当前变量表」中展示变量名/类型/对象 repr，供 LLM 在函数参数中用 `Param.xxx` 引用。
   读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
+- **对象参数解析**：LLM 调用插件函数时，字符串参数值若完整匹配 `Param.xxx`，引擎从当前帧读取实际对象后传给插件
+  （如 `ssh.ssh_exec(session="Param.ssh_conn", ...)`、`browser.activate(page="Param.tab")`）。
+- **变量表**：每个叶子执行前把当前帧变量快照注入用户消息（`当前变量表: - 名 (类型): 值`；对象显示 repr、截断）。
 - **读取变量静态校验**：`Param.x` 读取的变量必须是**本文档 inputs 声明**（调用方
   经 ref args 传入）、**本文档内 `NewParam.x` 写入声明**、**ref/FunctionCall 的 returns
   目标变量**或 **`Define` 节点声明的变量**；未定义即读取 → 清晰度校验报
   `scope.get_undeclared`（解析期拦截）。output 声明不构成读取源（输出是本文档返回给调用方的值）。
   引擎运行时写入的变量（open/get_url 的 save_to）也须配 `NewParam.x` 标注才能被读取。
 - **写入（NewParam.）声明**：`NewParam.类型:xxx`（类型可省略）声明本动作的可写变量集。
-  LLM 决定何时调用 extract（一个 action 可多值），但 **extract 的 target 必须在声明集内**
-  （未声明路径拒绝）。
+  LLM 决定何时调用产出型函数，但 **save_to 目标必须在声明集内**（未声明路径拒绝）。
+- **save_to 形式**：单返回值函数填字符串（取 `values[0]`）；多返回值函数填
+  `{"返回参数名": "变量名", ...}` 映射（按函数 `returns` 顺序取对应值；可只保存部分返回值）。
 - **声明（Define）**：`Define` 为确定性叶子（不经 LLM、无截图）。其 `vars` 逐项求值
   （字面量或 `Param.x` 读本帧）→ 按 `type` coerce → 写入本帧 `this/<名>`；求值/coerce
   失败 → 节点 FAILURE。声明的变量计入"已定义"，供后续 `Param` 读取。
@@ -943,7 +949,7 @@ ExecState: 复用 M8 (未新增模型)
 
 **引擎函数集是可扩展的**——随需求增减。底层封装供 LLM 调用的 web 操作方法集，后续可按需增加或减少（如新增 download/upload、自定义复合操作等）。
 
-> **页面操作绑定**：所有页面操作函数（click/type/semantic_graph/...）作用于**浏览器当前活动页**（最近 open/activate 的页签，§5.10）。首次打开/访问网址直接 `open(url)` 新建页签，无需先有当前页面；切换已打开页签用 `activate(page_var)`。
+> **页面操作绑定**：所有页面操作函数（click/type/semantic_graph/...）作用于**浏览器当前活动页**（最近 open/activate 的页签，§5.10）。首次打开/访问网址直接 `open(url)` 新建页签，无需先有当前页面；切换已打开页签用 `activate(page="Param.页签变量")`。
 
 **注意**：`finish` 不是引擎函数——**流程完成/报告由行为树执行流程固化**（见 §5.8.3），不由 LLM 决定调用。
 
@@ -977,7 +983,8 @@ ref 语义:
 
 调用入口: registry.call(name, arguments) — M4 叶子 / M5 编排器按函数名分发
   - 两级能力选择: 能力概览 + use_capability(name) → 加载插件、函数追加工具集
-  - 变量落笔: 产出型工具（output_param）由引擎拆目标、按 NewParam.名[:类型] coerce 写变量
+  - 变量落笔: 产出型工具（output_param）由引擎拆目标、解析参数中的 Param.x、按 NewParam.名[:类型] coerce 写变量
+  - save_to: 字符串（单返回值）或 {返回参数名: 变量名}（多返回值，可部分保存）
 
 open(url) 变量名约定:
   仅当动作描述含 NewParam.名:object 声明时才经 save_to 显式命名变量（页面对象为泛型 object）;

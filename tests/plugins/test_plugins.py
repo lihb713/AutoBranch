@@ -157,3 +157,18 @@ def test_ssh_release_closes_sessions(monkeypatch):
     client = session.value.client
     reg.release()
     assert client.closed
+
+
+def test_ssh_functions_declare_save_to():
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    create = reg.function("ssh.create_session")
+    assert create.output_param == "save_to"
+    assert create.returns == {"session": "object"}
+    exec_spec = reg.function("ssh.ssh_exec")
+    assert exec_spec.output_param == "save_to"
+    assert exec_spec.returns == {
+        "stdout": "str",
+        "stderr": "str",
+        "exit_code": "int",
+    }

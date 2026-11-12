@@ -30,7 +30,7 @@ from autobranch.plugins.browser.semantic_graph import (
 from autobranch.plugins.browser.semantic_graph.errors import LlmStageError, ProgramStageError
 from autobranch.plugins.common import PageObject
 
-_PAGE_DESC = "页面对象（open 返回，可存入变量；activate 接收）"
+_PAGE_DESC = "页面对象（open 返回并保存到变量后，用 Param.变量名 引用）"
 _REF_DESC = "语义图元素引用（如 [1]，来自最近一次 semantic_graph）"
 
 
@@ -111,7 +111,10 @@ class BrowserPlugin(PluginBase):
 
     @llm_function(
         name="activate",
-        description="把已打开的页签设为当前活动页（切换焦点，不新建）；page 传页面对象变量",
+        description=(
+            "把已打开的页签设为当前活动页（切换焦点，不新建）；"
+            "page 使用 Param.变量名 引用 open 保存的页面对象"
+        ),
         parameters=_props(("page",), page={"type": "string", "description": _PAGE_DESC}),
         returns={"page": "object"},
     )

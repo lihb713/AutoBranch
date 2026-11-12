@@ -123,9 +123,64 @@ def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | No
                 return description, f"变量读取失败（{var}）: {exc}"
             if value is None:
                 return description, f"变量未定义: {var}"
-            replaced = replaced.replace(match.group(0), str(value))
+            var_type = getattr(frame, "declared", {}).get(var) or infer_type(value)
+            if var_type in ("str", "int", "float", "bool"):
+                replaced = replaced.replace(match.group(0), str(value))
+            # object/page_ref：保留 Param.xxx，由变量表让 LLM 理解对象
         out.append(replaced)
     return "".join(out), None
+
+
+def _resolve_param_args(arguments: dict, ctx: LeafContext) -> dict:
+    """扫描参数值中的 ``Param.xxx``，从当前帧解析为实际对象。
+
+    只处理完整匹配 ``Param.xxx`` 的字符串值（与描述替换同一正则）；
+    ``save_to`` 已在调用前拆出，不参与解析。
+    """
+    if not arguments or ctx.space is None:
+        return arguments
+    frame = ctx.space._current
+    if frame is None:
+        return arguments
+    resolved: dict = {}
+    for key, val in arguments.items():
+        if isinstance(val, str):
+            m = _GET_TMPL.fullmatch(val.strip())
+            if m:
+                try:
+                    resolved[key] = ctx.space.read(frame, m.group(1))
+                    continue
+                except SchemaError:
+                    pass
+        resolved[key] = val
+    return resolved
+
+
+def _format_variable_table(ctx: LeafContext) -> list[dict]:
+    """当前帧变量快照（供用户消息变量表；不含子帧）。"""
+    if ctx.space is None:
+        return []
+    frame = ctx.space._current
+    if frame is None:
+        return []
+    try:
+        snapshot = ctx.space.snapshot_variables(frame)
+    except Exception:  # noqa: BLE001 - 变量表仅提示，失败不阻断
+        return []
+    out: list[dict] = []
+    prefix = f"{frame.name}/"
+    for item in snapshot:
+        path = str(item.get("path") or "")
+        if not path.startswith(prefix):
+            continue
+        out.append(
+            {
+                "name": path[len(prefix) :],
+                "type": item.get("type", ""),
+                "value": item.get("value"),
+            }
+        )
+    return out
 
 
 def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResult:
@@ -165,6 +220,7 @@ def execute_leaf(node: ActionNode | ConditionNode, ctx: LeafContext) -> LeafResu
         set_targets=set_targets,
         set_decls=set_decls,
         reference=reference,
+        variables=_format_variable_table(ctx),
     )
     session.add_user_message(user_message)
     outcome = _run_agent_loop(session, ctx, node_type, tools, set_targets, set_decls)
@@ -365,7 +421,10 @@ def _plugin_tool_call(
     if spec.is_producing:
         target = (arguments or {}).get(spec.output_param)
         declared = {_norm_path(t) for t in set_targets}
-        call_args = {k: v for k, v in (arguments or {}).items() if k != spec.output_param}
+        decl_types = dict(set_decls)
+        call_args = _resolve_param_args(
+            {k: v for k, v in (arguments or {}).items() if k != spec.output_param}, ctx
+        )
         if not target:
             # 未提供目标 → 不落笔（可选产出，如 open 无 save_to）
             result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
@@ -377,23 +436,77 @@ def _plugin_tool_call(
                 None,
                 owner == "browser",
             )
-        if _norm_path(target) not in declared:
+        if isinstance(target, str):
+            target_name = _norm_path(target)
+            if target_name not in declared:
+                result = FunctionResult.failure(
+                    f"{full_name} 目标 {target!r} 未在叶子可写变量集内"
+                    f"（声明: {', '.join(set_targets) or '无'}；请用 NewParam.x 声明）"
+                )
+                return result, _plugin_text(result, ""), [], None, False
+            result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
+            saved = False
+            if result.ok and result.values:
+                _write_result(
+                    ctx, target_name, result.values[0], decl_types.get(target_name, "")
+                )
+                saved = True
+            save_note = f"已保存返回值到变量: {target_name}" if saved else ""
+        elif isinstance(target, dict):
+            return_names = list(spec.returns)
+            planned: list[tuple[str, str]] = []
+            for ret_name, var_name in target.items():
+                if ret_name not in return_names:
+                    result = FunctionResult.failure(
+                        f"{full_name} 的 save_to 键 {ret_name!r} 不是返回参数名"
+                        f"（可用: {', '.join(return_names) or '无'}）"
+                    )
+                    return result, _plugin_text(result, ""), [], None, False
+                if not isinstance(var_name, str) or not var_name.strip():
+                    result = FunctionResult.failure(
+                        f"{full_name} 的 save_to[{ret_name!r}] 必须是变量名字符串"
+                    )
+                    return result, _plugin_text(result, ""), [], None, False
+                var_norm = _norm_path(var_name)
+                if var_norm not in declared:
+                    result = FunctionResult.failure(
+                        f"{full_name} 目标 {var_name!r} 未在叶子可写变量集内"
+                        f"（声明: {', '.join(set_targets) or '无'}；请用 NewParam.x 声明）"
+                    )
+                    return result, _plugin_text(result, ""), [], None, False
+                planned.append((ret_name, var_norm))
+            result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
+            saved: list[str] = []
+            if result.ok:
+                for ret_name, var_norm in planned:
+                    idx = return_names.index(ret_name)
+                    if idx < len(result.values):
+                        _write_result(
+                            ctx,
+                            var_norm,
+                            result.values[idx],
+                            decl_types.get(var_norm, ""),
+                        )
+                        saved.append(f"{ret_name}->{var_norm}")
+            save_note = "已保存返回值: " + ", ".join(saved) if saved else ""
+        else:
             result = FunctionResult.failure(
-                f"{full_name} 目标 {target!r} 未在叶子可写变量集内"
-                f"（声明: {', '.join(set_targets) or '无'}；请用 NewParam.x 声明）"
+                f"{full_name} 的 save_to 必须是字符串或 {{返回参数名: 变量名}} 映射"
             )
             return result, _plugin_text(result, ""), [], None, False
-        result = ctx.registry.call(full_name, call_args, runtime=ctx.runtime)
-        if result.ok:
-            decl_type = dict(set_decls).get(_norm_path(target), "")
-            _write_result(ctx, _norm_path(target), result.value, decl_type)
     else:
-        result = ctx.registry.call(full_name, arguments, runtime=ctx.runtime)
+        result = ctx.registry.call(
+            full_name, _resolve_param_args(arguments, ctx), runtime=ctx.runtime
+        )
+        save_note = ""
     owner = ctx.registry.owner(full_name) or ""
     screenshot = None
     if spec.name == "semantic_graph" and result.ok:
         screenshot = (result.detail or {}).get("screenshot")
-    return result, _plugin_text(result, owner), [], screenshot, owner == "browser"
+    text = _plugin_text(result, owner)
+    if save_note:
+        text += f"\n{save_note}"
+    return result, text, [], screenshot, owner == "browser"
 
 
 def _initial_tools(ctx: LeafContext) -> list[ToolSpec]:
@@ -404,8 +517,11 @@ def _initial_tools(ctx: LeafContext) -> list[ToolSpec]:
         if spec.is_producing:
             extra = {
                 spec.output_param: {
-                    "type": "string",
-                    "description": "产出值存入的变量名（裸名，须在 NewParam. 声明集内）",
+                    "description": (
+                        "产出值存入的变量名：单返回值填字符串如 'var'；"
+                        "多返回值填 JSON 对象如 {\"stdout\": \"out\", \"stderr\": \"err\"}；"
+                        "须在 NewParam. 声明集内"
+                    )
                 }
             }
         tools.append(spec.to_tool_spec(extra_params=extra))

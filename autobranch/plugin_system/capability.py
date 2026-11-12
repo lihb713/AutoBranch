@@ -68,6 +68,20 @@ def handle_use_capability(
     except Exception as exc:  # noqa: BLE001 - 装配失败转失败结果
         return FunctionResult.failure(f"能力 {name} 加载失败: {exc}")
     funcs = registry.functions_of(name)
+    tool_specs = []
+    for spec in funcs:
+        extra = None
+        if spec.is_producing:
+            extra = {
+                spec.output_param: {
+                    "description": (
+                        "产出值存入的变量名：单返回值填字符串如 'var'；"
+                        "多返回值填 JSON 对象如 {\"stdout\": \"out\", \"stderr\": \"err\"}；"
+                        "须在 NewParam. 声明集内"
+                    )
+                }
+            }
+        tool_specs.append(spec.to_tool_spec(extra_params=extra))
     return FunctionResult.success(
         report={
             "sections": [
@@ -78,7 +92,7 @@ def handle_use_capability(
             ]
         },
         capability=name,
-        functions=[s.to_tool_spec() for s in funcs],
+        functions=tool_specs,
     )
 
 

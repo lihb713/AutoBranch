@@ -32,7 +32,7 @@ def test_decision_sequence_regression(config, fake, stub_engine):
     assert result.status == "success"
     assert [c.name for c in result.trace.calls] == ["browser.semantic_graph", "browser.type"]
     assert result.trace.calls[1].arguments == {"ref": "[1]", "text": "admin"}
-    assert result.trace.llm_input["prompt_version"] == "1.6"
+    assert result.trace.llm_input["prompt_version"] == "2.0"
 
 
 def test_prompt_rendering_regression_golden():
@@ -43,11 +43,12 @@ def test_prompt_rendering_regression_golden():
         "在用户名输入框输入 admin",
         "PAGE: 登录页  URL=https://example.com/login\nFIELD [1] 用户名输入框",
     )
-    assert "你是一个 Web 自动化执行代理" in system
+    assert "你是一个自动化执行代理" in system
     assert "可用引擎函数: semantic_graph, click, type" in system
     assert "结果: 成功" in system
     assert user == (
-        "节点描述: 在用户名输入框输入 admin\n\n当前页面语义图:\n"
+        "节点描述: 在用户名输入框输入 admin\n当前变量表: (空)"
+        "\n\n当前页面语义图:\n"
         "PAGE: 登录页  URL=https://example.com/login\nFIELD [1] 用户名输入框"
     )
 

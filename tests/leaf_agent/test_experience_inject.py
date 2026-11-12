@@ -57,9 +57,10 @@ def test_execute_leaf_injects_reference_and_records_resolved(llm_config, space):
 
     body = transport.last_request.json()
     joined = " ".join(m["content"] for m in body["messages"])
+    user_text = " ".join(m["content"] for m in body["messages"] if m["role"] == "user")
     # 命中经验 → 参考段进入用户消息（携带替换后的实际值）
     assert "参考经验: 登录用户: admin" in joined
-    assert "Param." not in joined
+    assert "Param." not in user_text
     # 任务 1.2：LeafTrace 记录替换后描述（非模板）
     assert result.trace.llm_input["description"] == "登录用户: admin"
 

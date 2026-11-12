@@ -49,12 +49,18 @@ class MockRegistry:
         return list(self._functions.values())
 
     def register(
-        self, name: str, *, output_param: str | None = None, parameters: dict | None = None
+        self,
+        name: str,
+        *,
+        output_param: str | None = None,
+        parameters: dict | None = None,
+        returns: dict[str, str] | None = None,
     ) -> None:
         self._functions[name] = FunctionDef(
             name=name,
             parameters=parameters or {"type": "object", "properties": {}},
             output_param=output_param,
+            returns=returns or {},
         )
 
     def function(self, name: str) -> FunctionDef | None:

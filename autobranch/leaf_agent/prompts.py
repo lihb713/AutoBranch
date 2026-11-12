@@ -15,11 +15,27 @@ import json
 from typing import Literal
 
 from autobranch.parser.models import ActionNode, ConditionNode
+from autobranch.schema.types import infer_type
 
-PROMPT_VERSION = "1.6"
+PROMPT_VERSION = "2.0"
+
+_VARIABLE_MECHANISM = """\
+变量机制：
+1. 行为树维护一个变量表，函数返回值可通过 save_to 参数存入变量
+2. 描述中出现 Param.xxx 时，表示引用变量 xxx 中的值
+   - 基本类型（str/int/float/bool）：描述中 Param.xxx 会被替换为变量的实际值
+   - 对象类型（object/page_ref）：描述中保留 Param.xxx，需配合变量表理解
+3. 调用函数时，参数值可填 Param.xxx 来引用变量中存储的对象
+4. save_to 参数指定返回值存入哪个变量：
+   - 单返回值函数：save_to="变量名"
+   - 多返回值函数：save_to={"返回参数名1": "变量名1", "返回参数名2": "变量名2"}
+   - 可只指定部分返回值，未指定的返回值不保存
+5. save_to 中的变量名必须在 NewParam 声明集内"""
 
 _ACTION_SYSTEM = """\
-你是一个 Web 自动化执行代理。你的任务是根据「节点描述」，在浏览器中执行对应的网页操作。
+你是一个自动化执行代理。你的任务是根据「节点描述」，执行对应的操作。
+
+{variable_mechanism}
 
 {schema_hint}
 
@@ -45,7 +61,9 @@ _ACTION_SYSTEM = """\
    不得臆造或改写名称。"""
 
 _CONDITION_SYSTEM = """\
-你是一个 Web 自动化判断代理。你的任务是根据「节点描述」（条件），判断当前页面是否满足该条件。
+你是一个自动化判断代理。你的任务是根据「节点描述」（条件），判断当前状态是否满足该条件。
+
+{variable_mechanism}
 
 {schema_hint}
 
@@ -78,7 +96,9 @@ def build_system_prompt(node: ActionNode | ConditionNode, schema_hint: str) -> s
         template = _CONDITION_SYSTEM
     else:
         raise TypeError(f"不支持的叶子节点类型: {type(node).__name__}")
-    return template.format(schema_hint=schema_hint)
+    return template.format(
+        schema_hint=schema_hint, variable_mechanism=_VARIABLE_MECHANISM
+    )
 
 
 def build_user_message(
@@ -88,6 +108,7 @@ def build_user_message(
     set_targets: tuple[str, ...] = (),
     set_decls: tuple[tuple[str, str], ...] = (),
     reference: str | None = None,
+    variables: list[dict] | None = None,
 ) -> str:
     """构建用户消息（节点描述 + 当前语义图正文）。
 
@@ -97,6 +118,8 @@ def build_user_message(
       提取后转换。仅作提示，实际类型由引擎函数保证。
     :param reference: 经验回灌参考段（同行为树同入参历史成功做法，命中才注入；
       明示仅供参考、以当前语义图为准、与当前状态不符时忽略）。
+    :param variables: 当前帧变量快照（``[{name, type, value}]``）；渲染变量表供
+      LLM 理解对象变量，避免只看到 ``Param.x`` 文本。
     """
     hint = f"\nCSS 提示: {css_hint}" if css_hint else ""
     set_line = ""
@@ -117,7 +140,27 @@ def build_user_message(
             "调 activate 而非 open）"
         )
     ref_line = f"\n\n{reference}" if reference else ""
-    return f"节点描述: {description}{hint}{set_line}{ref_line}\n\n当前页面语义图:\n{graph_text}"
+    var_line = _format_variables(variables)
+    return (
+        f"节点描述: {description}{hint}{set_line}{var_line}{ref_line}"
+        f"\n\n当前页面语义图:\n{graph_text}"
+    )
+
+
+def _format_variables(variables: list[dict] | None) -> str:
+    """渲染当前变量表（对象显示 repr，长文本截断）。"""
+    if not variables:
+        return "\n当前变量表: (空)"
+    lines = ["\n当前变量表:"]
+    for item in variables:
+        name = item.get("name") or item.get("path") or "?"
+        typ = item.get("type") or infer_type(item.get("value"))
+        value = item.get("value")
+        text = str(value) if typ not in ("object", "page_ref") else repr(value)
+        if len(text) > 200:
+            text = text[:200] + "…"
+        lines.append(f"  - {name} ({typ}): {text}")
+    return "\n".join(lines)
 
 
 class DecisionError(ValueError):

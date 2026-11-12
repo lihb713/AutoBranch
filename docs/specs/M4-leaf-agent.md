@@ -19,7 +19,7 @@
 | 多轮定位 | LLM 多次调用 semantic_graph（缩小/放大）定位目标 | §9.6 | ✅ semantic_graph 作为普通工具注入，零专用逻辑 |
 | 引擎兜底 | 终止条件：轮数上限/连续无进展/单叶子超时 | §5.7.2.1 | ✅ `terminator.py` + 驱动循环内检测 |
 | 错误边界 | 函数失败归 LLM；致命错误归引擎 | §5.7.2.1/§9.4 | ✅ `OpResult(ok=False)` 回传 / `FatalBrowserError` 终止 |
-| 提示词设计 | 节点描述 + 语义图 → 可靠决策的提示词（空间方位感知 + get/set 变量语义 + 「何时获取最新语义图」自主决策） | §10.1-5 | ✅ `prompts.py`（版本化 `PROMPT_VERSION="1.4"`） |
+| 提示词设计 | 节点描述 + 语义图 → 可靠决策的提示词（空间方位感知 + get/set 变量语义 + 「何时获取最新语义图」自主决策） | §10.1-5 | ✅ `prompts.py`（版本化 `PROMPT_VERSION="2.0"`） |
 
 ## 3. 数据依赖
 
@@ -163,7 +163,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 5. **`terminator` 取值集合**：`round_limit`/`no_progress`/`timeout`/`budget`（LLM 侧终止）与 `fatal_error`/`llm_connection`/`llm_timeout`/`llm_error`（错误中断）；正常完成或决策不可解析为 `None`。
 6. **`LeafContext.registry` 注入**：M6 不构造插件，由 M7/后端注入共享注册表（M3 插件框架）；`session_factory` 供测试注入假传输，默认按 `config` + `session_timeout` 构建真实会话。
 7. **轮数语义**：`max_rounds` 指 LLM 工具调用轮数上限，第 `max_rounds+1` 轮请求即终止（前 `max_rounds` 轮完整执行并回填）。
-8. **提示词版本化**：`PROMPT_VERSION="1.6"`，变更提示词须递增版本号并通过回归测试（`tests/leaf_agent/test_regression.py` 金样本）。v1.1 起新增空间方位感知（结合语义图 `(页面方位)` 标注理解位置指令）与「何时获取最新语义图」的自主决策引导：操作可能改变页面布局/关键信息时操作前获取最新；操作或判断失败时重新获取最新；其余情况可复用当前语义图，不强制每次获取，引擎以 ref stale 兜底（M5）。v1.2 新增变量 get/set 语义：`Param.x` 已被程序在叶子执行前替换为真实值（LLM 无需处理）；`NewParam.x[:类型]` 声明本动作可写变量集，LLM 提取值后调 extract 且 target 须取自声明集（未声明目标被拒）。v1.3 类型化标注（`NewParam.pageRef:page_ref`/`NewParam.url:str` 提示存页签/存文本、选 open(save_to)/get_url）。v1.4 类型标注并入 TYPE_REGISTRY 英文 token。v1.5 语法统一为 `Param.`/`NewParam.`（旧 `[[set]]`/`[[get]]` 彻底废弃）。**v1.6 叶子鲁棒性增强**：① LLM 畸形输出（工具调用参数非合法 JSON / 响应不可解析）与最终结果不可解析（`DecisionError`）改为**回填纠错指令、在轮次预算内重试**，而非直接终止叶子；② 系统提示**注入能力概览**（`capability_overview`，含精确可用能力名），并要求 `use_capability` 能力名逐字取自「可用能力」列表，降低能力名臆造。
+8. **提示词版本化**：`PROMPT_VERSION="2.0"`，变更提示词须递增版本号并通过回归测试（`tests/leaf_agent/test_regression.py` 金样本）。v1.1 起新增空间方位感知（结合语义图 `(页面方位)` 标注理解位置指令）与「何时获取最新语义图」的自主决策引导：操作可能改变页面布局/关键信息时操作前获取最新；操作或判断失败时重新获取最新；其余情况可复用当前语义图，不强制每次获取，引擎以 ref stale 兜底（M5）。v1.2 新增变量 get/set 语义：`Param.x` 基本类型在叶子执行前替换为真实值（LLM 无需处理）；`NewParam.x[:类型]` 声明本动作可写变量集，LLM 提取值后调 extract 且 target 须取自声明集（未声明目标被拒）。v1.3 类型化标注（`NewParam.pageRef:page_ref`/`NewParam.url:str` 提示存页签/存文本、选 open(save_to)/get_url）。v1.4 类型标注并入 TYPE_REGISTRY 英文 token。v1.5 语法统一为 `Param.`/`NewParam.`（旧 `[[set]]`/`[[get]]` 彻底废弃）。**v2.0 变量传递机制**：① 系统提示新增变量机制说明并要求参数可用 `Param.xxx` 引用对象；② 用户消息注入当前帧变量表（对象显示 repr）；③ `Param.xxx` 基本类型继续替换，object/page_ref 保留原文；④ 函数参数中的完整 `Param.xxx` 字符串解析为实际变量值；⑤ 产出型工具 `save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值、可部分保存）；⑥ 动态 `use_capability` 为产出型函数注入 `save_to`；⑦ 提示词去 Web 专化，适用于 SSH/文件/计算等插件。**v1.6 叶子鲁棒性增强**：① LLM 畸形输出（工具调用参数非合法 JSON / 响应不可解析）与最终结果不可解析（`DecisionError`）改为**回填纠错指令、在轮次预算内重试**，而非直接终止叶子；② 系统提示**注入能力概览**（`capability_overview`，含精确可用能力名），并要求 `use_capability` 能力名逐字取自「可用能力」列表，降低能力名臆造。
 
 
 ## 8. 插件两级能力选择与变量落笔（能力插件化新增，已实现）
@@ -179,7 +179,12 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 
 ### 8.2 变量写入落笔
 
-产出型工具（`output_param` 声明单一变量目标参数）：执行器拆出目标参数、调插件函数，按节点 `NewParam.名[:类型]` 声明类型 **coerce** 后写入当前帧变量（声明 `NewParam.appleAmount:int` → 存 int 120）；目标不在声明集内 → 拒绝并回传错误给 LLM。
+产出型工具（`output_param` 声明变量目标参数）：执行器拆出目标参数、解析函数参数中的 `Param.xxx`、调插件函数，按节点 `NewParam.名[:类型]` 声明类型 **coerce** 后写入当前帧变量（声明 `NewParam.appleAmount:int` → 存 int 120）；目标不在声明集内 → 拒绝并回传错误给 LLM。
+
+- **单返回值**：`save_to="变量名"`，写入 `result.values[0]`。
+- **多返回值**：`save_to={"返回参数名": "变量名", ...}`，按函数 `returns` 顺序取对应值写入；可只保存部分返回值。
+- **对象参数**：LLM 调用函数时可用 `"Param.变量名"` 引用对象（如 `ssh.ssh_exec(session="Param.ssh_conn")`），执行器从当前帧解析为实际对象。
+- **变量表**：每个叶子执行前把当前帧变量（名称/类型/值）注入用户消息；object/page_ref 显示 repr 截断。
 
 ### 8.3 截图收集
 

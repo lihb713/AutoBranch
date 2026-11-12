@@ -33,7 +33,7 @@
 
 ### SSH 插件
 
-会话对象（`SSHConnection`）作为泛型 `object` 值；`create_session`（端口/认证/超时）、`ssh_exec`（命令超时、非零退出码 = 失败）、`close_session`；release 关闭全部会话。
+会话对象（`SSHConnection`）作为泛型 `object` 值；`create_session`（端口/认证/超时，`output_param="save_to"`）、`ssh_exec`（命令超时、非零退出码 = 失败，`output_param="save_to"`，可保存 stdout/stderr/exit_code）、`close_session`；release 关闭全部会话。LLM 用 `Param.变量名` 引用会话对象，如 `ssh.ssh_exec(session="Param.ssh_conn", command="ls /home", save_to={"stdout": "home_list"})`。
 
 ### 文件插件
 

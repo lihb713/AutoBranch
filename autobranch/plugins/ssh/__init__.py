@@ -67,6 +67,7 @@ class SSHPlugin(PluginBase):
             timeout={"type": "number", "description": "连接超时秒数（默认 15）"},
         ),
         returns={"session": "object"},
+        output_param="save_to",
     )
     def create_session(
         self,
@@ -105,11 +106,18 @@ class SSHPlugin(PluginBase):
         description="在远程会话执行命令，返回 stdout / stderr / 退出码（非零退出码为失败）",
         parameters=_params(
             ("session", "command"),
-            session={"type": "string", "description": "会话对象（create_session 返回）"},
+            session={
+                "type": "string",
+                "description": (
+                    "SSH 会话对象，使用 Param.变量名 引用"
+                    "（create_session 返回并保存的变量）"
+                ),
+            },
             command={"type": "string", "description": "要执行的命令"},
             timeout={"type": "number", "description": "命令超时秒数（默认 30）"},
         ),
         returns={"stdout": "str", "stderr": "str", "exit_code": "int"},
+        output_param="save_to",
     )
     def ssh_exec(
         self,
@@ -142,7 +150,16 @@ class SSHPlugin(PluginBase):
     @engine_function(
         name="close_session",
         description="关闭远程 SSH 会话",
-        parameters=_params(("session",), session={"type": "string", "description": "会话对象"}),
+        parameters=_params(
+            ("session",),
+            session={
+                "type": "string",
+                "description": (
+                    "SSH 会话对象，使用 Param.变量名 引用"
+                    "（create_session 返回并保存的变量）"
+                ),
+            },
+        ),
     )
     def close_session(self, session: SSHConnection) -> FunctionResult:
         conn = self._find(session)

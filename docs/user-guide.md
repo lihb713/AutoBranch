@@ -483,6 +483,7 @@ n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
 
 - 读取的变量必须是：文档 `inputs` 声明、文档内某处 `NewParam.x` 写入声明、`ref`/`FunctionCall` 的 `returns` 目标、或 `Define` 声明的变量。否则清晰度校验报 `scope.get_undeclared`。
 - 未定义的读取 → 该叶子直接 FAILURE（程序错误）。
+- **基本类型**（str/int/float/bool）会替换成真实值；**对象类型**（`object`/`page_ref`）保留 `Param.x` 原文，同时在用户消息的「当前变量表」中展示对象类型与值，供 LLM 在函数参数中引用。
 
 ### 8.2 写入：`NewParam.x[:类型]`（仅 Action 描述）
 
@@ -495,6 +496,13 @@ n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
 - 类型 token：`str` / `int` / `float` / `bool` / `page_ref` / `object`（可省略，按动作推断）。
 - 产出型工具的目标必须在 `NewParam.` 声明集内，否则拒绝写入。
 - `NewParam.` **只能出现在 Action 的 `description`**；Condition 描述只能读取，不能声明写入。
+- **对象变量**：工具参数可以直接写 `Param.x` 引用变量中的对象（如 `session="Param.ssh_conn"`、`page="Param.tab"`），引擎调用前会解析为实际对象。
+- **save_to 多返回值**：单返回值函数写 `save_to="变量名"`；多返回值函数写 `save_to={"返回参数名": "变量名", ...}`，可只保存部分返回值。例如：
+  ```yaml
+  n4: {type: Action, description: 在SSH会话 Param.ssh_conn 上执行 ls /home 并保存输出 NewParam.home_list:str}
+  # LLM 可调用 ssh.ssh_exec(session="Param.ssh_conn", command="ls /home", save_to="home_list")
+  # 或 ssh.ssh_exec(..., save_to={"stdout": "home_list", "exit_code": "code"})
+  ```
 
 ### 8.2b 声明：`Define` 节点
 
@@ -530,7 +538,7 @@ n15:
 - **入参**：文档 `inputs` 声明 → 执行时由外部提供 → 叶子 `Param.x` 读取。
 - **叶子产出**：`NewParam.x[:类型]` 声明 → LLM 调产出型工具（如 `extract`）写入。
 - **ref 回收**：被调文档的 `outputs` 经 `returns`（裸 ASCII 名）写入本帧。
-- **FunctionCall 回收**：插件函数多返回值经 `returns`（裸 ASCII 名）写入。
+- **FunctionCall 回收**：插件函数多返回值经 `returns`（接收名）写入。
 - **Define 声明**：`Define` 节点 `vars` 确定性创建（字面量或 `Param.x` 拷贝）。
 
 ---
@@ -699,7 +707,7 @@ plugin = Demo()
 - `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/page_ref/object`）。
   `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
 - 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
-- 产出型函数：`output_param` 声明单一变量目标参数（如 `extract` 的 `target`），引擎落笔写变量。
+- 产出型函数：`output_param` 声明变量目标参数（如 `extract` 的 `target`、SSH 的 `save_to`），引擎落笔写变量；`save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值）。
 - `init(runtime)` 可选：初始化插件公共资源；`release()` 释放（运行结束统一调用）。
 - 可依赖 `common` 共享库（预置插件；自定义插件不允许）。
 
