@@ -525,7 +525,14 @@ class RunService:
             completed=[_node_report_out(nr) for nr in state.completed],
             finished=state.finished,
             failure_reason=failure_reason,
-            variables=list(state.variables),
+            variables=[
+                {
+                    "path": v.get("path", ""),
+                    "type": v.get("type", ""),
+                    "value": _json_safe_output(v.get("value")),
+                }
+                for v in state.variables
+            ],
         )
 
     # ------------------------------------------------------------- 报告获取

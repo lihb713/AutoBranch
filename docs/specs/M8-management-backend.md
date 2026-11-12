@@ -120,6 +120,7 @@ class ExecStateOut:
     variables: list[dict]    # blackboard 变量快照 [{path, type, value}]（§5.3 扩展，供前端变量黑板）
 ```
 
+- **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），避免 `SSHConnection` 等 object 变量导致 `/state` 500。
 - `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path（LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
   - `trees`：id、name(unique)、content(Text)、created_at/updated_at

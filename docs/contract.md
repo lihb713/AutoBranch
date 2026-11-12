@@ -2369,6 +2369,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   `update_node` / `update_doc` / `set_slot` / `detach_slot`；后端生成节点 id、补默认接收名/类型、
   实现删除/槽位语义，返回完整文档。前端只负责渲染与提交命令。
 - `POST /api/trees/{id}/save` 执行完整清晰度校验；失败 422 且保持 draft。
+- **状态轮询变量序列化**：`GET /api/runs/{id}/state` 的 `variables[].value` 必须 JSON 安全 —— 标量原样、`PageRef` 转 `{page_id,url}`、其他对象（如 `SSHConnection`）转 `str` 截断，避免 object 变量导致 500。
 - 迁移脚本 `scripts.migrate_default_return_param_names`：ASCII 改名、typed outputs、默认接收名、
   published 状态、清空 experiences；不改 `runs.content_snapshot`。
 ```

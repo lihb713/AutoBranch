@@ -375,3 +375,28 @@ def test_startup_marks_running_as_interrupted(tmp_path):
     state = client.get(f"/api/runs/{run_id}/state").json()
     assert state["finished"] is True
     assert state["failure_reason"] == "interrupted"
+
+
+class _ObjectVar:
+    def __str__(self) -> str:
+        return "SSHConnection(id=abc)"
+
+
+def test_state_serializes_object_variables(client, mock_engine):
+    """object 变量（如 SSHConnection）在轮询响应中必须 JSON 安全。"""
+    mock_engine.default_final_state = ExecState(
+        run_id="x",
+        finished=True,
+        variables=[
+            {"path": "主流程/ssh_conn", "type": "object", "value": _ObjectVar()},
+            {"path": "主流程/count", "type": "int", "value": 3},
+        ],
+    )
+    tree = create_tree(client)
+    resp = client.post(f"/api/trees/{tree['id']}/run")
+    assert resp.status_code == 202
+    run_id = resp.json()["run_id"]
+    state = wait_finished(client, run_id)
+    values = {item["path"]: item["value"] for item in state["variables"]}
+    assert values["主流程/ssh_conn"] == "SSHConnection(id=abc)"
+    assert values["主流程/count"] == 3
