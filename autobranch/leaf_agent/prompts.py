@@ -17,7 +17,7 @@ from typing import Literal
 from autobranch.parser.models import ActionNode, ConditionNode
 from autobranch.schema.types import infer_type
 
-PROMPT_VERSION = "2.0"
+PROMPT_VERSION = "2.1"
 
 _VARIABLE_MECHANISM = """\
 变量机制：
@@ -58,7 +58,10 @@ _ACTION_SYSTEM = """\
    引用已保存的 url 字符串也用 open；引用已保存的页签变量（保存的页面引用）用
    activate 切换。
 7. 调用 use_capability 加载能力时，能力名必须**逐字复制**自系统提示中的「可用能力」列表，
-   不得臆造或改写名称。"""
+   不得臆造或改写名称。
+8. 如需直接调用已知 URL 的 API 获取数据（如节点描述中提供了 API 地址）：
+   先调用 get_request_headers 分析页面请求的认证信息（如 cookie、CSRF token 等），
+   再用 page_request 调用 API（cookie 自动携带，CSRF token 等通过 headers 参数补充）。"""
 
 _CONDITION_SYSTEM = """\
 你是一个自动化判断代理。你的任务是根据「节点描述」（条件），判断当前状态是否满足该条件。

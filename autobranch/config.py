@@ -95,7 +95,7 @@ class RunOptions:
     """
 
     timeout: float | None = 240.0
-    max_rounds: int = 10
+    max_rounds: int = 20
     no_progress_rounds: int = 2
     session_timeout: float = 60.0
     initial_graph_scope: str = "full"
@@ -133,7 +133,7 @@ class AutoBranchConfig:
           "llm": {"base_url": "https://opencode.ai/zen/go/v1",
                   "api_key": "", "model": "deepseek-v4-flash", "timeout": 60},
           "browser": {"browser_type": "chromium", "headless": true, "timeout_ms": 30000},
-          "run": {"timeout": 120, "max_rounds": 10, "report_dir": "reports"}
+          "run": {"timeout": 120, "max_rounds": 20, "report_dir": "reports"}
         }
     """
 

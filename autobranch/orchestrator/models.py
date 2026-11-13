@@ -36,7 +36,7 @@ class RunConfig:
 
     :param timeout: 全局叶子超时秒数（默认 120，None 表示不检测；注入根级
       schema 的 ``timeout`` 配置参数，作为继承链最终兜底，可被块级覆盖）。
-    :param max_rounds: 叶子 LLM 工具调用轮数上限（传 M6，默认 10）。
+    :param max_rounds: 叶子 LLM 工具调用轮数上限（传 M6，默认 20）。
     :param no_progress_rounds: 连续无进展判定轮数（传 M6，默认 2）。
     :param session_timeout: 单次 LLM 请求超时秒数（传 M6，默认 60）。
     :param initial_graph_scope: 初始语义图范围（传 M6，默认 full）。
@@ -49,7 +49,7 @@ class RunConfig:
     """
 
     timeout: float | None = 240.0
-    max_rounds: int = 10
+    max_rounds: int = 20
     no_progress_rounds: int = 2
     session_timeout: float = 60.0
     initial_graph_scope: str = "full"

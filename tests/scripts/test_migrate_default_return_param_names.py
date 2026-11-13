@@ -48,7 +48,7 @@ nodes:
     body: n2
   n2:
     type: FunctionCall
-    function: browser.http_request
+    function: http.request
     args: ["GET", "http://x"]
 root: n1
 """

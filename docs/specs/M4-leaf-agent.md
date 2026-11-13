@@ -19,7 +19,7 @@
 | 多轮定位 | LLM 多次调用 semantic_graph（缩小/放大）定位目标 | §9.6 | ✅ semantic_graph 作为普通工具注入，零专用逻辑 |
 | 引擎兜底 | 终止条件：轮数上限/连续无进展/单叶子超时 | §5.7.2.1 | ✅ `terminator.py` + 驱动循环内检测 |
 | 错误边界 | 函数失败归 LLM；致命错误归引擎 | §5.7.2.1/§9.4 | ✅ `OpResult(ok=False)` 回传 / `FatalBrowserError` 终止 |
-| 提示词设计 | 节点描述 + 语义图 → 可靠决策的提示词（空间方位感知 + get/set 变量语义 + 「何时获取最新语义图」自主决策） | §10.1-5 | ✅ `prompts.py`（版本化 `PROMPT_VERSION="2.0"`） |
+| 提示词设计 | 节点描述 + 语义图 → 可靠决策的提示词（空间方位感知 + get/set 变量语义 + 「何时获取最新语义图」自主决策） | §10.1-5 | ✅ `prompts.py`（版本化 `PROMPT_VERSION="2.1"`） |
 
 ## 3. 数据依赖
 
@@ -58,7 +58,7 @@ class LeafContext:
     space: SchemaSpace | None = None           # M2 变量空间（get 替换 / 落笔）
     session_factory: Callable[[LLMConfig, str], LLMSession] | None = None  # 测试注入假传输
     tools: list[ToolSpec] | None = None        # 初始工具集（默认能力概览 + use_capability）
-    max_rounds: int = 10                       # 轮数上限（§5.7.2.1 ①）
+    max_rounds: int = 20                       # 轮数上限（§5.7.2.1 ①）
     no_progress_rounds: int = 2                # 连续无进展阈值（§9.7 ②）
     timeout: float | None = 240.0              # 单叶子墙钟超时（None 不检测）
     session_timeout: float = 60.0              # 单次 LLM 请求超时
@@ -106,7 +106,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 ### 5.3 叶子终止条件（引擎兜底，§5.7.2.1，已实现）
 
 任一触发 → 终止叶子 → 记为 LLM 侧失败 → 沿行为树传播：
-1. **LLM 对话轮数上限**：`ctx.max_rounds`（默认 10 轮工具调用），第 N+1 轮请求即终止，`terminator="round_limit"`
+1. **LLM 对话轮数上限**：`ctx.max_rounds`（默认 20 轮工具调用），第 N+1 轮请求即终止，`terminator="round_limit"`
 2. **LLM 连续 N 轮无进展**：`ctx.no_progress_rounds`（默认 2），对连续多轮的「函数名+参数+结果」指纹比较，`terminator="no_progress"`
 3. **单叶子执行超时**：`ctx.timeout`（默认 240s，墙钟计时），`terminator="timeout"`
 
@@ -163,7 +163,7 @@ class ToolCallRecord:          # M6 内部累积 + 序列化支持
 5. **`terminator` 取值集合**：`round_limit`/`no_progress`/`timeout`/`budget`（LLM 侧终止）与 `fatal_error`/`llm_connection`/`llm_timeout`/`llm_error`（错误中断）；正常完成或决策不可解析为 `None`。
 6. **`LeafContext.registry` 注入**：M6 不构造插件，由 M7/后端注入共享注册表（M3 插件框架）；`session_factory` 供测试注入假传输，默认按 `config` + `session_timeout` 构建真实会话。
 7. **轮数语义**：`max_rounds` 指 LLM 工具调用轮数上限，第 `max_rounds+1` 轮请求即终止（前 `max_rounds` 轮完整执行并回填）。
-8. **提示词版本化**：`PROMPT_VERSION="2.0"`，变更提示词须递增版本号并通过回归测试（`tests/leaf_agent/test_regression.py` 金样本）。v1.1 起新增空间方位感知（结合语义图 `(页面方位)` 标注理解位置指令）与「何时获取最新语义图」的自主决策引导：操作可能改变页面布局/关键信息时操作前获取最新；操作或判断失败时重新获取最新；其余情况可复用当前语义图，不强制每次获取，引擎以 ref stale 兜底（M5）。v1.2 新增变量 get/set 语义：`Param.x` 基本类型在叶子执行前替换为真实值（LLM 无需处理）；`NewParam.x[:类型]` 声明本动作可写变量集，LLM 提取值后调 extract 且 target 须取自声明集（未声明目标被拒）。v1.3 类型化标注（`NewParam.pageRef:page_ref`/`NewParam.url:str` 提示存页签/存文本、选 open(save_to)/get_url）。v1.4 类型标注并入 TYPE_REGISTRY 英文 token。v1.5 语法统一为 `Param.`/`NewParam.`（旧 `[[set]]`/`[[get]]` 彻底废弃）。**v2.0 变量传递机制**：① 系统提示新增变量机制说明并要求参数可用 `Param.xxx` 引用对象；② 用户消息注入当前帧变量表（对象显示 repr）；③ `Param.xxx` 基本类型继续替换，object/page_ref 保留原文；④ 函数参数中的完整 `Param.xxx` 字符串解析为实际变量值；⑤ 产出型工具 `save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值、可部分保存）；⑥ 动态 `use_capability` 为产出型函数注入 `save_to`；⑦ 提示词去 Web 专化，适用于 SSH/文件/计算等插件。**v1.6 叶子鲁棒性增强**：① LLM 畸形输出（工具调用参数非合法 JSON / 响应不可解析）与最终结果不可解析（`DecisionError`）改为**回填纠错指令、在轮次预算内重试**，而非直接终止叶子；② 系统提示**注入能力概览**（`capability_overview`，含精确可用能力名），并要求 `use_capability` 能力名逐字取自「可用能力」列表，降低能力名臆造。
+8. **提示词版本化**：`PROMPT_VERSION="2.1"`，变更提示词须递增版本号并通过回归测试（`tests/leaf_agent/test_regression.py` 金样本）。v1.1 起新增空间方位感知（结合语义图 `(页面方位)` 标注理解位置指令）与「何时获取最新语义图」的自主决策引导：操作可能改变页面布局/关键信息时操作前获取最新；操作或判断失败时重新获取最新；其余情况可复用当前语义图，不强制每次获取，引擎以 ref stale 兜底（M5）。v1.2 新增变量 get/set 语义：`Param.x` 基本类型在叶子执行前替换为真实值（LLM 无需处理）；`NewParam.x[:类型]` 声明本动作可写变量集，LLM 提取值后调 extract 且 target 须取自声明集（未声明目标被拒）。v1.3 类型化标注（`NewParam.pageRef:page_ref`/`NewParam.url:str` 提示存页签/存文本、选 open(save_to)/get_url）。v1.4 类型标注并入 TYPE_REGISTRY 英文 token。v1.5 语法统一为 `Param.`/`NewParam.`（旧 `[[set]]`/`[[get]]` 彻底废弃）。**v2.0 变量传递机制**：① 系统提示新增变量机制说明并要求参数可用 `Param.xxx` 引用对象；② 用户消息注入当前帧变量表（对象显示 repr）；③ `Param.xxx` 基本类型继续替换，object/page_ref 保留原文；④ 函数参数中的完整 `Param.xxx` 字符串解析为实际变量值；⑤ 产出型工具 `save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值、可部分保存）；⑥ 动态 `use_capability` 为产出型函数注入 `save_to`；⑦ 提示词去 Web 专化，适用于 SSH/文件/计算等插件。**v2.1 页面请求/多标签页引导**：系统提示新增第 8 条——已知 URL 的 API 先 `get_request_headers` 分析认证，再用 `page_request` 调用（cookie 自动携带）；配合多标签页 `list_tabs`/`switch_tab` 与 `*_capture` 能力。**v1.6 叶子鲁棒性增强**：① LLM 畸形输出（工具调用参数非合法 JSON / 响应不可解析）与最终结果不可解析（`DecisionError`）改为**回填纠错指令、在轮次预算内重试**，而非直接终止叶子；② 系统提示**注入能力概览**（`capability_overview`，含精确可用能力名），并要求 `use_capability` 能力名逐字取自「可用能力」列表，降低能力名臆造。
 
 
 ## 8. 插件两级能力选择与变量落笔（能力插件化新增，已实现）

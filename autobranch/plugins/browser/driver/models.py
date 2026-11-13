@@ -77,6 +77,7 @@ class HttpResponse:
     status: int
     headers: dict[str, str] = field(default_factory=dict)
     body: str = ""
+    request_headers: dict[str, str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:

@@ -38,7 +38,7 @@ class TestRunConfig:
     def test_defaults(self) -> None:
         cfg = RunConfig()
         assert cfg.timeout == 240.0
-        assert cfg.max_rounds == 10
+        assert cfg.max_rounds == 20
         assert cfg.no_progress_rounds == 2
         assert cfg.report_dir == "reports"
 

@@ -667,7 +667,7 @@ Condition 执行:
   其余失败 (含全部终止) 一律 "llm"
   例外: Condition 确定布尔判断 (真/假) 为正常节点结果, error_source=None
 
-轮数语义: max_rounds (默认 10) = 工具调用轮数上限, 第 max_rounds+1 轮请求即终止
+轮数语义: max_rounds (默认 20) = 工具调用轮数上限, 第 max_rounds+1 轮请求即终止
 
 LeafTrace: 复用 M8 契约 (llm_input/llm_reasoning/decision/calls/terminator)
 
@@ -927,7 +927,7 @@ ExecState: 复用 M8 (未新增模型)
   get_url(save_to?)    取当前活动页 URL
   scroll(direction)    滚动当前页面
   wait(条件)            等待条件满足
-  http_request(method, url, headers?, params?, body?, json?, timeout?)
+  （独立请求）http.request(method, url, headers?, params?, body?, json?, timeout?)
                       发起 HTTP 请求并返回 status/body/headers (requests 风格, §5.8.2)
 
 仅 LLM 可见函数 (agent 内部能力):
@@ -941,7 +941,16 @@ ExecState: 复用 M8 (未新增模型)
   extract(ref, 目标)   提取元素值 → 写入变量 (§5.3)
   semantic_graph(范围, LOD)  获取当前活动页的语义图 (§8.8)
   clear_requests()     清理页面请求记录
-  get_response(method, url模式) 读取页面已发生的请求响应
+  list_requests()      列出页面请求清单
+  get_response(method, url模式) 读取匹配的请求响应
+  get_responses()      批量读取全部请求响应
+  get_request_headers() 分析最近请求头（认证参数）
+  page_request(method, url, headers?, body?) 页面上下文 fetch（自动携带 cookie）
+  list_tabs() / switch_tab(tab_id) 标签页管理
+  press(ref, key)      按键
+  click_capture / type_capture / press_capture / select_capture /
+  check_capture / uncheck_capture / scroll_capture / upload_capture
+                       操作并捕获触发的全部 API 响应
 ```
 
 > 划分依据：依赖 `ref` / 页面上下文 / 语义图的技术性操作对直接写 FunctionCall 的用户不友好，
@@ -977,7 +986,7 @@ ref 语义:
 
 ```
 插件框架 (M3) + 插件集 (M7):
-  - 预置插件位于 autobranch/plugins/（browser/compute/ssh/file + common 共享库）
+  - 预置插件位于 autobranch/plugins/（browser/compute/ssh/file/http/vars + common 共享库）
   - 浏览器插件自包含：driver/（浏览器驱动）+ semantic_graph/（语义图）+ probe/refmap
   - 引擎核心不感知具体能力；经 registry.call(name, args) 分发
 
@@ -1011,7 +1020,7 @@ M5 编排器 Engine 构造时注入共享 PluginRegistry 与 plugins_dir：
 
 ```
 用户 / LLM 共用 (用户可见):
-  http_request(method, url, headers?, params?, body?, json?, timeout?)
+  （独立请求）http.request(method, url, headers?, params?, body?, json?, timeout?)
     → 返回响应 status / headers / body（单次调用，传入请求参数，返回响应）
     认证: 由调用方在 headers 显式提供 (通过变量/参数传入 token/cookie)
     → 不从页面会话自动提取 (不维护 cookie, 每次执行如第一次, §5.9)
@@ -1025,8 +1034,9 @@ LLM-only (页面上下文监听, 不进入用户函数清单):
     get_response(method, url模式)  ← 读取匹配的请求响应
   例: 登录后读 /api/login 的响应, 判断返回的 token
 
-选择依据: 用户确定性调用接口用 http_request;
-          LLM 需要"点击按钮并获取其触发请求"时用页面监听（内部能力）。
+选择依据: 用户确定性调用接口用 http.request（独立请求，认证手动）；
+          LLM 调用已知同源 API 用 page_request（自动携带 cookie，CSRF 头可补）；
+          不知道会触发什么请求时用 *_capture 或 clear_requests→操作→get_responses。
 ```
 
 #### 5.8.3 报告机制（执行报告 + 回溯报告）
@@ -2173,7 +2183,7 @@ M3  插件框架            无依赖（注册/懒装配/use_capability/分发/�
 M4  叶子 agent          M0+M2+M3（两级能力选择 + 变量落笔）
 M5  编排器              M1+M2+M4+M6（FunctionCall 节点/插件分发/资源释放）
 M6  报告机制            M3（引擎基础 + 插件附加，插件驱动）
-M7  插件集              M3（browser/compute/ssh/file + 自定义插件）
+M7  插件集              M3（browser/compute/ssh/file/http/vars + 自定义插件）
 M8  管理后端            M1+M5+M6+M3+M7+DB（文档/运行/插件 API）
 M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 ```
@@ -2286,7 +2296,7 @@ returns: {total: object}   # 接收名 → 类型（类型由函数声明决定�
 - 泛型 `object` 类型承载插件对象（页面对象/会话等）。
 - **接收名规则**（与 ref 一致）：`returns` 键**必须**为**裸 ASCII 名**（隐式创建变量）——含 `.`（如
   `NewParam.x`）或非 ASCII 名 → 校验错误 `syntax.invalid_return_name`；变量名仅 ASCII（§4.2/§5.3，不支持中文）。
-- **默认接收名与类型**：未填写时后端生成 `<节点id>_<函数返回参数名>`；类型取 `FunctionDef.returns` 声明（用户不可编辑）。例如 id 为 `n2` 的节点调用 `browser.http_request` 自动得到
+- **默认接收名与类型**：未填写时后端生成 `<节点id>_<函数返回参数名>`；类型取 `FunctionDef.returns` 声明（用户不可编辑）。例如 id 为 `n2` 的节点调用 `http.request` 自动得到
   `n2_status: int`、`n2_body: str`、`n2_headers: object`。
 
 ### 12.3 引擎内嵌形态
@@ -2406,7 +2416,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 插件框架:    M3 插件框架 ◄──┴──────────────┘
                 ▲
                 │ 加载
-插件集:      M7 插件集（browser/compute/ssh/file + 自定义）
+插件集:      M7 插件集（browser/compute/ssh/file/http/vars + 自定义）
                 │
 管理系统:    M8 管理后端 ◄── M9 前端 UI
             (内嵌引擎 + 插件 API)
@@ -2434,7 +2444,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 - **单文件 Python 脚本**，源码保存在系统（DB），在「插件管理」页编写。
 - **仅可使用 Python 标准库**；不 import 其他插件 / `common` / 三方库。
 - **直接使用内置注入的名字** `PluginBase` / `engine_function` / `FunctionResult`（无需 import `autobranch`）。
-- 插件名：小写字母 / 数字 / `_` / `-`，且**不得与预置插件同名**（browser/compute/ssh/file）。
+- 插件名：小写字母 / 数字 / `_` / `-`，且**不得与预置插件同名**（browser/compute/ssh/file/http/vars）。
 
 ### 13.2 插件模板
 

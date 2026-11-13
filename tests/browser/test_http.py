@@ -136,3 +136,32 @@ class TestHttpRequestIntegration:
     def test_invalid_arguments(self):
         assert not http_request("", "http://x/").ok
         assert not http_request("GET", "").ok
+
+
+class TestPageRequestIntegration:
+    """页面内 fetch：自动携带 cookie，并记录请求头。"""
+
+    def test_page_request_returns_body_and_carries_cookie(
+        self, driver, server_url, open_page, page_handle
+    ):
+        ref = open_page(f"{server_url}/cookie_page.html")
+        handle = page_handle(ref)
+        result = handle.page_request("GET", f"{server_url}/api/echo?tag=page_request")
+        assert result.ok
+        response = result.detail["response"]
+        assert response.status == 200
+        payload = json.loads(response.body)
+        assert payload["method"] == "GET"
+        assert "Cookie" in payload["headers"]
+
+    def test_recorder_captures_request_headers(
+        self, driver, server_url, open_page, page_handle
+    ):
+        ref = open_page(f"{server_url}/api_page.html")
+        handle = page_handle(ref)
+        driver.http_recorder.clear()
+        assert handle.click(ElementRef("#call-api")).ok
+        assert handle.wait("text: logintoken-123", 3000).ok
+        records = driver.http_recorder.get_all_records()
+        assert records
+        assert records[-1].request_headers

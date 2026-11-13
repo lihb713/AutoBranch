@@ -154,7 +154,7 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
   },
   "run": {
     "timeout": 240,
-    "max_rounds": 10,
+    "max_rounds": 20,
     "no_progress_rounds": 2,
     "session_timeout": 60,
     "initial_graph_scope": "full",
@@ -201,7 +201,7 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
 | 键 | 说明 | 默认 |
 |---|---|---|
 | `timeout` | 单叶子全局超时（秒；`null` 不检测） | 240 |
-| `max_rounds` | 叶子 LLM 工具调用轮数上限 | 10 |
+| `max_rounds` | 叶子 LLM 工具调用轮数上限 | 20 |
 | `no_progress_rounds` | 连续几轮无进展判定为失败 | 2 |
 | `session_timeout` | 单次 LLM 请求超时（秒） | 60 |
 | `initial_graph_scope` | 初始语义图范围（full） | full |
@@ -613,17 +613,24 @@ n15:
 | `get_url` | 用户+LLM | （产出型，`save_to`） | 取当前活动页 URL 字符串 |
 | `scroll` | 用户+LLM | `direction`（up/down/left/right/top/bottom） | 滚动页面 |
 | `wait` | 用户+LLM | `condition`（`selector: <CSS>` / `text: <文本>` / `url: <子串>`） | 等待条件满足 |
-| `http_request` | 用户+LLM | `method`、`url`、可选 `headers` / `params` / `body` / `json` / `timeout` | 发起 HTTP 请求，返回 `status` / `body` / `headers`（requests 风格单一入口） |
+| `http.request` | 用户+LLM | `method`、`url`、可选 `headers` / `params` / `body` / `json` / `timeout` | 独立 HTTP 请求，返回 `status` / `body` / `headers`（`http` 插件） |
 | `activate` | 仅 LLM | `page`（页面对象） | 切换已有页签为活动页 |
 | `semantic_graph` | 仅 LLM | `scope`（full 或区域 id）、`lod`（0~3） | 生成当前页语义图（"看页面"），同时截图 |
 | `click` | 仅 LLM | `ref` | 点击元素 |
 | `type` | 仅 LLM | `ref`、`text` | 向输入框输入文本（替换现有值） |
+| `press` | 仅 LLM | `ref`、`key` | 向元素发送按键 |
 | `select` | 仅 LLM | `ref`、`option` | 下拉选择（优先文本匹配，其次 value） |
 | `check` / `uncheck` | 仅 LLM | `ref` | 勾选/取消勾选 checkbox/radio |
 | `extract` | 仅 LLM | `ref`（产出型，`target`） | 提取元素值并写入目标变量 |
 | `download` | 仅 LLM | `ref` | 触发下载并保存 |
 | `upload` | 仅 LLM | `ref`、`path` | 上传本地文件到文件控件 |
 | `get_response` | 仅 LLM | `method`、`url_pattern`（`*` 通配） | 读页面已发生的匹配请求响应 |
+| `list_requests` | 仅 LLM | — | 列出页面请求清单（method/url/status） |
+| `get_responses` | 仅 LLM | （产出型，`save_to`） | 批量读取全部响应 body |
+| `page_request` | 仅 LLM | `method`、`url`、`headers?`、`body?` | 页面上下文 fetch（自动携带 cookie），产出 body |
+| `get_request_headers` | 仅 LLM | — | 分析最近 API 请求头（Cookie/CSRF/Authorization） |
+| `list_tabs` / `switch_tab` | 仅 LLM | — / `tab_id` | 列出/切换标签页 |
+| `click_capture` / `type_capture` / `press_capture` / `select_capture` / `check_capture` / `uncheck_capture` / `scroll_capture` / `upload_capture` | 仅 LLM | 同对应操作 | 操作并捕获触发的全部 API 响应 |
 | `clear_requests` | 仅 LLM | — | 清空页面请求记录 |
 
 > **可见性**：用户可见 = 可被 FunctionCall 引用、出现在函数选择器与 `GET /api/functions`；
@@ -633,6 +640,15 @@ n15:
 **LLM 叶子怎么用浏览器**：你只需在 `description` 里用自然语言说"打开页面 X，点击登录，输入 admin"——LLM 会自动：`semantic_graph` 看页面 → 用 `ref` 定位 → 调 `click`/`type`。不用手写函数调用。
 
 **浏览器代理配置**：见 §12。
+
+### 10.1b 独立请求插件 `http` 与变量插件 `vars`
+
+- `http.request(method, url, headers?, params?, body?, json?, timeout?)`：独立 HTTP 请求，返回 `status/body/headers`，认证由 headers 显式提供。
+- `vars.set(value1, value2?, value3?)`：原样返回输入值，配合 `save_to` 把 LLM 推理产出的文本写入变量。例如：
+  ```yaml
+  n8: {type: Action, description: 从 Param.resp 提取虚拟机信息并保存 NewParam.vm_info:str}
+  # LLM 可调用 vars.set(value1="格式化文本", save_to={"value1": "vm_info"})
+  ```
 
 ### 10.2 计算插件 `compute`
 

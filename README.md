@@ -12,7 +12,7 @@
 - **LLM Agent 叶子执行**：Action / Condition 由 LLM 依据语义图决策，调用插件函数并**落笔写变量**（引擎回收返回值，按类型 coerce）。
 - **确定性 FunctionCall 节点**：行为树可直接调用插件函数（`compute.add` 等），不经 LLM，可精确写变量 / 多返回值。
 - **确定性 Define 节点**：在当前文档帧声明变量（字面量或 `Param.x` 拷贝重命名），不经 LLM。
-- **插件框架**：预置浏览器 / 计算 / SSH / 文件插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
+- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、插件管理页、执行报告页。
 - **草稿/正式版**：行为树单文档状态机；新建即草稿（临时名），保存校验后转正式；草稿不可执行、不可被 ref 引用；前端命令式编辑，后端权威生成默认接收名与类型。
@@ -30,7 +30,7 @@ autobranch/
   plugin_system/           M3 插件框架（注册表/懒装配/能力选择/分发/报告）
   leaf_agent/              M4 叶子 Agent（Action/Condition 执行）
   orchestrator/            M5 编排器（遍历/FunctionCall/超时/会话）
-  plugins/                 M7 插件集（browser/compute/ssh/file + common）
+  plugins/                 M7 插件集（browser/compute/ssh/file/http/vars + common）
   reporting/               报告 / 截图 / 回溯
   server/                  M8 管理后端（FastAPI：trees/runs/reports/plugins/functions）
   frontend/                M9 前端（React + Vite：编辑器/插件管理/报告）
@@ -182,7 +182,7 @@ root: n1
 
 ### 插件管理
 
-- 预置插件：浏览器 / 计算 / SSH / 文件（启动自动加载）。
+- 预置插件：浏览器 / 计算 / SSH / 文件 / HTTP / 变量（启动自动加载）。
 - 自定义插件：前端「插件管理」页编写 Python 源码（仅标准库），保存即校验并重载；删除时提示关联行为树并置空引用。
 - 函数清单：`GET /api/functions` 返回全部函数（全名 + 结构化定义），供编辑器函数选择器使用。
 

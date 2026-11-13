@@ -71,7 +71,7 @@ def test_list_functions_endpoint(client):
     data = res.json()
     names = {f["full_name"] for f in data}
     assert "browser.open" in names
-    assert "browser.http_request" in names
+    assert "http.request" in names
     assert "compute.add" in names
     # LLM-only 技术接口不进入用户函数清单
     assert "browser.semantic_graph" not in names

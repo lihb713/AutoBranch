@@ -168,3 +168,43 @@ def test_single_return_save_to_string_for_multi_return_function(llm_config, spac
     result = execute_leaf(node, ctx)
     assert result.status == "success"
     assert space.read(space._current, "this/home_list") == "out"
+
+
+def test_save_to_json_string_is_parsed(llm_config, space):
+    engine = MockRegistry()
+    engine.register(
+        "ssh.ssh_exec",
+        output_param="save_to",
+        returns={"stdout": "str", "stderr": "str", "exit_code": "int"},
+    )
+    engine.results["ssh.ssh_exec"] = FunctionResult.success("out", "err", 0)
+    transport = FakeTransport(
+        responses=[
+            chat_response(
+                tool_calls=[
+                    {
+                        "id": "c1",
+                        "type": "function",
+                        "function": {
+                            "name": "ssh.ssh_exec",
+                            "arguments": (
+                                '{"session":"Param.conn","command":"ls",'
+                                '"save_to":"{\\"stdout\\":\\"home_list\\"}"}'
+                            ),
+                        },
+                    }
+                ]
+            ),
+            chat_response(text="结果: 成功"),
+        ]
+    )
+    space.write(space._current, "this/conn", Conn(), "object")
+    ctx = _ctx(llm_config, space, transport, engine)
+    node = ActionNode(
+        description="执行命令 NewParam.home_list:str",
+        set_targets=("home_list",),
+        set_decls=(("home_list", "str"),),
+    )
+    result = execute_leaf(node, ctx)
+    assert result.status == "success"
+    assert space.read(space._current, "this/home_list") == "out"

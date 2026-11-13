@@ -70,7 +70,7 @@ def test_new_draft_and_save_publish(client):
 
 def test_function_default_names_and_types(client):
     draft = client.post("/api/trees/drafts").json()
-    _node, content = _add_fc(client, draft["id"], function="browser.http_request")
+    _node, content = _add_fc(client, draft["id"], function="http.request")
     data = yaml.safe_load(content)
     returns = data["nodes"]["n2"]["returns"]
     assert returns == {
@@ -86,7 +86,7 @@ def test_conflict_suffix_starts_at_one(client):
         f"/api/trees/{draft['id']}/commands",
         json={"commands": [{"op": "update_doc", "patch": {"inputs": {"n2_status": "str"}}}]},
     )
-    _node, content = _add_fc(client, draft["id"], function="browser.http_request")
+    _node, content = _add_fc(client, draft["id"], function="http.request")
     returns = yaml.safe_load(content)["nodes"]["n2"]["returns"]
     assert list(returns)[:1] == ["n2_status_1"]
     # 删除冲突变量后不回退原名
@@ -127,7 +127,7 @@ def test_type_follows_function_and_name_preserved(client):
                 {
                     "op": "update_node",
                     "node_id": "n2",
-                    "patch": {"function": "browser.http_request", "args": ["GET", "http://x"]},
+                    "patch": {"function": "http.request", "args": ["GET", "http://x"]},
                 }
             ]
         },
@@ -172,7 +172,7 @@ def test_auto_rename_does_not_rewrite_references(client):
                 {
                     "op": "update_node",
                     "node_id": "n3",
-                    "patch": {"function": "browser.http_request", "args": ["GET", "http://x"]},
+                    "patch": {"function": "http.request", "args": ["GET", "http://x"]},
                 }
             ]
         },
@@ -251,7 +251,7 @@ def test_run_fallback_normalizes_missing_returns(client, session):
         "  n1: {type: Root, body: n2}\n"
         "  n2:\n"
         "    type: FunctionCall\n"
-        "    function: browser.http_request\n"
+        "    function: http.request\n"
         '    args: ["GET", "http://x"]\n'
         "root: n1\n"
     )

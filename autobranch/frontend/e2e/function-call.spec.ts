@@ -175,7 +175,7 @@ nodes:
     body: n2
   n2:
     type: FunctionCall
-    function: browser.http_request
+    function: http.request
     args: ["GET", "http://127.0.0.1:8123/index.html"]
     returns:
       status: int

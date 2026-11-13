@@ -4,7 +4,7 @@
 
 ## Purpose
 
-预置插件集（浏览器 / 计算 / SSH / 文件）与用户自定义插件，作为引擎核心之外的「能力层」：插件只返回值（业务值 + 报告附加信息），不写变量（引擎落笔）。
+预置插件集（浏览器 / 计算 / SSH / 文件 / HTTP / 变量）与用户自定义插件，作为引擎核心之外的「能力层」：插件只返回值（业务值 + 报告附加信息），不写变量（引擎落笔）。
 
 ## Requirements
 
@@ -12,9 +12,11 @@
 
 浏览器插件 SHALL 自包含浏览器驱动、语义图生成、元素引用映射与页面对象：
 
-- 网页操作函数（LLM 全量）：`open` / `activate` / `get_url` / `click` / `type` / `select` / `check` / `uncheck` / `scroll` / `wait` / `download` / `upload` / `extract` / `semantic_graph` / `clear_requests` / `get_response` / `http_request`。
-- **用户可见子集**（FunctionCall / 函数清单）：`open` / `get_url` / `scroll` / `wait` / `http_request`；其余（含 `semantic_graph`、`get_response`、`click` 等依赖 ref/页面上下文的接口）用 `@llm_function` 注册为仅 LLM 可见。
-- **HTTP 单一入口**：用户与 LLM 均只使用 `http_request(method, url, headers?, params?, body?, json?, timeout?)` 发起请求并返回 `status` / `body` / `headers`（requests 风格）；`get_response` / `clear_requests` 仅供 LLM 读取页面触发的请求记录，不再作为用户接口暴露。
+- 网页操作函数（LLM 全量）：`open` / `activate` / `get_url` / `click` / `type` / `press` / `select` / `check` / `uncheck` / `scroll` / `wait` / `download` / `upload` / `extract` / `semantic_graph` / `clear_requests` / `list_requests` / `get_response` / `get_responses` / `get_request_headers` / `page_request` / `list_tabs` / `switch_tab` / `click_capture` / `type_capture` / `press_capture` / `select_capture` / `check_capture` / `uncheck_capture` / `scroll_capture` / `upload_capture`。
+- **用户可见子集**（FunctionCall / 函数清单）：`open` / `get_url` / `scroll` / `wait`；其余（含 `semantic_graph`、`page_request`、`get_response`、`click` 等依赖 ref/页面上下文的接口）用 `@llm_function` 注册为仅 LLM 可见。独立 HTTP 请求由 `http` 插件提供 `http.request`（用户可见）。
+- **HTTP 能力拆分**：独立请求用 `http.request(method, url, headers?, params?, body?, json?, timeout?)`（用户可见，返回 status/body/headers）；页面内请求用 `page_request`（cookie 自动携带，LLM-only）；`list_requests` / `get_response` / `get_responses` / `clear_requests` 用于页面请求记录。
+- **多标签页**：`list_tabs` / `switch_tab` 管理新标签页；操作返回 `new_tabs`/`tabs_hint`。
+- **捕获操作**：`click_capture` / `type_capture` / `press_capture` / `select_capture` / `check_capture` / `uncheck_capture` / `scroll_capture` / `upload_capture` 封装 clear→操作→批量响应。
 - 页面对象（`PageObject`）作为泛型 `object` 值在变量中存储与传递；当前活动页由插件维护。
 
 **元素角色分类（ARIA 对齐）**：`<input type="submit|button|reset">` SHALL 分类为 `button`（其标签存于 `value`）；`checkbox/radio/number/range` 分别映射；其余输入为 `textbox`。语义图序列化时，input 型按钮 SHALL 渲染 `value="..."`（标签），使 LLM 能识别按钮文本。
@@ -30,6 +32,14 @@
 ### 计算插件
 
 确定性纯函数：`multiply(a, b)`、`add(a, b)`、`sum(values)`、`sort(data, desc)`、`compare(a, b)`；同输入同输出、无副作用。
+
+### vars 插件
+
+`vars.set(value1, value2?, value3?)`：原样返回传入值，配合 `output_param="save_to"` 把 LLM 推理产出的文本/数据写入变量（多返回值映射可部分保存）。
+
+### http 插件
+
+独立 HTTP 请求：`http.request(method, url, headers?, params?, body?, json?, timeout?)`，返回 `status/body/headers`，认证由调用方在 headers 显式提供。
 
 ### SSH 插件
 

@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>AutoBranch 新标签页测试</title></head>
+<body>
+  <h1>新标签页测试</h1>
+  <a id="blank-link" href="basic.html" target="_blank">打开新标签页</a>
+  <button id="popup-btn" type="button">window.open 打开</button>
+  <script>
+    document.getElementById("popup-btn").addEventListener("click", function () {
+      window.open("basic.html", "_blank");
+    });
+  </script>
+</body>
+</html>

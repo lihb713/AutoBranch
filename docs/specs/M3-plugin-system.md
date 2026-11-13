@@ -57,4 +57,4 @@
 ## 关键实现
 
 - `autobranch/plugin_system/`：`defs.py`（FunctionDef/FunctionResult/PluginBase/@engine_function/@llm_function）、`registry.py`（PluginRegistry：注册/懒装配/分发/查询）、`loader.py`（预置扫描 + DB 源码加载 + 校验）、`capability.py`（use_capability/能力概览）、`reporting.py`、`runtime.py`（PluginRuntime）。
-- **预置插件位于 `autobranch/plugins/`**（工具的一部分）：`common` 共享库 + `browser`（自包含驱动/语义图）/ `compute` / `ssh` / `file`。
+- **预置插件位于 `autobranch/plugins/`**（工具的一部分）：`common` 共享库 + `browser`（自包含驱动/语义图）/ `compute` / `ssh` / `file` / `http` / `vars`。

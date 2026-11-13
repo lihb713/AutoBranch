@@ -52,6 +52,18 @@ class HttpRecorder:
             self.pump()
         self._records.clear()
 
+    def list_records(self) -> list[tuple[str, str, int]]:
+        """返回请求清单 ``[(method, url, status)]``（不含 body）。"""
+        if self.pump is not None:
+            self.pump()
+        return [(r.method, r.url, r.status) for r in self._records]
+
+    def get_all_records(self) -> list[HttpResponse]:
+        """返回全部记录（含 body），供批量响应读取。"""
+        if self.pump is not None:
+            self.pump()
+        return list(self._records)
+
     def get_response(self, method: str, url_pattern: str) -> HttpResponse | None:
         """按 method（大小写不敏感精确匹配）+ URL 模式返回首个匹配响应。
 
@@ -71,6 +83,12 @@ class HttpRecorder:
             body = response.body().decode("utf-8", errors="replace")
         except Exception:
             body = ""
+        try:
+            request_headers = {
+                str(k): str(v) for k, v in (response.request.headers or {}).items()
+            }
+        except Exception:  # noqa: BLE001
+            request_headers = {}
         self._records.append(
             HttpResponse(
                 method=str(response.request.method).upper(),
@@ -78,6 +96,7 @@ class HttpRecorder:
                 status=int(response.status),
                 headers={k: v for k, v in (response.headers or {}).items()},
                 body=body,
+                request_headers=request_headers,
             )
         )
 

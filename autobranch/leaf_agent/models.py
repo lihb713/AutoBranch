@@ -109,7 +109,7 @@ class LeafContext:
     :param session_factory: 会话工厂（测试注入 FakeTransport）；默认按
       ``config`` 构建真实会话（单次请求超时 ``session_timeout``）。
     :param tools: 初始工具集（默认能力概览 + ``use_capability``）。
-    :param max_rounds: LLM 工具调用轮数上限（默认 10，契约 §5.7.2.1 ①）。
+    :param max_rounds: LLM 工具调用轮数上限（默认 20，契约 §5.7.2.1 ①）。
     :param no_progress_rounds: 连续无进展判定轮数（默认 2，契约 §9.7 ②）。
     :param timeout: 单叶子墙钟超时秒数（默认 120；None 不检测）。
     :param session_timeout: 单次 LLM 请求超时秒数（默认会话工厂使用）。
@@ -123,7 +123,7 @@ class LeafContext:
     session_factory: Callable[[LLMConfig, str], LLMSession] | None = None
     tools: list[ToolSpec] | None = None
     runtime: Any = None
-    max_rounds: int = 10
+    max_rounds: int = 20
     no_progress_rounds: int = 2
     timeout: float | None = 240.0
     session_timeout: float = 60.0

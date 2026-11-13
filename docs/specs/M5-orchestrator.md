@@ -92,7 +92,7 @@ Engine(
 @dataclass(frozen=True)
 class RunConfig:
     timeout: float | None = 240.0      # 全局叶子超时（注入根级 schema "timeout"）
-    max_rounds: int = 10               # 叶子 LLM 工具调用轮数上限（传 M6）
+    max_rounds: int = 20               # 叶子 LLM 工具调用轮数上限（传 M6）
     no_progress_rounds: int = 2        # 连续无进展阈值（传 M6）
     session_timeout: float = 60.0      # 单次 LLM 请求超时（传 M6）
     initial_graph_scope: str = "full"  # （兼容保留，传 M6）

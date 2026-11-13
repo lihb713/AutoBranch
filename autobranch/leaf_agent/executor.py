@@ -420,6 +420,15 @@ def _plugin_tool_call(
         return result, _plugin_text(result, ""), [], None, False
     if spec.is_producing:
         target = (arguments or {}).get(spec.output_param)
+        if isinstance(target, str):
+            stripped = target.strip()
+            if stripped.startswith("{") and stripped.endswith("}"):
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed, dict):
+                        target = parsed
+                except ValueError:
+                    pass
         declared = {_norm_path(t) for t in set_targets}
         decl_types = dict(set_decls)
         call_args = _resolve_param_args(
@@ -557,6 +566,9 @@ def _plugin_text(result: FunctionResult, plugin_name: str = "") -> str:
         title = sec.get("title", "")
         body = sec.get("body", "")
         parts.append(f"[{title}] {body}" if title else str(body))
+    tabs_hint = (result.detail or {}).get("tabs_hint")
+    if tabs_hint:
+        parts.append(str(tabs_hint))
     return "成功" if not parts else "成功\n" + "\n".join(parts)
 
 

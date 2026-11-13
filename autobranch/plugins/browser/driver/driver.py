@@ -24,8 +24,30 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from autobranch.plugins.browser.driver.config import BrowserConfig
 from autobranch.plugins.browser.driver.errors import BrowserError, FatalBrowserError, PageRefError
 from autobranch.plugins.browser.driver.http import HttpRecorder
-from autobranch.plugins.browser.driver.models import ElementRef, ErrorCode, OpResult, PageRef
+from autobranch.plugins.browser.driver.models import (
+    ElementRef,
+    ErrorCode,
+    HttpResponse,
+    OpResult,
+    PageRef,
+)
 from autobranch.plugins.browser.proxy import ProxyRouter, load_proxy_config, proxy_key
+
+_PAGE_REQUEST_JS = """
+async ({method, url, headers, body}) => {
+  try {
+    const opts = {method, headers: headers || {}, credentials: 'include'};
+    if (body !== null && body !== undefined && body !== '') opts.body = body;
+    const resp = await fetch(url, opts);
+    const text = await resp.text();
+    const out = {};
+    resp.headers.forEach((value, key) => { out[key] = value; });
+    return {status: resp.status, url: resp.url, headers: out, body: text};
+  } catch (err) {
+    return {error: String(err)};
+  }
+}
+"""
 
 _FATAL_KEYWORDS = (
     "target closed",
@@ -108,6 +130,7 @@ class BrowserDriver:
         self._config: BrowserConfig | None = None
         self._pages: dict[str, Page] = {}
         self._next_page_id = 1
+        self._newly_opened_tabs: list[dict[str, Any]] = []
         self._http_recorder = HttpRecorder()
         self._active_id: str | None = None
         self._router: ProxyRouter | None = None
@@ -136,6 +159,7 @@ class BrowserDriver:
         self._contexts = {}
         self._page_ctx = {}
         self._pages = {}
+        self._newly_opened_tabs = []
         self._active_id = None
         # 页面 id 驱动级单调递增（跨会话不重置），避免重启后旧引用误绑定新页
         self._http_recorder.clear()
@@ -223,8 +247,67 @@ class BrowserDriver:
         else:
             ctx = self._browser.new_context(**self._context_args(profile))
         ctx.on("response", self._http_recorder.record_response)
+        ctx.on("page", self._on_new_page)
         self._contexts[key] = ctx
         return ctx
+
+    def _register_page(self, page: Page, ctx: object | None = None) -> str:
+        """注册页面并返回稳定引用 id；已在 ``_pages`` 中的页面复用原 id。"""
+        for ref_id, existing in list(self._pages.items()):
+            if existing is page:
+                if ctx is not None:
+                    self._page_ctx[ref_id] = ctx
+                return ref_id
+        ref_id = str(self._next_page_id)
+        self._next_page_id += 1
+        self._pages[ref_id] = page
+        if ctx is not None:
+            self._page_ctx[ref_id] = ctx
+        else:
+            try:
+                self._page_ctx[ref_id] = page.context
+            except Exception:  # noqa: BLE001 - 事件回调拿不到 context 时不影响注册
+                pass
+        return ref_id
+
+    def _on_new_page(self, page: Page) -> None:
+        """新标签页事件：注册到 ``_pages``，不自动切换活动页。"""
+        try:
+            ref_id = self._register_page(page)
+        except Exception:  # noqa: BLE001 - 事件回调不抛到 Playwright
+            return
+        self._newly_opened_tabs.append({"id": ref_id, "url": page.url or ""})
+
+    def pop_newly_opened_tabs(self) -> list[dict[str, Any]]:
+        tabs = self._newly_opened_tabs
+        self._newly_opened_tabs = []
+        return tabs
+
+    def list_tabs(self) -> list[dict[str, Any]]:
+        """列出全部已注册标签页（id/url/title/active）。"""
+        out: list[dict[str, Any]] = []
+        for ref_id, page in list(self._pages.items()):
+            try:
+                title = page.title()
+            except Exception:  # noqa: BLE001
+                title = ""
+            out.append(
+                {
+                    "id": ref_id,
+                    "url": page.url,
+                    "title": title,
+                    "active": ref_id == self._active_id,
+                }
+            )
+        return out
+
+    def _detect_new_tabs(self, pre_page_ids: set[str]) -> list[dict[str, Any]]:
+        """与操作前 id 集合对比，返回本次操作期间新增的标签页。"""
+        new_ids = [nid for nid in self._pages if nid not in pre_page_ids]
+        return [
+            {"id": nid, "url": self._pages[nid].url}
+            for nid in new_ids
+        ]
 
     def stop(self) -> None:
         """释放全部会话与页面（契约 §5.9：会话结束释放全部资源）。
@@ -328,10 +411,11 @@ class BrowserDriver:
                 f"打开页面失败: {message}",
                 {"code": code or ErrorCode.NETWORK, "url": url},
             )
-        ref_id = str(self._next_page_id)
-        self._next_page_id += 1
-        self._pages[ref_id] = page
-        self._page_ctx[ref_id] = ctx
+        ref_id = self._register_page(page, ctx)
+        # open 的页面不属于“操作触发的新标签页”
+        self._newly_opened_tabs = [
+            tab for tab in self._newly_opened_tabs if tab.get("id") != ref_id
+        ]
         self._active_id = ref_id
         return OpResult(True, detail={"page_ref": PageRef(ref_id), "url": url})
 
@@ -430,13 +514,19 @@ class PageHandle:
 
     def _guard(self, fn: Callable[[], Any]) -> OpResult:
         """执行操作并把程序侧异常分类为失败结果；致命错误上抛。"""
+        pre_page_ids = set(self._driver._pages)
         try:
             fn()
         except PlaywrightTimeoutError as exc:
             return self._fail(exc)
         except PlaywrightError as exc:
             return self._fail(exc)
-        return OpResult(True, detail={"page_ref": self._page_ref})
+        self._driver._pump_events()
+        detail: dict[str, Any] = {"page_ref": self._page_ref}
+        new_tabs = self._driver._detect_new_tabs(pre_page_ids)
+        if new_tabs:
+            detail["new_tabs"] = new_tabs
+        return OpResult(True, detail=detail)
 
     def _fail(self, exc: Exception) -> OpResult:
         code, message = _classify_playwright_error(exc)
@@ -457,8 +547,19 @@ class PageHandle:
         """向文本输入类元素输入文本（替换现有值，任务 4.1）。"""
         return self._guard(lambda: self._locator(ref).fill(text, timeout=self._timeout_ms))
 
+    def press(self, ref: ElementRef, key: str) -> OpResult:
+        """向元素发送按键（如 Enter/Tab/Escape）。"""
+        if not isinstance(key, str) or not key.strip():
+            return OpResult(
+                False,
+                "按键不能为空",
+                {"code": ErrorCode.INVALID_ARGUMENT, "page_ref": self._page_ref},
+            )
+        return self._guard(lambda: self._locator(ref).press(key, timeout=self._timeout_ms))
+
     def select(self, ref: ElementRef, option: str) -> OpResult:
         """下拉选择：优先按选项文本（label）匹配，其次按 value 匹配（任务 4.2）。"""
+        pre_page_ids = set(self._driver._pages)
         if not isinstance(option, str) or not option:
             return OpResult(
                 False,
@@ -488,7 +589,12 @@ class PageHandle:
                 self._locator(ref).select_option(value=option, timeout=self._timeout_ms)
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             return self._fail(exc)
-        return OpResult(True, detail={"page_ref": self._page_ref})
+        self._driver._pump_events()
+        detail: dict[str, Any] = {"page_ref": self._page_ref}
+        new_tabs = self._driver._detect_new_tabs(pre_page_ids)
+        if new_tabs:
+            detail["new_tabs"] = new_tabs
+        return OpResult(True, detail=detail)
 
     def check(self, ref: ElementRef) -> OpResult:
         """勾选勾选类控件（任务 4.2）。"""
@@ -502,6 +608,7 @@ class PageHandle:
 
     def scroll(self, direction: str) -> OpResult:
         """滚动页面（up/down/left/right/top/bottom，任务 4.3）。"""
+        pre_page_ids = set(self._driver._pages)
         if direction not in self._SCROLLS:
             return OpResult(
                 False,
@@ -521,7 +628,12 @@ class PageHandle:
                 self._page.evaluate(f"window.scrollBy(0, {delta})")
         except (PlaywrightError, PlaywrightTimeoutError) as exc:
             return self._fail(exc)
-        return OpResult(True, detail={"page_ref": self._page_ref})
+        self._driver._pump_events()
+        detail: dict[str, Any] = {"page_ref": self._page_ref}
+        new_tabs = self._driver._detect_new_tabs(pre_page_ids)
+        if new_tabs:
+            detail["new_tabs"] = new_tabs
+        return OpResult(True, detail=detail)
 
     def wait(self, condition: str, timeout_ms: int) -> OpResult:
         """等待条件满足（任务 4.3）。
@@ -570,6 +682,51 @@ class PageHandle:
             return self._page.get_by_text(value, exact=False).count() > 0
         return value in self._page.url
 
+    # ------------------------------------------------------------------ 页面请求/网络
+
+    def page_request(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None = None,
+        body: str | None = None,
+    ) -> OpResult:
+        """在当前页面上下文执行 fetch（自动携带 cookie）。"""
+        if not isinstance(method, str) or not method.strip():
+            return OpResult(False, "method 非法", {"code": ErrorCode.INVALID_ARGUMENT})
+        if not isinstance(url, str) or not url:
+            return OpResult(False, "url 为空", {"code": ErrorCode.INVALID_ARGUMENT})
+        try:
+            payload = self._page.evaluate(
+                _PAGE_REQUEST_JS,
+                {"method": method.upper(), "url": url, "headers": headers or {}, "body": body},
+            )
+        except (PlaywrightError, PlaywrightTimeoutError) as exc:
+            return self._fail(exc)
+        if not isinstance(payload, dict) or "error" in payload:
+            return OpResult(
+                False,
+                f"页面请求失败: {payload.get('error') if isinstance(payload, dict) else payload}",
+                {"code": ErrorCode.NETWORK, "page_ref": self._page_ref},
+            )
+        response = HttpResponse(
+            method=method.upper(),
+            url=str(payload.get("url", url)),
+            status=int(payload.get("status", 0)),
+            headers={str(k): str(v) for k, v in (payload.get("headers") or {}).items()},
+            body=str(payload.get("body", "")),
+        )
+        return OpResult(True, detail={"response": response, "page_ref": self._page_ref})
+
+    def wait_for_network_idle(self, timeout_ms: int = 10000) -> OpResult:
+        """等待网络空闲（连续两次 networkidle；超时兜底不失败）。"""
+        try:
+            self._page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            self._page.wait_for_load_state("networkidle", timeout=timeout_ms)
+        except (PlaywrightError, PlaywrightTimeoutError):
+            pass
+        return OpResult(True, detail={"page_ref": self._page_ref})
+
     # ------------------------------------------------------------------ 文件
 
     def download(self, ref: ElementRef, save_dir: str) -> OpResult:
@@ -608,6 +765,7 @@ class PageHandle:
 
     def upload(self, ref: ElementRef, file_path: str) -> OpResult:
         """向文件选择控件写入文件（任务 5.2）。"""
+        pre_page_ids = set(self._driver._pages)
         if not os.path.isfile(file_path):
             return OpResult(
                 False,
@@ -625,7 +783,12 @@ class PageHandle:
                 message,
                 {"code": ErrorCode.UPLOAD_FAILED, "page_ref": self._page_ref},
             )
-        return OpResult(True, detail={"file": file_path, "page_ref": self._page_ref})
+        self._driver._pump_events()
+        detail: dict[str, Any] = {"file": file_path, "page_ref": self._page_ref}
+        new_tabs = self._driver._detect_new_tabs(pre_page_ids)
+        if new_tabs:
+            detail["new_tabs"] = new_tabs
+        return OpResult(True, detail=detail)
 
     # ------------------------------------------------------------------ 截图
 

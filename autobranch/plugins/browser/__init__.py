@@ -10,13 +10,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from typing import Any
 
 from autobranch.plugin_system import FunctionResult, PluginBase, engine_function, llm_function
 from autobranch.plugins.browser.driver import BrowserDriver, ElementRef
-from autobranch.plugins.browser.driver.http import http_request as _http_request
 from autobranch.plugins.browser.driver.models import PageRef as BrowserPageRef
 from autobranch.plugins.browser.probe import EngineProbe
 from autobranch.plugins.browser.refmap import EngineRefMap
@@ -36,6 +36,22 @@ _REF_DESC = "语义图元素引用（如 [1]，来自最近一次 semantic_graph
 
 def _props(required: tuple[str, ...], **props: dict) -> dict:
     return {"type": "object", "properties": props, "required": list(required)}
+
+
+def _serialize_records(records: list[Any]) -> str:
+    parts = [
+        json.dumps(
+            {
+                "method": r.method,
+                "url": r.url,
+                "status": r.status,
+                "body": r.body,
+            },
+            ensure_ascii=False,
+        )
+        for r in records
+    ]
+    return "\n---\n".join(parts)
 
 
 class BrowserPlugin(PluginBase):
@@ -345,7 +361,10 @@ class BrowserPlugin(PluginBase):
 
     @llm_function(
         name="get_response",
-        description="读取页面已发生且与模式匹配的请求响应（无匹配返回失败）",
+        description=(
+            "读取页面已发生的请求响应：先用 list_requests 查看请求清单，"
+            "再用本函数按 method + URL 模式精确获取（无匹配返回失败）"
+        ),
         parameters=_props(
             ("method", "url_pattern"),
             method={"type": "string", "description": "HTTP 方法，如 GET/POST"},
@@ -362,55 +381,308 @@ class BrowserPlugin(PluginBase):
             )
         return FunctionResult.success(response)
 
-    @engine_function(
-        name="http_request",
+    @llm_function(
+        name="list_requests",
+        description="列出当前页面已记录的请求清单（method/url/status，不含 body）",
+        parameters=_props(()),
+    )
+    def list_requests(self) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        records = self._browser.http_recorder.list_records()
+        if not records:
+            return FunctionResult.failure(
+                "无请求记录（请先 clear_requests 或执行操作）", code="NOT_FOUND"
+            )
+        text = "\n".join(f"{m} {s} {u}" for m, u, s in records)
+        return FunctionResult.success(text, count=len(records))
+
+    @llm_function(
+        name="get_responses",
+        description="批量获取当前页面已记录的全部请求响应（含 body；产出型 save_to）",
+        parameters=_props(()),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def get_responses(self) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        records = self._browser.http_recorder.get_all_records()
+        if not records:
+            return FunctionResult.failure(
+                "无请求记录（请先 clear_requests 或执行操作）", code="NOT_FOUND"
+            )
+        return FunctionResult.success(_serialize_records(records), count=len(records))
+
+    @llm_function(
+        name="get_request_headers",
         description=(
-            "发起 HTTP 请求并返回响应（类似 requests.request：method/url 必填，"
-            "headers/params/body/json/timeout 可选；返回 status/body/headers；"
-            "不经页面，认证经 headers 显式提供）"
+            "获取页面最近 API 请求的完整请求头，用于分析认证参数"
+            "（Cookie、CSRF token、Authorization 等）；供 page_request / http.request 补充 headers"
+        ),
+        parameters=_props(()),
+    )
+    def get_request_headers(self) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        records = self._browser.http_recorder.get_all_records()[-5:]
+        if not records:
+            return FunctionResult.failure(
+                "无请求记录（请先执行页面操作触发请求）", code="NOT_FOUND"
+            )
+        text = "\n---\n".join(
+            json.dumps(
+                {
+                    "method": r.method,
+                    "url": r.url,
+                    "status": r.status,
+                    "request_headers": r.request_headers,
+                },
+                ensure_ascii=False,
+            )
+            for r in records
+        )
+        return FunctionResult.success(text)
+
+    @llm_function(
+        name="page_request",
+        description=(
+            "在当前页面上下文中发起 fetch 请求（自动携带 cookie）。"
+            "method/url 必填，headers 可选（补充 CSRF token 等认证头）；"
+            "返回响应 body 文本（产出型 save_to）"
         ),
         parameters=_props(
             ("method", "url"),
             method={"type": "string", "description": "HTTP 方法，如 GET/POST"},
             url={"type": "string", "description": "请求 URL"},
-            headers={"type": "object", "description": "请求头"},
-            params={"type": "object", "description": "URL 查询参数"},
-            body={"type": "string", "description": "原始请求体（表单/文本）"},
-            json={"type": "object", "description": "JSON 请求体"},
-            timeout={"type": "number", "description": "超时秒数（默认 30）"},
+            headers={"type": "object", "description": "补充请求头（如 CSRF token）"},
+            body={"type": "string", "description": "请求体（可选）"},
         ),
-        returns={"status": "int", "body": "str", "headers": "object"},
+        returns={"body": "str"},
+        output_param="save_to",
     )
-    def http_request(
+    def page_request(
         self,
         method: str,
         url: str,
         headers: dict | None = None,
-        params: dict | None = None,
         body: str | None = None,
-        json: dict | None = None,
-        timeout: float | None = None,
     ) -> FunctionResult:
-        result = _http_request(
-            method,
-            url,
-            headers=headers,
-            params=params,
-            body=body,
-            json=json,
-            timeout=timeout,
-        )
+        handle = self._current_page_handle()
+        if handle is None:
+            return FunctionResult.failure("无当前页面（尚未打开任何页面）", code="INVALID_REF")
+        result = handle.page_request(method, url, headers=headers, body=body)
         if not result.ok:
-            return FunctionResult.failure(
-                result.error or "HTTP 请求失败", **dict(result.detail or {})
-            )
+            return self._ok_result(result)
         response = result.detail["response"]
         return FunctionResult.success(
-            response.status,
             response.body,
-            response.headers,
-            response=response,
+            status=response.status,
+            url=response.url,
+            response_body=response.body,
         )
+
+    @llm_function(
+        name="list_tabs",
+        description="列出所有已打开的标签页（id/url/title/是否活动页）",
+        parameters=_props(()),
+    )
+    def list_tabs(self) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        tabs = self._browser.list_tabs()
+        text = "\n".join(
+            f"id={tab['id']} url={tab['url']} title={tab['title']}"
+            f"{' [active]' if tab['active'] else ''}"
+            for tab in tabs
+        )
+        return FunctionResult.success(text or "（无标签页）", tabs=tabs)
+
+    @llm_function(
+        name="switch_tab",
+        description="按 id 切换当前活动标签页（id 来自 list_tabs）",
+        parameters=_props(
+            ("tab_id",), tab_id={"type": "string", "description": "标签页 id（来自 list_tabs）"}
+        ),
+    )
+    def switch_tab(self, tab_id: str) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        result = self._browser.activate_page(BrowserPageRef(id=str(tab_id)))
+        if not result.ok:
+            return self._ok_result(result)
+        page_result = self._browser.page(BrowserPageRef(id=str(tab_id)))
+        if page_result.ok:
+            page = page_result.detail["page"]
+            self._current_page = PageObject(id=str(tab_id), url=page.url)
+        return FunctionResult.success(tab_id=tab_id)
+
+    @llm_function(
+        name="press",
+        description="向元素发送按键（如 Enter/Tab/Escape，作用于当前页面）",
+        parameters=_props(
+            ("ref", "key"),
+            ref={"type": "string", "description": _REF_DESC},
+            key={"type": "string", "description": "按键名，如 Enter"},
+        ),
+    )
+    def press(self, ref: str, key: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._ok_result(handle.press(ElementRef(resolution.selector), key))
+
+    # -------------------------------------------------- 捕获操作（clear→操作→全部响应）
+
+    def _capture(self, op: Any) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        self._browser.http_recorder.clear()
+        result = op()
+        if not result.ok:
+            return self._ok_result(result)
+        detail = dict(result.detail or {})
+        new_tabs = detail.pop("new_tabs", None)
+        handle = self._current_page_handle()
+        if handle is not None:
+            handle.wait_for_network_idle()
+        records = self._browser.http_recorder.get_all_records()
+        if not records:
+            return FunctionResult.failure("操作未触发任何 API 请求", code="NOT_FOUND")
+        tabs_hint = self._tabs_hint(new_tabs) if new_tabs else ""
+        return FunctionResult.success(
+            _serialize_records(records),
+            count=len(records),
+            new_tabs=new_tabs or [],
+            tabs_hint=tabs_hint,
+        )
+
+    @llm_function(
+        name="click_capture",
+        description="点击元素并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def click_capture(self, ref: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.click(ElementRef(resolution.selector)))
+
+    @llm_function(
+        name="type_capture",
+        description="向输入元素输入文本并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(
+            ("ref", "text"),
+            ref={"type": "string", "description": _REF_DESC},
+            text={"type": "string", "description": "输入文本"},
+        ),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def type_capture(self, ref: str, text: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.type(ElementRef(resolution.selector), text))
+
+    @llm_function(
+        name="press_capture",
+        description="向元素发送按键并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(
+            ("ref", "key"),
+            ref={"type": "string", "description": _REF_DESC},
+            key={"type": "string", "description": "按键名，如 Enter"},
+        ),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def press_capture(self, ref: str, key: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.press(ElementRef(resolution.selector), key))
+
+    @llm_function(
+        name="select_capture",
+        description="下拉选择并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(
+            ("ref", "option"),
+            ref={"type": "string", "description": _REF_DESC},
+            option={"type": "string", "description": "选项文本或 value"},
+        ),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def select_capture(self, ref: str, option: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.select(ElementRef(resolution.selector), option))
+
+    @llm_function(
+        name="check_capture",
+        description="勾选控件并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def check_capture(self, ref: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.check(ElementRef(resolution.selector)))
+
+    @llm_function(
+        name="uncheck_capture",
+        description="取消勾选并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(("ref",), ref={"type": "string", "description": _REF_DESC}),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def uncheck_capture(self, ref: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.uncheck(ElementRef(resolution.selector)))
+
+    @llm_function(
+        name="scroll_capture",
+        description="滚动页面并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(
+            ("direction",),
+            direction={
+                "type": "string",
+                "description": "滚动方向",
+                "enum": ["up", "down", "left", "right", "top", "bottom"],
+            },
+        ),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def scroll_capture(self, direction: str) -> FunctionResult:
+        handle = self._current_page_handle()
+        if handle is None:
+            return FunctionResult.failure("无当前页面", code="INVALID_REF")
+        return self._capture(lambda: handle.scroll(direction))
+
+    @llm_function(
+        name="upload_capture",
+        description="上传文件并捕获触发的全部 API 响应（产出型 save_to）",
+        parameters=_props(
+            ("ref", "path"),
+            ref={"type": "string", "description": _REF_DESC},
+            path={"type": "string", "description": "本地文件路径"},
+        ),
+        returns={"responses": "str"},
+        output_param="save_to",
+    )
+    def upload_capture(self, ref: str, path: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        return self._capture(lambda: handle.upload(ElementRef(resolution.selector), path))
 
     # ------------------------------------------------------------ 提取
 
@@ -492,10 +764,24 @@ class BrowserPlugin(PluginBase):
         except Exception:  # noqa: BLE001 - 截图失败不阻断语义图
             return None
 
+    @staticmethod
+    def _tabs_hint(new_tabs: list[dict] | None) -> str:
+        if not new_tabs:
+            return ""
+        lines = ["新标签页已打开:"]
+        for tab in new_tabs:
+            lines.append(f"  id={tab.get('id')} url={tab.get('url', '')}")
+        lines.append("请调用 list_tabs 查看，再用 switch_tab 切换到新标签页")
+        return "\n".join(lines)
+
     def _ok_result(self, op: Any) -> FunctionResult:
-        """把 M1 ``OpResult`` 转为 ``FunctionResult``（detail 透传 JSON 可序列化部分）。"""
+        """把 M1 ``OpResult`` 转为 ``FunctionResult``（detail 透传；补新标签页提示）。"""
         if op.ok:
-            return FunctionResult.success(ok=True, detail=dict(op.detail or {}))
+            detail = dict(op.detail or {})
+            new_tabs = detail.get("new_tabs")
+            if new_tabs:
+                detail["tabs_hint"] = self._tabs_hint(new_tabs)
+            return FunctionResult.success(**detail)
         code = (op.detail or {}).get("code") or "BROWSER_ERROR"
         return FunctionResult.failure(op.error or "操作失败", code=code)
 

@@ -82,22 +82,32 @@ def test_register_browser_plugin_exposes_functions():
         "browser.semantic_graph",
         "browser.click",
         "browser.type",
+        "browser.press",
+        "browser.list_requests",
+        "browser.get_responses",
+        "browser.page_request",
+        "browser.get_request_headers",
+        "browser.list_tabs",
+        "browser.switch_tab",
+        "browser.click_capture",
+        "browser.type_capture",
+        "browser.press_capture",
+        "browser.select_capture",
+        "browser.check_capture",
+        "browser.uncheck_capture",
+        "browser.scroll_capture",
+        "browser.upload_capture",
     } <= names
     assert reg.function("browser.extract").is_producing  # output_param target
     assert reg.function("browser.open").returns == {"page": "object"}
     # 用户可见 / LLM-only 分层：技术性接口不进入 FunctionCall 清单
     user_names = set(reg.user_functions())
-    assert {"browser.open", "browser.get_url", "browser.http_request"} <= user_names
+    assert {"browser.open", "browser.get_url"} <= user_names
     assert "browser.semantic_graph" not in user_names
     assert "browser.get_response" not in user_names
     assert "browser.click" not in user_names
     assert reg.function("browser.semantic_graph").user_visible is False
-    assert reg.function("browser.http_request").user_visible is True
-    assert reg.function("browser.http_request").returns == {
-        "status": "int",
-        "body": "str",
-        "headers": "object",
-    }
+    assert "browser.http_request" not in names
 
 
 def test_open_returns_page_object():
