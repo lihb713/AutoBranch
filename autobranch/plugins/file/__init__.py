@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from autobranch.plugin_system import FunctionResult, PluginBase, engine_function
 
@@ -37,10 +38,77 @@ class FileDiff:
 
 
 class FilePlugin(PluginBase):
-    """文件能力：读 / 写 / 对比。"""
+    """文件能力：读 / 写 / 对比 + 文件管理（API/前端/存储/配置）。"""
 
     name = "file"
-    description = "文件能力：读取（read）、写入（write）、对比（diff）"
+    description = "文件能力：读取、写入、对比、文件管理"
+
+    def __init__(self) -> None:
+        self._service: Any = None
+        self._max_file_size = MAX_FILE_SIZE
+
+    # ------------------------------------------------------------ 模块化扩展
+
+    def init(self, runtime: Any = None) -> None:
+        from .service import FileService
+
+        storage_path = os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(storage_path, exist_ok=True)
+        self._service = FileService(storage_path, max_file_size=self._max_file_size)
+
+    def register_routes(self, app: Any) -> None:
+        from .api import create_file_router
+
+        app.include_router(
+            create_file_router(self._service),
+            prefix="/api/plugins/file",
+            tags=["file"],
+        )
+
+    def register_models(self, base: Any) -> None:
+        from . import models  # noqa: F401 - import 即注册到 Base.metadata
+
+    @property
+    def frontend_manifest(self) -> dict[str, Any] | None:
+        return {
+            "pages": [
+                {
+                    "route": "/file",
+                    "label": "文件管理",
+                    "component": "FileManager",
+                    "icon": "folder",
+                }
+            ]
+        }
+
+    @property
+    def storage_dir(self) -> str | None:
+        return "data"
+
+    @property
+    def config_schema(self) -> list[dict[str, Any]] | None:
+        return [
+            {
+                "key": "max_file_size",
+                "label": "最大文件大小(MB)",
+                "type": "number",
+                "default": 10,
+                "required": False,
+                "description": "单文件大小上限",
+            }
+        ]
+
+    def get_config(self) -> dict[str, Any]:
+        return {"max_file_size": self._max_file_size // (1024 * 1024)}
+
+    def set_config(self, config: dict[str, Any]) -> None:
+        if "max_file_size" in config:
+            mb = float(config["max_file_size"])
+            if mb <= 0:
+                raise ValueError("max_file_size 必须大于 0")
+            self._max_file_size = int(mb * 1024 * 1024)
+            if self._service is not None:
+                self._service.max_file_size = self._max_file_size
 
     @engine_function(
         name="read",
@@ -50,8 +118,11 @@ class FilePlugin(PluginBase):
     )
     def read(self, path: str) -> FunctionResult:
         try:
-            if os.path.getsize(path) > MAX_FILE_SIZE:
-                return FunctionResult.failure(f"文件过大（>10MB）: {path}", code="FILE_ERROR")
+            if os.path.getsize(path) > self._max_file_size:
+                return FunctionResult.failure(
+                    f"文件过大（>{self._max_file_size // (1024 * 1024)}MB）: {path}",
+                    code="FILE_ERROR",
+                )
             with open(path, encoding="utf-8") as f:
                 return FunctionResult.success(f.read())
         except Exception as exc:  # noqa: BLE001 - 读失败返回失败结果

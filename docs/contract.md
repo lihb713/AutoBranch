@@ -2549,7 +2549,20 @@ class MyCalcPlugin(PluginBase):
 plugin = MyCalcPlugin()
 ```
 
-### 13.7 约束与限制
+### 13.7 插件模块化扩展（可选）
+
+插件除函数外，还可实现以下可选能力（默认空实现）：
+
+- `register_routes(app)`：插件级 REST API，前缀 `/api/plugins/{name}/`；
+- `register_models(Base)`：插件表（前缀 `plugin_{name}_`），启动时在 `create_all` 前注册；
+- `frontend_manifest`：插件前端页面清单，页面从插件列表进入，不加入全局导航；
+- `storage_dir`：插件数据目录（相对插件目录），由 `init` 创建；
+- `config_schema` / `get_config` / `set_config`：配置声明与读写，持久化到 `plugins.config`；
+- `release()`：释放资源。
+
+> 纯函数插件无需实现任何扩展，保持向后兼容。前端插件页面组件需位于 `frontend/src/features/`，由组件名静态映射加载；自定义插件暂不支持前端页面。
+
+### 13.8 约束与限制
 
 - 仅标准库；不提供依赖自动识别 / 安装（需要三方库请作为预置插件由开发者提前安装）。
 - 删除插件会**置空**引用它的行为树 FunctionCall 引用（持久化修改文档）。

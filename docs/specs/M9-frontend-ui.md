@@ -24,7 +24,8 @@ AutoBranch 的用户交互界面：行为树编辑器（拖拽节点 → 生成�
 | 入参对话框 | 声明入参的树点「执行」弹框填参（仅可构造类型渲染输入框，bool 复选框）；含不可构造入参（page_ref）的树不渲染「执行」按钮 | §12.4（Change A） |
 | 复合节点视图 | 用户始终看到含复合节点的行为树（Step/Branch/LoopUntil/...） | §12.5 |
 | 清晰度校验提示 | 草稿允许未通过校验；保存时后端校验并提示用户修正 | §12.5 |
-| 插件管理页 | 插件列表（预置/自定义徽标）+ 新增/编辑（CodeMirror 6 编辑器）+ 保存校验（行号/约束提示）+ 删除关联弹窗（引用置空确认） | plugin-management spec |
+| 插件管理页 | 卡片列表（预置/自定义徽标）+ 函数详情/源码双 Tab + 配置弹窗 + 插件前端页面入口 + 删除关联弹窗 | plugin-management spec |
+| 插件前端页面 | 通过 `GET /api/plugins?include_manifest=true` 动态注册路由；不从全局导航进入，仅从插件列表页跳转；组件名静态映射（如 FileManager） | plugin-management spec |
 
 **非目标（第一版）**：不做实时 WebSocket 推送（采用 1 秒轮询，§12.4）。
 

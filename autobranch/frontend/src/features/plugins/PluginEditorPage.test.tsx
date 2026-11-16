@@ -26,6 +26,7 @@ vi.mock("@codemirror/lang-python", () => ({ python: () => [] }));
 vi.mock("../../api/plugins", () => ({
   pluginsApi: {
     getPlugin: vi.fn(),
+    listPluginFunctions: vi.fn(),
     checkPlugin: vi.fn(),
     createPlugin: vi.fn(),
     updatePlugin: vi.fn(),
@@ -77,5 +78,48 @@ describe("PluginEditorPage", () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ name: "my-helper" }),
     );
+  });
+
+  test("预置插件默认展示函数详情，可切换源码 Tab", async () => {
+    const getPlugin = pluginsApi.getPlugin as unknown as ReturnType<typeof vi.fn>;
+    const listFns = pluginsApi.listPluginFunctions as unknown as ReturnType<typeof vi.fn>;
+    getPlugin.mockResolvedValue({
+      id: 1,
+      name: "browser",
+      kind: "builtin",
+      description: "浏览器",
+      functions: ["open"],
+      source: "class BrowserPlugin(PluginBase): ...",
+      created_at: "",
+      updated_at: "",
+    });
+    listFns.mockResolvedValue([
+      {
+        full_name: "browser.open",
+        plugin: "browser",
+        name: "open",
+        description: "打开页面",
+        returns: { page: "object" },
+        parameters: {
+          type: "object",
+          properties: { url: { type: "string", description: "URL" } },
+          required: ["url"],
+        },
+        output_param: "save_to",
+        user_visible: true,
+      },
+    ]);
+    render(
+      <MemoryRouter initialEntries={["/plugins/edit/browser"]}>
+        <Routes>
+          <Route path="/plugins/edit/:name" element={<PluginEditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("browser.open")).toBeInTheDocument();
+    expect(screen.getByText(/打开页面/)).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("plugin-tab-source"));
+    expect(screen.getByTestId("code")).toBeInTheDocument();
+    expect(screen.getByText(/预置插件只读/)).toBeInTheDocument();
   });
 });

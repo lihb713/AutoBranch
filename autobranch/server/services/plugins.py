@@ -75,28 +75,93 @@ class PluginService:
             )
             row = self._find(name)
             if row is None:
-                self.db.add(
-                    Plugin(
-                        name=name,
-                        kind=KIND_BUILTIN,
-                        description=plugin.description or "",
-                        functions=funcs,
-                        source=None,
-                    )
+                row = Plugin(
+                    name=name,
+                    kind=KIND_BUILTIN,
+                    description=plugin.description or "",
+                    functions=funcs,
+                    source=None,
                 )
+                self.db.add(row)
             else:
                 row.kind = KIND_BUILTIN
                 row.description = plugin.description or ""
                 row.functions = funcs
                 row.source = None
+            self._apply_row_config(row, plugin)
+        # 加载自定义插件（源码存 DB；重启后需重新注册）
+        for row in self.db.scalars(select(Plugin).where(Plugin.kind == KIND_CUSTOM)).all():
+            if not row.source:
+                continue
+            try:
+                plugin = load_plugin_from_source(
+                    self.registry, row.name, row.source, allow_override=True
+                )
+            except Exception:  # noqa: BLE001 - 单个插件失败不阻断启动
+                continue
+            self._apply_row_config(row, plugin)
         self.db.commit()
         return loaded
 
     # ------------------------------------------------------------- 查询
 
-    def list_all(self) -> list[PluginOut]:
+    def list_all(self, include_manifest: bool = False) -> list[PluginOut]:
         rows = self.db.scalars(select(Plugin).order_by(Plugin.id)).all()
-        return [PluginOut.model_validate(r) for r in rows]
+        out: list[PluginOut] = []
+        for row in rows:
+            item = PluginOut.model_validate(row)
+            if include_manifest:
+                plugin = self.registry.plugin(row.name)
+                if plugin is not None:
+                    item.frontend_manifest = plugin.frontend_manifest
+                    item.config_schema = plugin.config_schema
+            out.append(item)
+        return out
+
+    def get_manifest(self, name: str) -> dict:
+        plugin = self.registry.plugin(name)
+        if plugin is None:
+            raise AppError(404, f"插件不存在 (name={name})")
+        return {
+            "frontend_manifest": plugin.frontend_manifest,
+            "config_schema": plugin.config_schema,
+        }
+
+    def get_config(self, name: str) -> dict:
+        plugin = self.registry.plugin(name)
+        if plugin is None:
+            raise AppError(404, f"插件不存在 (name={name})")
+        return dict(plugin.get_config())
+
+    def update_config(self, name: str, config: dict) -> dict:
+        row = self.get(name)
+        plugin = self.registry.plugin(name)
+        if plugin is None:
+            raise AppError(404, f"插件不存在 (name={name})")
+        try:
+            plugin.set_config(dict(config or {}))
+        except Exception as exc:  # noqa: BLE001
+            raise AppError(422, f"插件配置非法: {exc}") from exc
+        merged = dict(plugin.get_config())
+        row.config = json.dumps(merged, ensure_ascii=False)
+        self.db.commit()
+        return merged
+
+    def list_functions_of(self, name: str) -> list[FunctionInfo]:
+        """插件的全部函数（含 LLM-only；供插件详情页）。"""
+        return [
+            FunctionInfo(
+                full_name=s.full_name,
+                plugin=s.plugin,
+                name=s.name,
+                description=s.description,
+                returns=dict(s.returns),
+                parameters=s.parameters,
+                output_param=s.output_param,
+                user_visible=s.user_visible,
+            )
+            for s in self.registry.functions_of(name)
+        ]
 
     def list_functions(self) -> list[FunctionInfo]:
         """跨插件聚合 **用户可见** 函数（全名 + 结构化定义），供编辑器选择器使用。"""
@@ -108,6 +173,8 @@ class PluginService:
                 description=s.description,
                 returns=dict(s.returns),
                 parameters=s.parameters,
+                output_param=s.output_param,
+                user_visible=s.user_visible,
             )
             for s in self.registry.user_functions().values()
         ]
@@ -173,6 +240,9 @@ class PluginService:
         self._commit_or_conflict()
         load_plugin_from_source(self.registry, payload.name, payload.source)
         row.functions = json.dumps(self._user_function_names(payload.name), ensure_ascii=False)
+        plugin = self.registry.plugin(payload.name)
+        if plugin is not None:
+            self._apply_row_config(row, plugin)
         self.db.commit()
         self.db.refresh(row)
         return PluginOut.model_validate(row)
@@ -191,6 +261,9 @@ class PluginService:
         row.source = payload.source
         row.description = self._describe(name, payload.source)
         row.functions = json.dumps(self._user_function_names(name), ensure_ascii=False)
+        plugin = self.registry.plugin(name)
+        if plugin is not None:
+            self._apply_row_config(row, plugin)
         self.db.commit()
         self.db.refresh(row)
         return PluginOut.model_validate(row)
@@ -217,6 +290,17 @@ class PluginService:
         return affected
 
     # ------------------------------------------------------------- 内部
+
+    def _apply_row_config(self, row: Plugin, plugin: object) -> None:
+        try:
+            data = json.loads(row.config or "{}")
+        except (ValueError, TypeError):
+            data = {}
+        if isinstance(data, dict) and data:
+            try:
+                plugin.set_config(data)
+            except Exception:  # noqa: BLE001 - 配置非法时不阻断插件加载
+                pass
 
     def _find(self, name: str) -> Plugin | None:
         return self.db.scalars(select(Plugin).where(Plugin.name == name)).first()

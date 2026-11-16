@@ -32,18 +32,22 @@ const makeSource = (name: string) => [
   "",
 ].join("\n");
 
-test("P1 插件列表展示预置插件徽标与函数", async ({ page }) => {
+test("P1 插件卡片展示 manifest/配置入口与函数详情", async ({ page }) => {
   await page.goto("/plugins");
-  await expect(page.getByText("browser", { exact: true })).toBeVisible();
-  await expect(page.getByText("compute", { exact: true })).toBeVisible();
-  const row = page.locator("tr", { hasText: "browser" });
-  await expect(row.getByText("预置")).toBeVisible();
-  await expect(row.getByText("browser.open")).toBeVisible();
-  // 仅 LLM 的技术性接口不进入用户函数清单
-  await expect(row.getByText("browser.semantic_graph")).toHaveCount(0);
-  await expect(row.getByText("browser.get_response")).toHaveCount(0);
-  const httpRow = page.locator("tr", { hasText: "http" });
-  await expect(httpRow.getByText("http.request")).toBeVisible();
+  await expect(page.getByTestId("plugin-card-browser")).toBeVisible();
+  await expect(page.getByTestId("plugin-card-compute")).toBeVisible();
+  await expect(page.getByTestId("plugin-card-browser").getByText("预置")).toBeVisible();
+
+  const fileCard = page.getByTestId("plugin-card-file");
+  await expect(fileCard.getByTestId("plugin-config-file")).toBeVisible();
+  await expect(fileCard.getByTestId("plugin-page-file-/file")).toBeVisible();
+
+  // 函数详情页展示全部函数与可见性（含 LLM-only）
+  await page.goto("/plugins/edit/browser");
+  await expect(page.getByTestId("plugin-tab-functions")).toBeVisible();
+  await expect(page.getByText("browser.open", { exact: false })).toBeVisible();
+  await page.getByTestId("plugin-tab-source").click();
+  await expect(page.getByText("预置插件只读", { exact: false })).toBeVisible();
 });
 
 test("P2 新增自定义插件并保存生效", async ({ page }) => {
@@ -55,10 +59,11 @@ test("P2 新增自定义插件并保存生效", async ({ page }) => {
   await page.locator(".cm-content").fill(PLUGIN_SOURCE);
   await page.getByRole("button", { name: "保存" }).click();
   await page.waitForURL(/\/plugins$/);
-  const row = page.locator("tr", { hasText: PLUGIN_NAME });
-  await expect(row).toBeVisible();
-  await expect(row.getByText("自定义", { exact: true })).toBeVisible();
-  await expect(row.getByText(`${PLUGIN_NAME}.greet`)).toBeVisible();
+  const card = page.getByTestId(`plugin-card-${PLUGIN_NAME}`);
+  await expect(card).toBeVisible();
+  await expect(card.getByText("自定义", { exact: true })).toBeVisible();
+  await card.getByText("查看函数详情").click();
+  await expect(page.getByText(`${PLUGIN_NAME}.greet`, { exact: false })).toBeVisible();
 });
 
 test("P3 编辑自定义插件并保存生效", async ({ page }) => {
@@ -74,12 +79,13 @@ test("P3 编辑自定义插件并保存生效", async ({ page }) => {
 
   const edited = PLUGIN_SOURCE.replace('"E2E 自定义插件"', '"升级版描述"');
   await page.goto(`/plugins/edit/${PLUGIN_NAME}`);
-  await expect(page.getByRole("heading", { name: /编辑插件/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /插件/ })).toBeVisible();
+  await page.getByTestId("plugin-tab-source").click();
   await page.locator(".cm-content").fill(edited);
   await page.getByRole("button", { name: "保存" }).click();
   await page.waitForURL(/\/plugins$/);
-  const row = page.locator("tr", { hasText: PLUGIN_NAME });
-  await expect(row.getByText("升级版描述")).toBeVisible();
+  const card = page.getByTestId(`plugin-card-${PLUGIN_NAME}`);
+  await expect(card.getByText("升级版描述")).toBeVisible();
 });
 
 test("P4 删除插件时弹窗提示关联并置空引用", async ({ page }) => {
@@ -114,9 +120,9 @@ root: n1
     void dialog.accept();
   });
   await page.goto("/plugins");
-  const row = page.locator("tr", { hasText: PLUGIN_NAME });
-  await row.getByRole("button", { name: "删除" }).click();
-  await expect(page.locator("tr", { hasText: PLUGIN_NAME })).toHaveCount(0);
+  const card = page.getByTestId(`plugin-card-${PLUGIN_NAME}`);
+  await card.getByTestId(`plugin-delete-${PLUGIN_NAME}`).click();
+  await expect(page.getByTestId(`plugin-card-${PLUGIN_NAME}`)).toHaveCount(0);
 
   // 行为树 FunctionCall 引用被置空（持久化）
   const api2 = await apiRequest.newContext(API);
@@ -126,6 +132,25 @@ root: n1
   expect(updated.content).toContain("function: null");
   expect(updated.content).not.toContain(`function: ${PLUGIN_NAME}.greet`);
   await api2.dispose();
+});
+
+test("P6 文件管理插件页面：上传/列表/删除", async ({ page }) => {
+  await page.goto("/plugins");
+  await page.getByTestId("plugin-page-file-/file").click();
+  await page.waitForURL(/\/file$/);
+  await expect(page.getByTestId("file-manager")).toBeVisible();
+
+  const name = `e2e-file-${Date.now()}.txt`;
+  await page.getByTestId("file-upload-input").setInputFiles({
+    name,
+    mimeType: "text/plain",
+    buffer: Buffer.from("hello-file-manager"),
+  });
+  const row = page.locator('[data-testid^="file-row-"]', { hasText: name });
+  await expect(row).toBeVisible();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await row.getByRole("button", { name: "删除" }).click();
+  await expect(row).toHaveCount(0);
 });
 
 test("P5 保存非法插件显示行号校验错误", async ({ page }) => {

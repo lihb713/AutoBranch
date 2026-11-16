@@ -24,3 +24,7 @@
 #### Scenario: 文件对比
 - **WHEN** 调用文件对比函数
 - **THEN** 返回差异结果
+
+### Requirement: 文件插件模块化
+
+`file` 插件 SHALL 提供文件管理 API（列表/上传/详情/下载/删除）、`plugin_file_records` 表、`autobranch/plugins/file/data/` 存储、`max_file_size` 配置、前端清单 `{route:/file,label:文件管理,component:FileManager}`。超限上传 MUST 返回 413。

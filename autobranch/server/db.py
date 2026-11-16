@@ -38,6 +38,27 @@ def configure_database(db_path: str | Path) -> None:
     _session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     Base.metadata.create_all(bind=engine)
     _ensure_tree_status_column(engine)
+    _ensure_plugin_config_column(engine)
+
+
+def create_all_tables() -> None:
+    """再次建表（供插件注册模型后调用；create_all 幂等）。"""
+    if _engine is not None:
+        Base.metadata.create_all(bind=_engine)
+
+
+def _ensure_plugin_config_column(engine: Engine) -> None:
+    """轻量迁移：旧库 ``plugins`` 无 config 列时补列（JSON 文本）。"""
+    insp = inspect(engine)
+    if "plugins" not in insp.get_table_names():
+        return
+    columns = {col["name"] for col in insp.get_columns("plugins")}
+    if "config" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE plugins ADD COLUMN config TEXT NOT NULL DEFAULT '{}'")
+        )
 
 
 def _ensure_tree_status_column(engine: Engine) -> None:

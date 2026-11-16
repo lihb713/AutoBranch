@@ -38,6 +38,8 @@ class PluginOut(BaseModel):
     kind: str
     description: str
     functions: list[str] = Field(default_factory=list)
+    frontend_manifest: dict | None = None
+    config_schema: list[dict] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -66,6 +68,13 @@ class FunctionInfo(BaseModel):
     description: str = ""
     returns: dict[str, str] = Field(default_factory=dict)
     parameters: dict = Field(default_factory=dict)
+    output_param: str | None = None
+    user_visible: bool = True
+
+
+class PluginManifestOut(BaseModel):
+    frontend_manifest: dict | None = None
+    config_schema: list[dict] | None = None
 
 
 class PluginCheckError(BaseModel):
@@ -94,6 +103,7 @@ __all__ = [
     "PluginOut",
     "PluginDetailOut",
     "FunctionInfo",
+    "PluginManifestOut",
     "PluginCheckError",
     "PluginCheckOut",
     "PluginDeleteOut",

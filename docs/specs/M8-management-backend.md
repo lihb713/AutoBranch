@@ -165,20 +165,30 @@ conda run -n autobranch --no-capture-output python -m uvicorn autobranch.server.
 
 ### 8.1 plugin 表
 
-`plugins` 表字段：`name`（唯一，≤128，小写字母/数字/`_`/`-`）、`kind`（`builtin` | `custom`）、`description`、`functions`（JSON **用户可见函数全名**清单，如 `compute.add`；`@llm_function` 不计入）、`source`（仅 `custom` 存储；`builtin` 恒 NULL——源码在文件系统）、`created_at` / `updated_at`（UTC）。启动扫描 `plugins/` 初始化 / 刷新 `builtin` 记录（只读）；自定义插件名不得与预置同名。
+`plugins` 表字段：`name`（唯一，≤128，小写字母/数字/`_`/`-`）、`kind`（`builtin` | `custom`）、`description`、`functions`（JSON **用户可见函数全名**清单，如 `compute.add`；`@llm_function` 不计入）、`source`（仅 `custom` 存储；`builtin` 恒 NULL——源码在文件系统）、`config`（JSON 文本，插件配置）、`created_at` / `updated_at`（UTC）。启动扫描 `plugins/` 初始化 / 刷新 `builtin` 记录（只读）；自定义插件名不得与预置同名。
 
 ### 8.2 插件 API
 
 ```
-GET    /api/plugins                列表（含 kind，预置/自定义徽标；functions 为全名清单）
+GET    /api/plugins                列表（含 kind；?include_manifest=true 附带 frontend_manifest/config_schema）
 GET    /api/plugins/{name}         详情（builtin 返回文件源码供只读查看）
 POST   /api/plugins                新增（校验：语法+仅标准库+可加载 → 通过才落库+重载）
 PUT    /api/plugins/{name}         更新（自定义；重载成功才落库）
 DELETE /api/plugins/{name}         删除（扫描引用其函数的行为树，FunctionCall 引用置空并持久化，返回受影响树名）
 POST   /api/plugins/check          校验（返回行号/列号/类型/约束 错误明细）
 GET    /api/plugins/{name}/references  引用该插件函数的行为树名列表
+GET    /api/plugins/{name}/manifest   插件前端清单 + 配置 schema
+GET    /api/plugins/{name}/config     插件当前配置（持久化于 plugins.config）
+PUT    /api/plugins/{name}/config     更新插件配置（应用后落库）
+GET    /api/plugins/{name}/functions  插件全部函数详情（含 LLM-only/output_param/可见性）
 GET    /api/functions              **用户可见**函数清单（跨插件聚合：full_name/plugin/name/description/returns/parameters，编辑器选择器用；LLM-only 不返回）
 ```
+
+### 8.2b 插件模块化注册
+
+- 应用启动时遍历已注册插件：先 `register_models(Base)`，再 `create_all`（幂等）创建插件表；再对重写 `register_routes` 的插件 `ensure_loaded` 并注册路由。
+- 插件 API 前缀 `/api/plugins/{name}/`；插件表前缀 `plugin_{name}_`。
+- 启动时加载 DB 中自定义插件源码，并应用其持久化配置。
 
 ### 8.3 自定义插件加载
 

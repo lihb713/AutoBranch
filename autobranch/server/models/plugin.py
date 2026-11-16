@@ -29,6 +29,9 @@ class Plugin(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     functions: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default="{}"
+    )
 
 
 __all__ = ["Plugin", "KIND_BUILTIN", "KIND_CUSTOM"]

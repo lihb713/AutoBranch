@@ -236,6 +236,45 @@ class PluginBase:
     def init(self, runtime: Any) -> None:
         """初始化该插件的公共资源（懒装配时调用；默认无操作）。"""
 
+    def register_routes(self, app: Any) -> None:
+        """注册插件级 REST API 路由（可选；默认空实现）。
+
+        路由统一前缀 ``/api/plugins/{插件名}/``，由插件自行 include_router。
+        只有重写本方法的插件才会在应用启动时被 ``ensure_loaded``。
+        """
+
+    def register_models(self, base: Any) -> None:
+        """注册插件数据库模型（可选；默认空实现）。
+
+        插件应在此 import 其 models 模块，使模型在 ``Base.metadata.create_all``
+        之前进入 metadata。表名建议 ``plugin_{插件名}_*``。
+        """
+
+    @property
+    def frontend_manifest(self) -> dict[str, Any] | None:
+        """插件前端清单（可选）：``{"pages": [{route,label,component,icon?}]}``。"""
+        return None
+
+    @property
+    def storage_dir(self) -> str | None:
+        """插件存储目录名（相对插件目录；默认 None）。"""
+        return None
+
+    @property
+    def config_schema(self) -> list[dict[str, Any]] | None:
+        """插件配置项 schema（可选；默认 None）。"""
+        return None
+
+    def get_config(self) -> dict[str, Any]:
+        """返回插件当前配置（默认空字典）。"""
+        return {}
+
+    def set_config(self, config: dict[str, Any]) -> None:
+        """应用插件配置（默认空实现）。"""
+
+    def release(self) -> None:
+        """释放插件资源（默认空实现）。"""
+
     def call(self, name: str, args: dict[str, Any] | None = None) -> FunctionResult:
         """按函数名分发到插件方法，返回值包装为 ``FunctionResult``。"""
         func = getattr(self, name, None)

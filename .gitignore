@@ -20,6 +20,7 @@ dist/
 
 # 运行时数据 / 报告 / 截图
 data/
+autobranch/plugins/*/data/
 reports/
 *.png
 # 前端源码中的 reports 特性目录属源代码，排除运行时规则误伤

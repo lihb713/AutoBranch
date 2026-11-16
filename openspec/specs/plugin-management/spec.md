@@ -66,3 +66,11 @@
 #### Scenario: 删除被引用的插件
 - **WHEN** 删除被某行为树引用的插件（且无运行中引用）
 - **THEN** 弹窗列出关联行为树；确认后删除插件，并批量将对应 FunctionCall 引用置空（持久化写入行为树文档）
+
+### Requirement: 插件 Manifest 与配置
+
+系统 SHALL 提供 `include_manifest=true` 批量列表、`GET /api/plugins/{name}/manifest`、`GET/PUT /api/plugins/{name}/config`、`GET /api/plugins/{name}/functions`。配置 MUST 持久化到 `plugins.config` 并在启动时应用。
+
+#### Scenario: 配置重启保留
+- **WHEN** 用户修改 file 插件 `max_file_size` 后重启服务
+- **THEN** 配置仍生效

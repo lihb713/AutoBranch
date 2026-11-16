@@ -13,8 +13,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from autobranch.plugin_system import PluginRegistry
+from autobranch.plugin_system.defs import PluginBase
 from autobranch.server.config import ServerConfig
-from autobranch.server.db import configure_database, session_factory
+from autobranch.server.db import Base, configure_database, create_all_tables, session_factory
 from autobranch.server.errors import register_error_handlers
 from autobranch.server.routers import (
     functions_router,
@@ -90,9 +91,31 @@ def create_app(
     app.include_router(functions_router)
     app.include_router(types_router)
 
-    # 插件初始化：扫描预置插件 → 写/刷新 builtin 记录（只读）
+    # 插件初始化：扫描预置/自定义插件 → 写/刷新 builtin 记录并加载配置
     with session_factory()() as db:
         PluginService(db=db, registry=registry, plugins_dir=PLUGINS_DIR).init_builtins()
+
+    # 插件数据库模型：在 create_all 前 import，创建插件表
+    for plugin in registry.plugins():
+        try:
+            plugin.register_models(Base)
+        except Exception as exc:  # noqa: BLE001 - 单插件失败不阻断启动
+            import sys
+
+            sys.stderr.write(f"[plugin] {plugin.name} 模型注册失败: {exc}\n")
+    create_all_tables()
+
+    # 插件 REST 路由：仅对重写 register_routes 的插件 ensure_loaded 并注册
+    for plugin in registry.plugins():
+        if type(plugin).register_routes is PluginBase.register_routes:
+            continue
+        try:
+            registry.ensure_loaded(plugin.name)
+            plugin.register_routes(app)
+        except Exception as exc:  # noqa: BLE001
+            import sys
+
+            sys.stderr.write(f"[plugin] {plugin.name} 路由注册失败: {exc}\n")
 
     run_service.mark_interrupted()
 

@@ -10,11 +10,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from autobranch.server.schemas.plugin import (
+    FunctionInfo,
     PluginCheckIn,
     PluginCheckOut,
     PluginCreate,
     PluginDeleteOut,
     PluginDetailOut,
+    PluginManifestOut,
     PluginOut,
     PluginUpdate,
 )
@@ -26,8 +28,8 @@ PluginServiceDep = Annotated[PluginService, Depends()]
 
 
 @router.get("", response_model=list[PluginOut])
-def list_plugins(service: PluginServiceDep):
-    return service.list_all()
+def list_plugins(service: PluginServiceDep, include_manifest: bool = False):
+    return service.list_all(include_manifest=include_manifest)
 
 
 @router.post("/check", response_model=PluginCheckOut)
@@ -39,6 +41,26 @@ def check_plugin(payload: PluginCheckIn, service: PluginServiceDep):
 @router.post("", response_model=PluginOut, status_code=status.HTTP_201_CREATED)
 def create_plugin(payload: PluginCreate, service: PluginServiceDep):
     return service.create(payload)
+
+
+@router.get("/{name}/manifest", response_model=PluginManifestOut)
+def get_manifest(name: str, service: PluginServiceDep):
+    return PluginManifestOut.model_validate(service.get_manifest(name))
+
+
+@router.get("/{name}/config", response_model=dict)
+def get_config(name: str, service: PluginServiceDep):
+    return service.get_config(name)
+
+
+@router.put("/{name}/config", response_model=dict)
+def update_config(name: str, config: dict, service: PluginServiceDep):
+    return service.update_config(name, config)
+
+
+@router.get("/{name}/functions", response_model=list[FunctionInfo])
+def list_plugin_functions(name: str, service: PluginServiceDep):
+    return service.list_functions_of(name)
 
 
 @router.get("/{name}", response_model=PluginDetailOut)

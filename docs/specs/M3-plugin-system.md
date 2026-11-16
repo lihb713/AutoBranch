@@ -50,6 +50,20 @@
 - 单插件加载/编译失败 → 标记「加载失败」，不中断其他插件；失败状态经插件 API 可见。
 - 引擎不做依赖自动识别/安装。
 
+### 插件模块化扩展（可选）
+
+插件 SHALL 可从「函数集合」升级为「功能模块」，以下能力均可选、默认空实现：
+
+- `register_routes(app)`：注册插件级 REST API，统一前缀 `/api/plugins/{name}/`；仅重写该方法的插件启动时 `ensure_loaded`。
+- `register_models(base)`：在 `create_all` 前 import 插件 SQLAlchemy 模型；表名统一 `plugin_{name}_*`。
+- `frontend_manifest`：前端页面清单 `{pages: [{route,label,component,icon?}]}`；页面从插件列表页进入，不加入全局导航。
+- `storage_dir`：插件存储目录名（相对插件目录），由插件 `init` 创建。
+- `config_schema` / `get_config` / `set_config`：插件配置项声明与读写；配置持久化到 `plugins.config` JSON。
+- `release()`：释放插件资源。
+
+- 场景：file 插件注册 `/api/plugins/file/files`、表 `plugin_file_records`、前端页面 `/file`、配置 `max_file_size`。
+- 场景：纯函数插件不实现任何模块化扩展，行为不变。
+
 ### 多轮多能力
 
 单个叶子一次执行内可多轮交互、使用多能力（工具集随加载增长）。

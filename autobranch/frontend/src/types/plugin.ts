@@ -1,9 +1,31 @@
+export interface PluginPage {
+  route: string;
+  label: string;
+  component: string;
+  icon?: string;
+}
+
+export interface PluginManifest {
+  pages: PluginPage[];
+}
+
+export interface ConfigSchemaItem {
+  key: string;
+  label: string;
+  type: "string" | "number" | "boolean";
+  default?: string | number | boolean;
+  required?: boolean;
+  description?: string;
+}
+
 export interface PluginOut {
   id: number;
   name: string;
   kind: "builtin" | "custom";
   description: string;
   functions: string[];
+  frontend_manifest?: PluginManifest | null;
+  config_schema?: ConfigSchemaItem[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +60,11 @@ export interface PluginDeleteOut {
   affected_trees: string[];
 }
 
+export interface PluginManifestOut {
+  frontend_manifest: PluginManifest | null;
+  config_schema: ConfigSchemaItem[] | null;
+}
+
 export interface FunctionInfo {
   full_name: string;
   plugin: string;
@@ -45,4 +72,6 @@ export interface FunctionInfo {
   description: string;
   returns: Record<string, string>;
   parameters: Record<string, unknown>;
+  output_param?: string | null;
+  user_visible?: boolean;
 }

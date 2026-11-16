@@ -92,3 +92,11 @@
 #### Scenario: 一个 Action 使用多能力
 - **WHEN** 某 Action 先加载浏览器打开页面、再加载计算能力运算
 - **THEN** 两次能力加载与函数调用在同一叶子执行内完成
+
+### Requirement: 插件模块化扩展
+
+插件 SHALL 可选实现 `register_routes` / `register_models` / `frontend_manifest` / `storage_dir` / `config_schema` / `get_config` / `set_config` / `release`，默认空实现。服务启动时 SHALL 注册插件模型并建表、对重写 `register_routes` 的插件注册 `/api/plugins/{name}/` 路由。
+
+#### Scenario: file 插件模块化
+- **WHEN** 服务启动且 file 插件声明模型/路由/清单/配置
+- **THEN** 创建 `plugin_file_records` 表、注册 `/api/plugins/file/files`，列表返回文件管理页面与配置 schema

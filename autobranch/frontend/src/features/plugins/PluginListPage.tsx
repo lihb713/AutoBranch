@@ -1,23 +1,30 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { pluginsApi } from "../../api/plugins";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
 import type { PluginOut } from "../../types/plugin";
+import { PluginConfigDialog } from "./PluginConfigDialog";
 
 export function PluginListPage() {
   const [plugins, setPlugins] = useState<PluginOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [configuring, setConfiguring] = useState<PluginOut | null>(null);
 
-  useEffect(() => {
+  const reload = useCallback(() => {
+    setLoading(true);
     pluginsApi
-      .listPlugins()
+      .listPlugins(true)
       .then(setPlugins)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   const handleDelete = async (plugin: PluginOut) => {
     const refs = await pluginsApi.listReferences(plugin.name).catch(() => []);
@@ -43,47 +50,67 @@ export function PluginListPage() {
       {error && <ErrorMessage message={error} />}
       {!loading && plugins.length === 0 && <EmptyState title="暂无插件" />}
       {plugins.length > 0 && (
-        <table className="tree-table">
-          <thead>
-            <tr>
-              <th>插件</th>
-              <th>来源</th>
-              <th>描述</th>
-              <th>函数</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {plugins.map((p) => (
-              <tr key={p.name}>
-                <td>{p.name}</td>
-                <td>
-                  <span className={`badge badge-${p.kind}`}>
-                    {p.kind === "builtin" ? "预置" : "自定义"}
-                  </span>
-                </td>
-                <td>{p.description}</td>
-                <td>{p.functions.join(", ")}</td>
-                <td>
-                  {p.kind === "custom" ? (
-                    <span className="actions">
-                      <Link to={`/plugins/edit/${encodeURIComponent(p.name)}`}>编辑</Link>
-                      <button className="link" onClick={() => handleDelete(p)}>
-                        删除
-                      </button>
-                    </span>
-                  ) : (
-                    <span className="actions">
-                      <Link to={`/plugins/edit/${encodeURIComponent(p.name)}`}>查看源码</Link>
-                      <span className="muted">只读</span>
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="plugin-cards" data-testid="plugin-cards">
+          {plugins.map((p) => (
+            <section
+              className="plugin-card"
+              key={p.name}
+              data-testid={`plugin-card-${p.name}`}
+            >
+              <div className="plugin-card-header">
+                <span className="plugin-name">{p.name}</span>
+                <span className={`badge badge-${p.kind}`}>
+                  {p.kind === "builtin" ? "预置" : "自定义"}
+                </span>
+                <span className="plugin-desc">{p.description}</span>
+              </div>
+              <div className="plugin-card-actions">
+                <Link to={`/plugins/edit/${encodeURIComponent(p.name)}`}>
+                  查看函数详情
+                </Link>
+                {(p.config_schema?.length ?? 0) > 0 ? (
+                  <button
+                    className="link"
+                    type="button"
+                    data-testid={`plugin-config-${p.name}`}
+                    onClick={() => setConfiguring(p)}
+                  >
+                    配置
+                  </button>
+                ) : null}
+                {(p.frontend_manifest?.pages ?? []).map((page) => (
+                  <Link
+                    key={page.route}
+                    to={page.route}
+                    data-testid={`plugin-page-${p.name}-${page.route}`}
+                  >
+                    {page.label}
+                  </Link>
+                ))}
+                {p.kind === "custom" ? (
+                  <button
+                    className="link"
+                    onClick={() => handleDelete(p)}
+                    data-testid={`plugin-delete-${p.name}`}
+                  >
+                    删除
+                  </button>
+                ) : (
+                  <span className="muted">只读</span>
+                )}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
+      {configuring && configuring.config_schema ? (
+        <PluginConfigDialog
+          pluginName={configuring.name}
+          schema={configuring.config_schema}
+          onClose={() => setConfiguring(null)}
+          onSaved={reload}
+        />
+      ) : null}
       <p>
         <Link to="/">← 返回行为树</Link>
       </p>
