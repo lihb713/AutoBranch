@@ -42,10 +42,24 @@ class RunOut(BaseModel):
     schedule_id: int | None = None
 
 
+class RunScheduleBriefOut(BaseModel):
+    """执行实例关联的调度规则摘要（供详情页展示来源）。"""
+
+    id: int
+    name: str
+    schedule_mode: str
+    interval: int | None = None
+    interval_unit: str | None = None
+    cron_period: str | None = None
+    cron_time: str | None = None
+    cron_weekday: int | None = None
+
+
 class RunDetailOut(RunOut):
-    """执行实例详情（含快照内容，供"查看快照"）。"""
+    """执行实例详情（含快照内容，供"查看快照"与调度来源展示）。"""
 
     content_snapshot: str = ""
+    schedule: RunScheduleBriefOut | None = None
 
 
 class TypeInfoOut(BaseModel):
@@ -93,6 +107,7 @@ __all__ = [
     "RunStartOut",
     "RunOut",
     "RunDetailOut",
+    "RunScheduleBriefOut",
     "TypeInfoOut",
     "ExecStateOut",
     "NodeReportOut",

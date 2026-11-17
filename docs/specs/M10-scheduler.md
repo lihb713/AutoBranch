@@ -121,8 +121,9 @@ PUT    /api/schedules/{id}            全量更新
 DELETE /api/schedules/{id}            删除（204）
 PATCH  /api/schedules/{id}/toggle     启用/停用
 POST   /api/schedules/{id}/run        立即执行（202 → {"run_id": n}；不检查依赖、不改 last_run_at）
-GET    /api/schedules/{id}/runs       该规则关联执行实例
-GET    /api/runs?schedule_id={id}     执行实例按规则过滤（source/schedule_id 字段）
+GET    /api/schedules/{id}/runs       该规则关联执行实例（?source=schedule|dependency）
+GET    /api/runs?schedule_id={id}     执行实例按规则过滤（可叠加 ?source=）
+GET    /api/runs/{id}                 执行详情含关联调度摘要（规则名/调度方式）
 ```
 
 校验规则：
@@ -138,7 +139,9 @@ GET    /api/runs?schedule_id={id}     执行实例按规则过滤（source/sched
 - 调度列表：名称/目标树/调度方式/下次执行/上次结果/启用开关/操作。
 - 新建/编辑弹窗：目标树（仅正式版）、间隔或 cron、前置依赖多选、失败策略、错过策略、静态 JSON 入参、启用。
 - 操作：立即执行、执行记录弹窗、启停、编辑、删除。
-- 执行列表新增「来源」列：手动/调度/依赖。
+- 编辑与执行记录均为**居中弹窗**（遮罩层，支持点击遮罩关闭）。
+- 执行记录弹窗提供两种视图：「仅目标行为树」（`source=schedule`）与「含依赖」（全部关联实例），每条记录可跳转 `/runs/{id}` 执行详情。
+- 执行列表新增「来源」列：手动/调度/依赖；执行详情页展示来源，自动执行时展示关联调度规则名称/调度频率/规则 ID。
 
 ## 7. 数据库与迁移
 

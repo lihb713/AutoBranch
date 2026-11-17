@@ -518,24 +518,54 @@ class RunService:
             "schedule_id": run.schedule_id,
         }
 
-    def list_runs(self, db: Session, schedule_id: int | None = None) -> list[dict]:
-        """执行实例列表（created_at 倒序）：可按调度规则 ID 过滤。"""
+    def list_runs(
+        self,
+        db: Session,
+        schedule_id: int | None = None,
+        source: str | None = None,
+    ) -> list[dict]:
+        """执行实例列表（created_at 倒序）：可按调度规则 ID/来源过滤。"""
         stmt = select(Run)
         if schedule_id is not None:
             stmt = stmt.where(Run.schedule_id == schedule_id)
+        if source is not None:
+            stmt = stmt.where(Run.source == source)
         runs = db.scalars(stmt.order_by(Run.created_at.desc(), Run.id.desc())).all()
         return [self._run_item(run) for run in runs]
 
-    def list_runs_by_schedule(self, db: Session, schedule_id: int) -> list[dict]:
-        """按调度规则 ID 查询关联执行实例。"""
-        return self.list_runs(db, schedule_id=schedule_id)
+    def list_runs_by_schedule(
+        self, db: Session, schedule_id: int, source: str | None = None
+    ) -> list[dict]:
+        """按调度规则 ID 查询关联执行实例（可选来源过滤）。"""
+        return self.list_runs(db, schedule_id=schedule_id, source=source)
 
     def get_detail(self, db: Session, run_id: int) -> dict:
         """执行实例详情（含快照内容，供"查看快照"）。"""
         run = self._get_run(db, run_id)
         item = self._run_item(run)
         item["content_snapshot"] = run.content_snapshot
+        item["schedule"] = self._schedule_brief(db, run.schedule_id)
         return item
+
+    @staticmethod
+    def _schedule_brief(db: Session, schedule_id: int | None) -> dict | None:
+        if schedule_id is None:
+            return None
+        from autobranch.scheduler.models import ScheduleRule
+
+        rule = db.get(ScheduleRule, schedule_id)
+        if rule is None:
+            return None
+        return {
+            "id": rule.id,
+            "name": rule.name,
+            "schedule_mode": rule.schedule_mode,
+            "interval": rule.interval,
+            "interval_unit": rule.interval_unit,
+            "cron_period": rule.cron_period,
+            "cron_time": rule.cron_time,
+            "cron_weekday": rule.cron_weekday,
+        }
 
     # ------------------------------------------------------------- 状态轮询
 

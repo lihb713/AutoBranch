@@ -79,6 +79,9 @@ beforeEach(() => {
     updated_at: null,
     duration: null,
     progress: null,
+    source: "manual",
+    schedule_id: null,
+    schedule: null,
     content_snapshot: "tree: 冒烟流程",
   });
   mocks.retryRun.mockResolvedValue({ run_id: 99 });
@@ -218,6 +221,9 @@ describe("RunReportPage 轮询渲染", () => {
       updated_at: null,
       duration: 5,
       progress: null,
+      source: "manual",
+      schedule_id: null,
+      schedule: null,
       content_snapshot: "tree: 带参流程\nnodes: {}",
     });
     renderReport();

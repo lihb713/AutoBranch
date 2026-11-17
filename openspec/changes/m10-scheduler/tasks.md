@@ -12,5 +12,7 @@
 - [x] 4.1 后端单元/引擎/API 测试
 - [x] 4.2 前端组件测试
 - [x] 4.3 Playwright E2E 调度链路
+- [x] 4.4 调度编辑/执行记录居中弹窗、执行记录目标/含依赖双视图、记录跳转执行详情
+- [x] 4.5 执行详情展示来源与关联调度规则/频率
 - [x] 5.1 更新 docs/specs、contract、OpenSpec 主 spec 与 change
 - [x] 5.2 运行 pytest/ruff/前端 typecheck/lint/test/build

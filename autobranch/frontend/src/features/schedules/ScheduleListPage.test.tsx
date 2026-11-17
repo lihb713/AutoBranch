@@ -136,13 +136,26 @@ describe("ScheduleListPage", () => {
     expect(await screen.findByText("已停用")).toBeInTheDocument();
   });
 
-  it("执行记录弹窗展示关联实例", async () => {
+  it("执行记录弹窗默认展示目标视图，可切换含依赖视图并可跳转详情", async () => {
+    mocks.listScheduleRuns
+      .mockResolvedValueOnce([RUN])
+      .mockResolvedValueOnce([
+        RUN,
+        { ...RUN, id: 8, tree_name: "前置依赖树", source: "dependency" },
+      ]);
     renderPage();
     await screen.findByTestId("schedule-row-1");
     fireEvent.click(screen.getByTestId("schedule-runs-1"));
-    await waitFor(() => expect(mocks.listScheduleRuns).toHaveBeenCalledWith(1));
+    await waitFor(() =>
+      expect(mocks.listScheduleRuns).toHaveBeenCalledWith(1, "schedule"),
+    );
     const dialog = await screen.findByTestId("schedule-records");
     expect(dialog).toHaveTextContent("销售汇总");
-    expect(dialog).toHaveTextContent("schedule");
+    expect(dialog).toHaveTextContent("调度");
+
+    fireEvent.click(screen.getByTestId("schedule-records-all"));
+    await waitFor(() => expect(mocks.listScheduleRuns).toHaveBeenCalledWith(1, undefined));
+    expect(await screen.findByText("前置依赖树")).toBeInTheDocument();
+    expect(screen.getByTestId("schedule-record-view-8")).toHaveAttribute("href", "/runs/8");
   });
 });

@@ -14,15 +14,13 @@ import type {
   ScheduleMode,
 } from "../../types/schedule";
 import type { TreeOut } from "../../types/tree";
-
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-const INTERVAL_UNITS: IntervalUnit[] = ["seconds", "minutes", "hours", "days"];
-const UNIT_LABELS: Record<IntervalUnit, string> = {
-  seconds: "秒",
-  minutes: "分钟",
-  hours: "小时",
-  days: "天",
-};
+import {
+  INTERVAL_UNITS,
+  UNIT_LABELS,
+  WEEKDAYS,
+  runSourceLabel,
+  scheduleModeLabel,
+} from "./labels";
 
 function formatTime(value: string | null): string {
   if (!value) return "—";
@@ -70,18 +68,6 @@ function toInput(rule: ScheduleRule): ScheduleRuleInput {
   };
 }
 
-function modeLabel(rule: ScheduleRule): string {
-  if (rule.schedule_mode === "interval") {
-    return `每 ${rule.interval} ${rule.interval_unit ? UNIT_LABELS[rule.interval_unit] : ""}`;
-  }
-  const time = rule.cron_time ?? "—";
-  if (rule.cron_period === "hour") return `每小时 ${time}`;
-  if (rule.cron_period === "week") {
-    return `每${WEEKDAYS[rule.cron_weekday ?? 0]} ${time}`;
-  }
-  return `每天 ${time}`;
-}
-
 export function ScheduleListPage() {
   const [rules, setRules] = useState<ScheduleRule[]>([]);
   const [trees, setTrees] = useState<TreeOut[]>([]);
@@ -93,6 +79,7 @@ export function ScheduleListPage() {
   const [inputsText, setInputsText] = useState("{}");
   const [records, setRecords] = useState<ScheduleRule | null>(null);
   const [recordRuns, setRecordRuns] = useState<RunOut[]>([]);
+  const [recordsView, setRecordsView] = useState<"target" | "all">("target");
 
   const load = useCallback(async () => {
     try {
@@ -186,13 +173,25 @@ export function ScheduleListPage() {
     }
   };
 
-  const showRecords = async (rule: ScheduleRule) => {
-    setRecords(rule);
+  const loadRecords = async (rule: ScheduleRule, view: "target" | "all") => {
+    setRecordsView(view);
     try {
-      setRecordRuns(await schedulesApi.listScheduleRuns(rule.id));
+      setRecordRuns(
+        await schedulesApi.listScheduleRuns(rule.id, view === "target" ? "schedule" : undefined),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载执行记录失败");
     }
+  };
+
+  const showRecords = async (rule: ScheduleRule) => {
+    setRecords(rule);
+    await loadRecords(rule, "target");
+  };
+
+  const closeRecords = () => {
+    setRecords(null);
+    setRecordRuns([]);
   };
 
   const dependencyOptions = useMemo(
@@ -236,7 +235,7 @@ export function ScheduleListPage() {
               <tr key={rule.id} data-testid={`schedule-row-${rule.id}`}>
                 <td>{rule.name}</td>
                 <td>{rule.target_tree_name}</td>
-                <td>{modeLabel(rule)}</td>
+                <td>{scheduleModeLabel(rule)}</td>
                 <td>{formatTime(rule.next_run_at)}</td>
                 <td>
                   <span className={`schedule-status schedule-status-${rule.last_status ?? "idle"}`}>
@@ -298,7 +297,12 @@ export function ScheduleListPage() {
       )}
 
       {form ? (
-        <div className="schedule-dialog" data-testid="schedule-form">
+        <div className="modal-overlay" onMouseDown={closeForm}>
+          <div
+            className="schedule-dialog modal-panel"
+            data-testid="schedule-form"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
           <p className="run-dialog__title">
             {editing ? `编辑调度「${editing.name}」` : "新建调度"}
           </p>
@@ -524,53 +528,87 @@ export function ScheduleListPage() {
             />
             启用
           </label>
-          <div className="run-dialog__actions">
-            <Button variant="ghost" onClick={closeForm} data-testid="schedule-cancel">
-              取消
-            </Button>
-            <Button onClick={() => void save()} data-testid="schedule-save">
-              保存
-            </Button>
+            <div className="run-dialog__actions">
+              <Button variant="ghost" onClick={closeForm} data-testid="schedule-cancel">
+                取消
+              </Button>
+              <Button onClick={() => void save()} data-testid="schedule-save">
+                保存
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}
 
       {records ? (
-        <div className="schedule-dialog" data-testid="schedule-records">
-          <p className="run-dialog__title">「{records.name}」执行记录</p>
-          {recordRuns.length === 0 ? (
-            <p className="muted">暂无执行记录</p>
-          ) : (
-            <table className="tree-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>行为树</th>
-                  <th>状态</th>
-                  <th>来源</th>
-                  <th>耗时</th>
-                  <th>开始时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recordRuns.map((run) => (
-                  <tr key={run.id}>
-                    <td>{run.id}</td>
-                    <td>{run.tree_name}</td>
-                    <td>{run.status}</td>
-                    <td>{run.source}</td>
-                    <td>{run.duration != null ? `${run.duration}s` : "—"}</td>
-                    <td>{formatTime(run.created_at)}</td>
+        <div className="modal-overlay" onMouseDown={closeRecords}>
+          <div
+            className="schedule-dialog modal-panel"
+            data-testid="schedule-records"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <p className="run-dialog__title">「{records.name}」执行记录</p>
+            <div className="schedule-records-tabs">
+              <button
+                type="button"
+                className={`schedule-records-tab${recordsView === "target" ? " schedule-records-tab--active" : ""}`}
+                data-testid="schedule-records-target"
+                onClick={() => void loadRecords(records, "target")}
+              >
+                仅目标行为树
+              </button>
+              <button
+                type="button"
+                className={`schedule-records-tab${recordsView === "all" ? " schedule-records-tab--active" : ""}`}
+                data-testid="schedule-records-all"
+                onClick={() => void loadRecords(records, "all")}
+              >
+                含依赖
+              </button>
+            </div>
+            {recordRuns.length === 0 ? (
+              <p className="muted">暂无执行记录</p>
+            ) : (
+              <table className="tree-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>行为树</th>
+                    <th>状态</th>
+                    <th>来源</th>
+                    <th>耗时</th>
+                    <th>开始时间</th>
+                    <th>操作</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <div className="run-dialog__actions">
-            <Link to="/runs">查看执行列表</Link>
-            <Button variant="ghost" onClick={() => setRecords(null)}>
-              关闭
-            </Button>
+                </thead>
+                <tbody>
+                  {recordRuns.map((run) => (
+                    <tr key={run.id}>
+                      <td>{run.id}</td>
+                      <td>{run.tree_name}</td>
+                      <td>{run.status}</td>
+                      <td>{runSourceLabel(run.source)}</td>
+                      <td>{run.duration != null ? `${run.duration}s` : "—"}</td>
+                      <td>{formatTime(run.created_at)}</td>
+                      <td>
+                        <Link
+                          to={`/runs/${run.id}`}
+                          data-testid={`schedule-record-view-${run.id}`}
+                        >
+                          查看
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="run-dialog__actions">
+              <Link to="/runs">查看执行列表</Link>
+              <Button variant="ghost" onClick={closeRecords}>
+                关闭
+              </Button>
+            </div>
           </div>
         </div>
       ) : null}

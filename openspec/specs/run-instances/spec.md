@@ -169,3 +169,8 @@
 
 - **WHEN** 用户请求 `GET /api/runs?schedule_id=3`
 - **THEN** 只返回 schedule_id 为 3 的执行实例
+
+#### Scenario: 详情展示调度来源
+
+- **WHEN** 用户查看由调度触发的执行详情
+- **THEN** 接口返回关联调度摘要（规则名/调度方式），前端展示来源与调度频率

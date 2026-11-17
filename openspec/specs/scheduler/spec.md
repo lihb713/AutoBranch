@@ -100,6 +100,29 @@
 - **WHEN** 调度触发前置依赖树
 - **THEN** 执行实例来源为 dependency，记录父规则 ID
 
+### Requirement: 执行记录双视图
+
+系统 SHALL 为调度规则提供执行记录双视图：仅目标行为树（`source=schedule`）与含依赖（全部 `schedule_id` 关联实例）。前端弹窗 SHALL 支持切换视图，每条记录 SHALL 可跳转到对应执行详情页。
+
+#### Scenario: 仅目标视图
+
+- **WHEN** 用户打开调度规则执行记录并选择“仅目标行为树”
+- **THEN** 只展示该规则触发的目标执行实例
+
+#### Scenario: 含依赖视图
+
+- **WHEN** 用户选择“含依赖”
+- **THEN** 展示目标与前置依赖的全部关联执行实例，并可跳转执行详情
+
+### Requirement: 执行详情展示调度来源
+
+执行详情接口与页面 SHALL 展示执行来源（manual/schedule/dependency）；自动执行时 SHALL 展示关联调度规则名称、调度方式/频率与规则 ID；规则已删除时 SHALL 明确提示。
+
+#### Scenario: 调度详情展示规则信息
+
+- **WHEN** 用户查看由调度触发的执行详情
+- **THEN** 页面展示“调度”来源、规则名称、每天/每 N 分钟等调度频率
+
 ### Requirement: 立即执行
 
 系统 SHALL 提供 `POST /api/schedules/{id}/run` 立即执行目标树；该操作 SHALL NOT 检查前置依赖、SHALL NOT 修改 `last_run_at`，并返回执行实例 ID。

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { runsApi } from "../../api/runs";
 import { Button } from "../../components/Button";
 import { ErrorMessage } from "../../components/ErrorMessage";
@@ -9,6 +9,7 @@ import type { RunDetail } from "../../types/run";
 import { BlackboardPanel } from "../reports/BlackboardPanel";
 import { ReportPanel } from "../reports/ReportPanel";
 import { NodeReportRow } from "./NodeReportRow";
+import { runSourceLabel, scheduleModeLabel } from "../schedules/labels";
 
 function statusKindOf(status: string | undefined): StatusKind {
   if (status === "success") return "success";
@@ -140,6 +141,25 @@ export function RunReportPage() {
           <div className="run-meta__grid">
             <span className="run-meta__label">行为树</span>
             <span className="run-meta__value">{detail.tree_name}</span>
+            <span className="run-meta__label">执行来源</span>
+            <span className="run-meta__value" data-testid="run-source-label">
+              {runSourceLabel(detail.source)}
+            </span>
+            {detail.source !== "manual" ? (
+              <>
+                <span className="run-meta__label">调度规则</span>
+                <span className="run-meta__value" data-testid="run-schedule-info">
+                  {detail.schedule ? (
+                    <>
+                      <Link to="/schedules">{detail.schedule.name}</Link>
+                      {`（${scheduleModeLabel(detail.schedule)}，规则 #${detail.schedule.id}）`}
+                    </>
+                  ) : (
+                    "关联的调度规则已删除"
+                  )}
+                </span>
+              </>
+            ) : null}
             <span className="run-meta__label">执行状态</span>
             <span className="run-meta__value">
               <StatusBadge kind={statusKind} />

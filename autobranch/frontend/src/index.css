@@ -1364,6 +1364,42 @@ details.run-meta__section > summary { cursor: pointer; }
   background: var(--color-bg);
   max-width: 760px;
 }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.45);
+}
+.modal-panel {
+  width: min(780px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  margin: 0;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+}
+.schedule-records-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.schedule-records-tab {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  cursor: pointer;
+  font: inherit;
+}
+.schedule-records-tab--active {
+  border-color: var(--color-primary);
+  background: var(--color-running-bg);
+  color: var(--color-running);
+}
 .schedule-field {
   display: flex;
   flex-direction: column;

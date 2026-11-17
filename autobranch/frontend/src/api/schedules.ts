@@ -30,6 +30,8 @@ export const schedulesApi = {
   runScheduleNow: (id: number) =>
     request<ScheduleRunNow>(`/schedules/${id}/run`, { method: "POST" }),
 
-  listScheduleRuns: (id: number) =>
-    request<RunOut[]>(`/schedules/${id}/runs`),
+  listScheduleRuns: (id: number, source?: "schedule" | "dependency") =>
+    request<RunOut[]>(
+      `/schedules/${id}/runs${source ? `?source=${encodeURIComponent(source)}` : ""}`,
+    ),
 };

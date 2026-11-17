@@ -29,11 +29,12 @@ def list_runs(
     run_service: RunServiceDep,
     db: DbSession,
     schedule_id: int | None = None,
+    source: str | None = None,
 ):
-    """执行实例列表（created_at 倒序）：可按调度规则 ID 过滤。"""
+    """执行实例列表（created_at 倒序）：可按调度规则 ID / 来源过滤。"""
     return [
         RunOut.model_validate(item)
-        for item in run_service.list_runs(db, schedule_id=schedule_id)
+        for item in run_service.list_runs(db, schedule_id=schedule_id, source=source)
     ]
 
 

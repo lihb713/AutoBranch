@@ -81,6 +81,7 @@ beforeEach(() => {
     progress: null,
     source: "manual",
     schedule_id: null,
+    schedule: null,
     content_snapshot: "tree: x",
   });
 });

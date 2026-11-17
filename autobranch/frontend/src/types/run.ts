@@ -63,8 +63,20 @@ export type RunOut = {
   schedule_id: number | null;
 };
 
+export type RunScheduleBrief = {
+  id: number;
+  name: string;
+  schedule_mode: "interval" | "cron";
+  interval: number | null;
+  interval_unit: string | null;
+  cron_period: string | null;
+  cron_time: string | null;
+  cron_weekday: number | null;
+};
+
 export type RunDetail = RunOut & {
   content_snapshot: string;
+  schedule: RunScheduleBrief | null;
 };
 
 export type ReportResponse = { run_id: string; status: string; message?: string } | string;

@@ -76,9 +76,20 @@ test("调度管理页：自动触发执行 → 来源标注 → 查看报告", a
   await page.goto("/runs");
   await expect(runRows).toHaveCount(2, { timeout: 30_000 });
 
-  // 4. 查看执行详情：报告页轮询到终态并展示执行报告
-  await runRows.first().locator('[data-testid^="run-view-"]').click();
+  // 4. 调度执行记录：居中弹窗 → 含依赖视图 → 跳转执行详情
+  await page.goto("/schedules");
+  await page.getByTestId(`schedule-runs-${rule.id}`).click();
+  const records = page.getByTestId("schedule-records");
+  await expect(records).toBeVisible();
+  await page.getByTestId("schedule-records-all").click();
+  await expect(records.locator('[data-testid^="schedule-record-view-"]').first()).toBeVisible();
+  await records.locator('[data-testid^="schedule-record-view-"]').first().click();
   await page.waitForURL(/\/runs\/\d+/);
+
+  // 5. 执行详情：来源/调度规则 → 报告轮询 → 出参
+  await expect(page.getByTestId("run-source-label")).toHaveText("调度");
+  await expect(page.getByTestId("run-schedule-info")).toContainText(rule.name);
+  await expect(page.getByTestId("run-schedule-info")).toContainText("每 1 天");
   await expect(page.getByTestId("progress-text")).toHaveText(/进度：\d+%/, {
     timeout: 120_000,
   });

@@ -82,7 +82,22 @@ def test_schedule_crud_and_run_now(client):
     assert runs[0]["source"] == "schedule"
     assert runs[0]["schedule_id"] == rule["id"]
 
-    records = client.get(f"/api/schedules/{rule['id']}/runs")
+    target_runs = client.get(
+        f"/api/runs?schedule_id={rule['id']}&source=schedule"
+    ).json()
+    assert [item["id"] for item in target_runs] == [run_id]
+    dependency_runs = client.get(
+        f"/api/runs?schedule_id={rule['id']}&source=dependency"
+    ).json()
+    assert dependency_runs == []
+
+    detail = client.get(f"/api/runs/{run_id}").json()
+    assert detail["schedule"]["id"] == rule["id"]
+    assert detail["schedule"]["name"] == "改名调度"
+    assert detail["schedule"]["schedule_mode"] == "cron"
+    assert detail["schedule"]["cron_time"] == "21:00"
+
+    records = client.get(f"/api/schedules/{rule['id']}/runs?source=schedule")
     assert records.status_code == 200
     assert records.json()[0]["id"] == run_id
 

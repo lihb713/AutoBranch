@@ -77,11 +77,14 @@ def run_schedule_now(rule_id: int, engine: ScheduleEngineDep):
 
 @router.get("/{rule_id}/runs", response_model=list[RunOut])
 def list_schedule_runs(
-    rule_id: int, run_service: RunServiceDep, db: DbSession
+    rule_id: int,
+    run_service: RunServiceDep,
+    db: DbSession,
+    source: str | None = None,
 ):
     return [
         RunOut.model_validate(item)
-        for item in run_service.list_runs(db, schedule_id=rule_id)
+        for item in run_service.list_runs(db, schedule_id=rule_id, source=source)
     ]
 
 
