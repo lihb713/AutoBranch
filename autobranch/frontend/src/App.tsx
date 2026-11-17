@@ -9,6 +9,7 @@ import { RunListPage } from "./features/runs/RunListPage";
 import { TreeEditorPage } from "./features/tree-editor/TreeEditorPage";
 import { TreeListPage } from "./features/tree-editor/TreeListPage";
 import { RunReportPage } from "./features/runs/RunReportPage";
+import { ScheduleListPage } from "./features/schedules/ScheduleListPage";
 
 export default function App() {
   const { pluginPages } = usePluginManifests();
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/editor/:id?" element={<TreeEditorPage />} />
         <Route path="/runs" element={<RunListPage />} />
         <Route path="/runs/:runId" element={<RunReportPage />} />
+        <Route path="/schedules" element={<ScheduleListPage />} />
         <Route path="/plugins" element={<PluginListPage />} />
         <Route path="/plugins/new" element={<PluginEditorPage />} />
         <Route path="/plugins/edit/:name" element={<PluginEditorPage />} />

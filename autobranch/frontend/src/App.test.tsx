@@ -79,6 +79,8 @@ beforeEach(() => {
     updated_at: null,
     duration: null,
     progress: null,
+    source: "manual",
+    schedule_id: null,
     content_snapshot: "tree: x",
   });
 });

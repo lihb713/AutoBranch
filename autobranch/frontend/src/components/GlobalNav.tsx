@@ -5,6 +5,7 @@ export function GlobalNav() {
   const items = [
     { to: "/", label: "行为树管理", end: true },
     { to: "/runs", label: "行为树执行列表" },
+    { to: "/schedules", label: "调度管理" },
     { to: "/plugins", label: "插件管理" },
   ];
   return (

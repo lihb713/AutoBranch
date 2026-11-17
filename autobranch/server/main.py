@@ -14,6 +14,9 @@ from fastapi import FastAPI
 
 from autobranch.plugin_system import PluginRegistry
 from autobranch.plugin_system.defs import PluginBase
+from autobranch.scheduler.engine import SchedulerEngine
+from autobranch.scheduler.models import ScheduleRule  # noqa: F401 - 建表前注册模型
+from autobranch.scheduler.router import router as schedules_router
 from autobranch.server.config import ServerConfig
 from autobranch.server.db import Base, configure_database, create_all_tables, session_factory
 from autobranch.server.errors import register_error_handlers
@@ -36,13 +39,17 @@ APP_TITLE = "AutoBranch 行为树管理系统"
 PLUGINS_DIR = "autobranch/plugins"
 
 
-def _make_lifespan(run_service: RunService):
-    """应用生命周期：关闭时释放执行线程池（不等待在跑任务）。"""
+def _make_lifespan(run_service: RunService, schedule_engine: SchedulerEngine):
+    """应用生命周期：启动调度线程；关闭时停止调度并释放执行线程池。"""
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
-        yield
-        run_service.shutdown()
+        schedule_engine.start()
+        try:
+            yield
+        finally:
+            schedule_engine.stop()
+            run_service.shutdown()
 
     return _lifespan
 
@@ -66,15 +73,25 @@ def create_app(
             plugins_dir=PLUGINS_DIR,
         )
     report_service = ReportService(settings.report_root)
+    config = settings.autobranch_config()
     run_service = RunService(
-        engine_service, settings.report_root, settings.autobranch_config(), registry=registry
+        engine_service, settings.report_root, config, registry=registry
     )
+    schedule_engine = SchedulerEngine(
+        run_service, tick_seconds=config.scheduler_tick_seconds
+    )
+    run_service.set_on_run_complete(schedule_engine.on_run_complete)
 
-    app = FastAPI(title=APP_TITLE, version="0.1.0", lifespan=_make_lifespan(run_service))
+    app = FastAPI(
+        title=APP_TITLE,
+        version="0.1.0",
+        lifespan=_make_lifespan(run_service, schedule_engine),
+    )
     app.state.settings = settings
     app.state.engine_service = engine_service
     app.state.report_service = report_service
     app.state.run_service = run_service
+    app.state.schedule_engine = schedule_engine
     app.state.plugin_registry = registry
     app.state.plugins_dir = PLUGINS_DIR
 
@@ -86,6 +103,7 @@ def create_app(
 
     app.include_router(trees_router)
     app.include_router(runs_router)
+    app.include_router(schedules_router)
     app.include_router(reports_router)
     app.include_router(plugins_router)
     app.include_router(functions_router)

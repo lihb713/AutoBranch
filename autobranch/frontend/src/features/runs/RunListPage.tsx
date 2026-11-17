@@ -7,8 +7,6 @@ import { ErrorMessage } from "../../components/ErrorMessage";
 import { StatusBadge, type StatusKind } from "../../components/StatusBadge";
 import type { RunOut } from "../../types/run";
 
-const ACTIVE = new Set(["pending", "running"]);
-
 function statusKind(status: string): StatusKind {
   if (status === "success") return "success";
   if (status === "failure") return "failure";
@@ -26,7 +24,13 @@ function shortHash(hash: string): string {
   return hash ? `#${hash.slice(0, 7)}` : "—";
 }
 
-const POLL_MS = 1000;
+function sourceLabel(source: string): string {
+  if (source === "schedule") return "调度";
+  if (source === "dependency") return "依赖";
+  return "手动";
+}
+
+const POLL_MS = 2000;
 
 export function RunListPage() {
   const navigate = useNavigate();
@@ -47,7 +51,7 @@ export function RunListPage() {
     }
   }, []);
 
-  // 挂载加载 + 存在进行中实例时每秒轮询刷新
+  // 挂载加载 + 周期刷新（调度可能在页面停留期间自动触发新实例）
   useEffect(() => {
     let cancelled = false;
     void load();
@@ -57,9 +61,7 @@ export function RunListPage() {
       const list = await runsApi.listRuns().catch(() => null);
       if (cancelled || list === null) return;
       setRuns(list);
-      if (list.some((r) => ACTIVE.has(r.status))) {
-        pollRef.current = setTimeout(tick, POLL_MS);
-      }
+      pollRef.current = setTimeout(tick, POLL_MS);
     };
     pollRef.current = setTimeout(tick, POLL_MS);
     return () => {
@@ -114,6 +116,7 @@ export function RunListPage() {
               <th>#</th>
               <th>行为树</th>
               <th>状态</th>
+              <th>来源</th>
               <th>入参</th>
               <th>耗时</th>
               <th>指纹</th>
@@ -136,6 +139,14 @@ export function RunListPage() {
                 </td>
                 <td>
                   <StatusBadge kind={statusKind(run.status)} />
+                </td>
+                <td>
+                  <span
+                    className={`source-badge source-${run.source || "manual"}`}
+                    data-testid={`run-source-${run.id}`}
+                  >
+                    {sourceLabel(run.source || "manual")}
+                  </span>
                 </td>
                 <td className="run-cell-json">{JSON.stringify(run.inputs ?? {})}</td>
                 <td>{run.duration != null ? `${run.duration}s` : "—"}</td>

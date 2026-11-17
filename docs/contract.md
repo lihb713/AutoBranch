@@ -2185,7 +2185,8 @@ M5  编排器              M1+M2+M4+M6（FunctionCall 节点/插件分发/资源
 M6  报告机制            M3（引擎基础 + 插件附加，插件驱动）
 M7  插件集              M3（browser/compute/ssh/file/http/vars + 自定义插件）
 M8  管理后端            M1+M5+M6+M3+M7+DB（文档/运行/插件 API）
-M9  前端 UI             M8（行为树编辑器 + 插件管理页）
+M9  前端 UI             M8（行为树编辑器 + 插件管理页 + 调度管理页）
+M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理页）
 ```
 
 > 原 **M1 浏览器驱动 / M4 语义图 / M5 引擎函数层** 已并入 **M7 插件集**（浏览器插件内部实现），不再作为独立模块。
@@ -2273,11 +2274,20 @@ M9  前端 UI             M8（行为树编辑器 + 插件管理页）
 #### M9 前端 UI
 ```
 功能: 行为树编辑器（后端权威文档 + 命令 API + 草稿/正式状态; 画布/槽位/ref 展开）; 行为树管理;
-     执行报告页（轮询渲染）; 插件管理页（列表标记预置/自定义 + CodeMirror 6 编辑器
+     执行报告页（轮询渲染）; 调度管理页（规则 CRUD/启停/立即执行/执行记录）;
+     插件管理页（列表标记预置/自定义 + CodeMirror 6 编辑器
      + 保存校验提示 + 删除关联弹窗）;
      可搜索下拉（Combobox）：函数名选择器（罗列全名 + 描述，支持过滤）、
      ref 目标文档、槽位 / 分支子节点（函数返回类型只读展示，不提供类型编辑）
 依赖: M8
+```
+
+#### M10 定时调度
+```
+功能: 调度规则（interval / cron）/ 前置依赖 DAG / 失败立即重试 / 重启错过补跑或跳过;
+     执行来源标注（manual/schedule/dependency）与按调度规则过滤执行实例;
+     嵌入式守护线程，统一调用 M8 RunService.start，不绕过 FIFO 队列
+依赖: M8（执行入口 + 完成回调）
 ```
 
 ### 12.2.1 新增：FunctionCall 节点与插件能力
@@ -2364,10 +2374,14 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   禁止直接执行（422，仅支持 ref 调用）；可构造性经 `GET /api/types`（`cast is not None`）单点派生。
 - **队列调度**：全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列；`pending` 即排队中（列表显示
   序号）；并发满的新触发进排队（不再有同树 409 去重），执行结束自动调度下一个。
-- **执行列表**：`GET /api/runs` + 前端 `/runs` 页（状态/快照树名/入参/耗时/指纹短显/进行中轮询）；
+- **执行列表**：`GET /api/runs` + 前端 `/runs` 页（状态/来源/快照树名/入参/耗时/指纹短显/进行中轮询）；
   「查看」跳转**执行详情页** `/runs/{id}`——统一展示执行状态、行为树（快照名）、入参/出参、指纹、
   耗时与折叠的「执行快照」（触发时刻行为树内容），外加执行报告/回溯报告；`POST /api/runs/{id}/retry`
   （复制快照+入参）、`DELETE /api/runs/{id}`（删除后列表即时刷新）。
+- **M10 调度**：`schedule_rules` + 守护线程；`interval`/`cron` 到点触发，前置依赖全部成功后才执行目标，
+  失败可立即重试，重启按 `last_run_at` 判断错过；调度/依赖执行在 `runs.source` 标注，
+  `GET /api/runs?schedule_id=` 过滤；前端 `/schedules` 管理规则。检查间隔
+  `scheduler_tick_seconds`（默认 10s）。详见 `docs/specs/M10-scheduler.md`。
 
 **草稿 / 正式版与后端权威编辑（default-return-param-names 已实现）：**
 - `trees.status ∈ {draft, published}`，同一棵树只有一份文档，不存在“正式版+草稿副本”。
@@ -2420,6 +2434,9 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
                 │
 管理系统:    M8 管理后端 ◄── M9 前端 UI
             (内嵌引擎 + 插件 API)
+                ▲
+                │ 执行入口/完成回调
+自动调度:    M10 定时调度
 ```
 
 ### 12.7 实施顺序
@@ -2429,6 +2446,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 2. 插件集: M7（依赖 M3）
 3. 叶子/编排/报告: M4 / M5 / M6
 4. 管理系统: M8 / M9（依赖引擎 + 插件）
+5. 自动调度: M10（依赖 M8 执行入口 + M9 页面）
 ```
 
 

@@ -35,6 +35,8 @@ const RUNS: RunOut[] = [
     updated_at: "2026-01-01T00:00:30",
     duration: 30,
     progress: null,
+    source: "manual",
+    schedule_id: null,
   },
   {
     id: 2,
@@ -49,6 +51,8 @@ const RUNS: RunOut[] = [
     updated_at: "2026-01-02T00:00:00",
     duration: null,
     progress: null,
+    source: "schedule",
+    schedule_id: 3,
   },
 ];
 
@@ -80,6 +84,8 @@ describe("RunListPage", () => {
     expect(screen.getByText(JSON.stringify({ user: "admin" }))).toBeInTheDocument();
     expect(screen.getByText("30s")).toBeInTheDocument();
     expect(screen.getAllByText("#abcdef1").length).toBe(2);
+    expect(screen.getByTestId("run-source-1")).toHaveTextContent("手动");
+    expect(screen.getByTestId("run-source-2")).toHaveTextContent("调度");
   });
 
   it("重试 → retryRun 并跳转新报告", async () => {

@@ -165,7 +165,8 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
   },
   "max_concurrent_runs": 3,
   "experience_feedback": true,
-  "experience_retention": 5
+  "experience_retention": 5,
+  "scheduler_tick_seconds": 10
 }
 ```
 
@@ -216,6 +217,7 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
 | `max_concurrent_runs` | 后端同时最多执行的实例数，超出**进 FIFO 队列** | 3 |
 | `experience_feedback` | 经验回灌开关（关：不采集不注入） | true |
 | `experience_retention` | 经验老化：每匹配组保留最近 N 条 | 5 |
+| `scheduler_tick_seconds` | M10 调度线程检查间隔（秒） | 10 |
 
 ### 4.2 环境变量
 

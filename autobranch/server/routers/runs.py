@@ -25,9 +25,16 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("", response_model=list[RunOut])
-def list_runs(run_service: RunServiceDep, db: DbSession):
-    """执行实例列表（created_at 倒序）：状态/快照树名/入参/耗时/指纹/进度。"""
-    return [RunOut.model_validate(item) for item in run_service.list_runs(db)]
+def list_runs(
+    run_service: RunServiceDep,
+    db: DbSession,
+    schedule_id: int | None = None,
+):
+    """执行实例列表（created_at 倒序）：可按调度规则 ID 过滤。"""
+    return [
+        RunOut.model_validate(item)
+        for item in run_service.list_runs(db, schedule_id=schedule_id)
+    ]
 
 
 @router.get("/{run_id}", response_model=RunDetailOut)

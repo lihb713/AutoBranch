@@ -39,12 +39,37 @@ def configure_database(db_path: str | Path) -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_tree_status_column(engine)
     _ensure_plugin_config_column(engine)
+    _ensure_run_source_columns(engine)
 
 
 def create_all_tables() -> None:
     """再次建表（供插件注册模型后调用；create_all 幂等）。"""
     if _engine is not None:
         Base.metadata.create_all(bind=_engine)
+
+
+def _ensure_run_source_columns(engine: Engine) -> None:
+    """轻量迁移：旧库 ``runs`` 无 M10 来源列时补列。"""
+    insp = inspect(engine)
+    if "runs" not in insp.get_table_names():
+        return
+    columns = {col["name"] for col in insp.get_columns("runs")}
+    with engine.begin() as conn:
+        if "source" not in columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE runs ADD COLUMN source VARCHAR(16) "
+                    "NOT NULL DEFAULT 'manual'"
+                )
+            )
+        if "schedule_id" not in columns:
+            conn.execute(text("ALTER TABLE runs ADD COLUMN schedule_id INTEGER"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_runs_schedule_id "
+                "ON runs (schedule_id)"
+            )
+        )
 
 
 def _ensure_plugin_config_column(engine: Engine) -> None:

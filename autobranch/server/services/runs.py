@@ -190,11 +190,16 @@ class RunService:
         self._max_concurrent = max(1, config.max_concurrent_runs)
         self._executor: ThreadPoolExecutor | None = None
         self._sched_lock = threading.Lock()
+        self._on_run_complete: Callable[[int, str], None] | None = None
 
     @property
     def max_concurrent_runs(self) -> int:
         """当前并发上限（执行列表页展示用）。"""
         return self._max_concurrent
+
+    def set_on_run_complete(self, callback: Callable[[int, str], None] | None) -> None:
+        """注册执行完成回调（M10 调度引擎用；回调异常不影响执行线程）。"""
+        self._on_run_complete = callback
 
     def shutdown(self) -> None:
         """释放线程池（应用关闭时调用；不等待在跑任务）。"""
@@ -205,11 +210,20 @@ class RunService:
 
     # ------------------------------------------------------------- 触发
 
-    def start(self, db: Session, tree_id: int, *, inputs: dict | None = None) -> Run:
+    def start(
+        self,
+        db: Session,
+        tree_id: int,
+        *,
+        inputs: dict | None = None,
+        source: str = "manual",
+        schedule_id: int | None = None,
+    ) -> Run:
         """冻结快照（内容/树名/指纹/入参）→ 建 pending Run → 触发队列调度。
 
         执行前校验已由路由层完成（422 拒绝）；此处读实时树内容冻结为快照，
-        执行与重试一律基于快照，不读实时树内容。
+        执行与重试一律基于快照，不读实时树内容。``source``/``schedule_id``
+        用于标注执行来源（manual / schedule / dependency）。
         """
         tree = db.get(Tree, tree_id)
         if tree is None:
@@ -222,6 +236,8 @@ class RunService:
             tree_name_snapshot=tree.name,
             tree_content_hash=compute_tree_content_hash(content),
             inputs=dict(inputs or {}),
+            source=source,
+            schedule_id=schedule_id,
         )
         db.add(run)
         db.commit()
@@ -231,14 +247,16 @@ class RunService:
 
     def retry(self, db: Session, run_id: int) -> Run:
         """按快照重试：复制原实例的快照 + 入参新建 Run（跑当时的内容，非最新树）。"""
-        source = self._get_run(db, run_id)
+        original = self._get_run(db, run_id)
         run = Run(
-            tree_id=source.tree_id,
+            tree_id=original.tree_id,
             status="pending",
-            content_snapshot=source.content_snapshot,
-            tree_name_snapshot=source.tree_name_snapshot,
-            tree_content_hash=source.tree_content_hash,
-            inputs=dict(source.inputs or {}),
+            content_snapshot=original.content_snapshot,
+            tree_name_snapshot=original.tree_name_snapshot,
+            tree_content_hash=original.tree_content_hash,
+            inputs=dict(original.inputs or {}),
+            source=original.source or "manual",
+            schedule_id=original.schedule_id,
         )
         db.add(run)
         db.commit()
@@ -359,6 +377,7 @@ class RunService:
                 self._collect_experiences(db, run)
             except Exception:
                 logger.exception("经验采集异常 (run_id=%s)", run_id)
+        self._notify_complete(run_id, status)
 
     # ------------------------------------------------------------- 经验回灌
 
@@ -457,8 +476,19 @@ class RunService:
             run.status = "failure"
             run.failure_reason = reason
             db.commit()
+            self._notify_complete(run_id, "failure")
         except Exception:
             logger.exception("写入失败状态异常 (run_id=%s)", run_id)
+
+    def _notify_complete(self, run_id: int, status: str) -> None:
+        """通知调度引擎执行完成（无回调/回调异常均不影响执行线程）。"""
+        callback = self._on_run_complete
+        if callback is None:
+            return
+        try:
+            callback(run_id, status)
+        except Exception:
+            logger.exception("调度完成回调异常 (run_id=%s)", run_id)
 
     # ------------------------------------------------------------- 列表
 
@@ -484,12 +514,21 @@ class RunService:
             "updated_at": run.updated_at,
             "duration": duration,
             "progress": progress,
+            "source": run.source or "manual",
+            "schedule_id": run.schedule_id,
         }
 
-    def list_runs(self, db: Session) -> list[dict]:
-        """执行实例列表（created_at 倒序）：含耗时与进行中实例的进度。"""
-        runs = db.scalars(select(Run).order_by(Run.created_at.desc(), Run.id.desc())).all()
+    def list_runs(self, db: Session, schedule_id: int | None = None) -> list[dict]:
+        """执行实例列表（created_at 倒序）：可按调度规则 ID 过滤。"""
+        stmt = select(Run)
+        if schedule_id is not None:
+            stmt = stmt.where(Run.schedule_id == schedule_id)
+        runs = db.scalars(stmt.order_by(Run.created_at.desc(), Run.id.desc())).all()
         return [self._run_item(run) for run in runs]
+
+    def list_runs_by_schedule(self, db: Session, schedule_id: int) -> list[dict]:
+        """按调度规则 ID 查询关联执行实例。"""
+        return self.list_runs(db, schedule_id=schedule_id)
 
     def get_detail(self, db: Session, run_id: int) -> dict:
         """执行实例详情（含快照内容，供"查看快照"）。"""

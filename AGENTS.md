@@ -7,8 +7,9 @@
 - **引擎层**（Python）：M0 LLM 客户端 / M1 行为树解析器（含 FunctionCall）/ M2 变量空间（泛型 object）/ M3 插件框架 / M4 叶子 agent / M5 编排器 / M6 报告
 - **插件集**（M7，`autobranch/plugins/`）：浏览器（自包含驱动+语义图）/ 计算 / SSH / 文件 + 用户自定义插件（DB 源码，仅标准库）
 - **管理系统**：M8 后端（FastAPI，含插件管理 API）+ M9 前端（React + TypeScript + Vite，含插件管理页）
+- **自动调度**：M10 定时/依赖调度（嵌入后端守护线程，复用 M8 执行入口）
 
-模块 spec 见 `docs/specs/`（M0~M9b 各一份）。
+模块 spec 见 `docs/specs/`（M0~M10 各一份）。
 
 ## 开发与协作约束
 

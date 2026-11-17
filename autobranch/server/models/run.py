@@ -5,6 +5,7 @@
 ``content_snapshot``/``tree_name_snapshot``/``tree_content_hash`` 为触发时刻
 冻结的行为树快照（执行/重试/经验匹配依据），``inputs``/``outputs`` 存 JSON
 安全入参/出参，``report_path`` 存报告相对路径（大字段落盘不入库，database-rules §6）。
+M10 新增 ``source``（manual/schedule/dependency）与 ``schedule_id`` 标注执行来源。
 """
 
 from __future__ import annotations
@@ -43,6 +44,10 @@ class Run(Base, TimestampMixin):
     )
     inputs: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     outputs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    source: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="manual", server_default="manual"
+    )
+    schedule_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
 
 __all__ = ["Run", "RUN_STATUSES"]

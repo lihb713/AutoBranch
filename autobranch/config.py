@@ -144,6 +144,8 @@ class AutoBranchConfig:
     max_concurrent_runs: int = 3
     #: 经验回灌开关（默认开；关闭时不采集也不注入）。
     experience_feedback: bool = True
+    #: M10 调度线程检查间隔（秒；默认 10）。
+    scheduler_tick_seconds: float = 10.0
     #: 经验老化：每个匹配组（hash + inputs + node_desc）只保留最近 N 条。
     experience_retention: int = 5
 
@@ -159,6 +161,9 @@ class AutoBranchConfig:
             max_concurrent_runs=int(data.get("max_concurrent_runs", cls.max_concurrent_runs)),
             experience_feedback=bool(data.get("experience_feedback", cls.experience_feedback)),
             experience_retention=int(data.get("experience_retention", cls.experience_retention)),
+            scheduler_tick_seconds=float(
+                data.get("scheduler_tick_seconds", cls.scheduler_tick_seconds)
+            ),
         )
 
     @classmethod

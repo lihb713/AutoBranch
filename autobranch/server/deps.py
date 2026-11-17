@@ -16,6 +16,7 @@ from autobranch.server.config import ServerConfig
 
 if TYPE_CHECKING:
     from autobranch.plugin_system import PluginRegistry
+    from autobranch.scheduler.engine import SchedulerEngine
     from autobranch.server.services.engine import EngineService
     from autobranch.server.services.plugins import PluginService
     from autobranch.server.services.reports import ReportService
@@ -54,6 +55,10 @@ def get_plugin_service(request: Request) -> PluginService:
     return request.app.state.plugin_service
 
 
+def get_schedule_engine(request: Request) -> SchedulerEngine:
+    return request.app.state.schedule_engine
+
+
 __all__ = [
     "get_settings",
     "get_report_root",
@@ -63,4 +68,5 @@ __all__ = [
     "get_plugin_registry",
     "get_plugins_dir",
     "get_plugin_service",
+    "get_schedule_engine",
 ]

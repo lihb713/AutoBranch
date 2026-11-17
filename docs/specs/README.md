@@ -18,6 +18,7 @@
 | M7 | [M7-plugin-set.md](M7-plugin-set.md) | 插件集（browser/compute/ssh/file/自定义） | M3 |
 | M8 | [M8-management-backend.md](M8-management-backend.md) | 管理后端（文档/运行/插件 API） | M1 + M5 + M6 + M3 + M7 |
 | M9 | [M9-frontend-ui.md](M9-frontend-ui.md) | 前端 UI（行为树编辑器 + 插件管理） | M8 |
+| M10 | [M10-scheduler.md](M10-scheduler.md) | 定时/依赖调度（自动触发行为树） | M8 + M9 |
 
 > 原 M1 浏览器驱动、M4 语义图、M5 引擎函数层已并入 **M7 插件集**（浏览器插件内部实现），不再作为独立模块。
 
@@ -34,6 +35,9 @@ M2 变量 ─┘      │                 │ 分发
                ▼
          M8 管理后端 ◄── M9 前端 UI
          (内嵌引擎 + 插件 API)
+              ▲
+              │
+         M10 定时调度（守护线程 + 调度 API）
 ```
 
 ## 实施顺序
@@ -42,6 +46,7 @@ M2 变量 ─┘      │                 │ 分发
 - **插件集**：M7（依赖 M3）
 - **叶子/编排/报告（依赖 M0–M3）**：M4 / M5 / M6
 - **管理系统**：M8 / M9（依赖引擎 + 插件）
+- **自动调度**：M10（依赖 M8 执行入口 + M9 调度管理页）
 
 ## Spec 文档统一模板
 

@@ -59,6 +59,8 @@ export type RunOut = {
   updated_at: string | null;
   duration: number | null;
   progress: number | null;
+  source: string;
+  schedule_id: number | null;
 };
 
 export type RunDetail = RunOut & {

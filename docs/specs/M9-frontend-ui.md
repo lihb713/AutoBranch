@@ -20,11 +20,12 @@ AutoBranch 的用户交互界面：行为树编辑器（拖拽节点 → 生成�
 | 草稿/正式状态 | 新建即草稿；编辑正式版立即转草稿；列表显示「草稿/正式」徽标；草稿不可执行；保存校验后转正式 | management-backend spec |
 | 行为树管理 | 列表/查看/修改/删除（CRUD）；全局页签导航（行为树管理/执行列表/插件管理）；「导入文档」「新建行为树」在页面内容区 | §12.2-M9a |
 | 执行报告页 | 轮询执行状态，实时渲染节点进度 + 截图；顶部「重试」（复制快照+入参）；**实例信息区**展示执行状态/行为树（快照名）/入参/出参/指纹/耗时，及折叠的「执行快照」（触发时刻行为树内容） | §12.4/§5.8.3 |
-| 执行列表页 | `/runs`：全部执行实例（进行中/历史），状态徽章/快照树名/入参/耗时/指纹短显；进行中轮询；「查看」（跳转执行详情页）/重试/删除（删除后立即刷新列表） | §12.4（Change A） |
+| 执行列表页 | `/runs`：全部执行实例（进行中/历史），状态/来源徽章、快照树名/入参/耗时/指纹短显；周期轮询（调度可能在页面停留期间产生新实例）；「查看」（跳转执行详情页）/重试/删除（删除后立即刷新列表） | §12.4（Change A） |
 | 入参对话框 | 声明入参的树点「执行」弹框填参（仅可构造类型渲染输入框，bool 复选框）；含不可构造入参（page_ref）的树不渲染「执行」按钮 | §12.4（Change A） |
 | 复合节点视图 | 用户始终看到含复合节点的行为树（Step/Branch/LoopUntil/...） | §12.5 |
 | 清晰度校验提示 | 草稿允许未通过校验；保存时后端校验并提示用户修正 | §12.5 |
 | 插件管理页 | 卡片列表（预置/自定义徽标）+ 函数详情/源码双 Tab + 配置弹窗 + 插件前端页面入口 + 删除关联弹窗 | plugin-management spec |
+| 调度管理页 | `/schedules`：调度规则 CRUD、启停、立即执行、执行记录、前置依赖多选、失败/错过策略 | M10 spec |
 | 插件前端页面 | 通过 `GET /api/plugins?include_manifest=true` 动态注册路由；不从全局导航进入，仅从插件列表页跳转；组件名静态映射（如 FileManager） | plugin-management spec |
 
 **非目标（第一版）**：不做实时 WebSocket 推送（采用 1 秒轮询，§12.4）。
@@ -104,13 +105,14 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 **实现说明（已落地）**：
 
 - 工程位置 `autobranch/frontend/`（Vite + React 18 + TS），目录按 `frontend-style.md`：`src/api|components|features|hooks|types`。
-- 路由（react-router-dom）：`/` 列表、`/editor/:id?` 编辑器、`/runs` 执行列表、`/runs/:runId` 报告页；全局页签导航 `GlobalNav`（行为树管理/执行列表/插件管理）。
+- 路由（react-router-dom）：`/` 列表、`/editor/:id?` 编辑器、`/runs` 执行列表、`/runs/:runId` 报告页、`/schedules` 调度管理；全局页签导航 `GlobalNav`（行为树管理/执行列表/调度管理/插件管理）。
 - **节点模型**（`features/tree-editor/treeModel.ts`）：`TreeNode = {id, type, name, fields, body?, actions?, action?, then?, else?, branches?, target?, args?, returns?, vars?}`（`fields` 存 `description`/`expect`/`if`/`when`/`until`/`max` 等标量字段；槽位字段按类型出现：`body`/`actions`/`action`/`then`/`else`/`branches`；`target`/`args`/`returns` 仅 `ref`/`FunctionCall`；`vars` 仅 `Define`（`DefineVar = {name, type, value}`））、`TreeDoc = {tree, inputs, outputs, config, nodes, root}`；`parseDoc`/`serializeDoc` 与一文档一树 DSL 无损往返（含 ref/FunctionCall args·returns 与 Define vars）；`nextNodeId`/`freeRoots`/`referencedIds` 支撑 id 生成、游离判定与重复引用校验。
 - **布局引擎**（`features/tree-editor/layout.ts`）：固定尺寸卡片，自底向上算宽、自顶向下定位（根在上、向下生长、兄弟水平均布）；`layoutDocument` 主树在左上、游离树依次排布其下。
 - 状态：`useState`（表单/UI 选中态）+ 后端文档（命令响应）+ `usePolling` hook（1 秒轮询，卸载清理）。
 - 保存调用 `POST /api/trees/{id}/save`；校验失败渲染错误清单并保持草稿；`js-yaml` 仅用于渲染解析（**不展开复合节点**，§12.5）。
 - API 客户端集中于 `src/api/`（`request.ts` 封装，`/api` 前缀，snake_case 类型对齐后端 Pydantic）。
 - 报告页：`usePolling` 轮询 `/api/runs/{run_id}/state`（shouldStop=finished），渲染进度条/当前节点/SUCCESS/FAILURE 着色 + 截图（经 `/api/reports/{path}`）。
+- 调度管理页：`features/schedules/ScheduleListPage.tsx`，调用 `/api/schedules` CRUD/启停/立即执行/执行记录；执行列表增加来源列（手动/调度/依赖）。
 
 **运行约定**（AGENTS.md 端口约束）：vite dev 固定端口 **5174**（`strictPort`，避开 NexusOps 的 5173），`vite.config.ts` 的 `/api` 代理 target 指向 `http://127.0.0.1:8001`（**禁用 8000/5173**）。一键启动：项目根 `dev-restart.ps1`。
 

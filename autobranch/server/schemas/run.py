@@ -38,6 +38,8 @@ class RunOut(BaseModel):
     updated_at: datetime | None = None
     duration: float | None = None
     progress: float | None = None
+    source: str = "manual"
+    schedule_id: int | None = None
 
 
 class RunDetailOut(RunOut):
