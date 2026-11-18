@@ -10,13 +10,14 @@ const mocks = vi.hoisted(() => ({
   deleteTree: vi.fn(),
   runTree: vi.fn(),
   createTree: vi.fn(),
+  getTree: vi.fn(),
   listTypes: vi.fn(),
 }));
 
 vi.mock("../../api/trees", () => ({
   treesApi: {
     listTrees: mocks.listTrees,
-    getTree: vi.fn(),
+    getTree: mocks.getTree,
     createTree: mocks.createTree,
     updateTree: vi.fn(),
     deleteTree: mocks.deleteTree,
@@ -241,6 +242,34 @@ root: n1
     expect(mocks.createTree.mock.calls[0][0].name).toBe("导入树");
     expect(mocks.createTree.mock.calls[0][0].content).toContain("type: Root");
     expect(mocks.listTrees).toHaveBeenCalledTimes(2);
+  });
+
+  it("导出文档：拉取完整内容并生成 yaml 下载", async () => {
+    mocks.listTrees.mockResolvedValue(TREES);
+    mocks.getTree.mockResolvedValue({
+      ...TREES[0],
+      content: "tree: 登录流程\nnodes: {}\nroot: null\n",
+    });
+    const createObjectURL = vi.fn(() => "blob:export-test");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      value: createObjectURL,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: revokeObjectURL,
+      configurable: true,
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    renderList();
+    await screen.findByText("登录流程");
+    fireEvent.click(screen.getByTestId("export-1"));
+    await waitFor(() => expect(mocks.getTree).toHaveBeenCalledWith(1));
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:export-test");
   });
 
   it("导入非法文档：显示错误且不 createTree", async () => {

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   runScheduleNow: vi.fn(),
   listScheduleRuns: vi.fn(),
   listTrees: vi.fn(),
+  listTypes: vi.fn(),
 }));
 
 vi.mock("../../api/schedules", () => ({
@@ -30,6 +31,10 @@ vi.mock("../../api/schedules", () => ({
 
 vi.mock("../../api/trees", () => ({
   treesApi: { listTrees: mocks.listTrees },
+}));
+
+vi.mock("../../api/types", () => ({
+  typesApi: { listTypes: mocks.listTypes },
 }));
 
 const RULE: ScheduleRule = {
@@ -89,6 +94,21 @@ beforeEach(() => {
   mocks.listSchedules.mockResolvedValue([RULE]);
   mocks.listTrees.mockResolvedValue([
     { id: 10, name: "销售汇总", status: "published", created_at: "x", updated_at: "x", inputs: {} },
+    {
+      id: 11,
+      name: "带参报表",
+      status: "published",
+      created_at: "x",
+      updated_at: "x",
+      inputs: { count: "int", enabled: "bool", title: "str" },
+    },
+  ]);
+  mocks.listTypes.mockResolvedValue([
+    { token: "str", constructible: true },
+    { token: "int", constructible: true },
+    { token: "float", constructible: true },
+    { token: "bool", constructible: true },
+    { token: "page_ref", constructible: false },
   ]);
   mocks.toggleSchedule.mockResolvedValue({ ...RULE, enabled: false });
   mocks.runScheduleNow.mockResolvedValue({ run_id: 7 });
@@ -124,6 +144,32 @@ describe("ScheduleListPage", () => {
     await waitFor(() =>
       expect(mocks.createSchedule).toHaveBeenCalledWith(
         expect.objectContaining({ name: "新规则", target_tree_id: 10 }),
+      ),
+    );
+  });
+
+  it("选择带入参行为树时动态渲染字段并提交值", async () => {
+    renderPage();
+    await screen.findByTestId("schedule-row-1");
+    fireEvent.click(screen.getByTestId("new-schedule"));
+    fireEvent.change(screen.getByTestId("schedule-tree"), { target: { value: "11" } });
+    expect(await screen.findByTestId("schedule-input-count")).toBeInTheDocument();
+    expect(screen.getByTestId("schedule-input-enabled")).toBeInTheDocument();
+    expect(screen.getByTestId("schedule-input-title")).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId("schedule-input-count"), {
+      target: { value: "3" },
+    });
+    fireEvent.click(screen.getByTestId("schedule-input-enabled"));
+    fireEvent.change(screen.getByTestId("schedule-input-title"), {
+      target: { value: "日报" },
+    });
+    fireEvent.click(screen.getByTestId("schedule-save"));
+    await waitFor(() =>
+      expect(mocks.createSchedule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target_tree_id: 11,
+          inputs: { count: 3, enabled: true, title: "日报" },
+        }),
       ),
     );
   });

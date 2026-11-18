@@ -16,12 +16,18 @@ function formatTime(value: string): string {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString("zh-CN");
 }
 
+function fileNameFor(name: string): string {
+  const safe = name.replace(/[\\/:*?"<>|]/g, "_").trim() || "behavior-tree";
+  return `${safe}.yaml`;
+}
+
 export function TreeListPage() {
   const navigate = useNavigate();
   const [trees, setTrees] = useState<TreeOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [exportingId, setExportingId] = useState<number | null>(null);
   const [constructible, setConstructible] = useState<Set<string>>(new Set());
   const [pendingTree, setPendingTree] = useState<TreeOut | null>(null);
   const [creating, setCreating] = useState(false);
@@ -123,6 +129,29 @@ export function TreeListPage() {
       setCreating(false);
     }
   }, [navigate]);
+
+  const handleExport = useCallback(async (tree: TreeOut) => {
+    setError(null);
+    setExportingId(tree.id);
+    try {
+      const detail = await treesApi.getTree(tree.id);
+      const blob = new Blob([detail.content], {
+        type: "application/x-yaml;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileNameFor(tree.name);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? `导出失败：${err.message}` : "导出失败");
+    } finally {
+      setExportingId(null);
+    }
+  }, []);
 
   const handleImport = useCallback(
     async (file: File) => {
@@ -232,6 +261,14 @@ export function TreeListPage() {
                         执行
                       </Button>
                     ) : null}
+                    <Button
+                      variant="ghost"
+                      onClick={() => void handleExport(tree)}
+                      disabled={exportingId === tree.id}
+                      data-testid={`export-${tree.id}`}
+                    >
+                      {exportingId === tree.id ? "导出中…" : "导出"}
+                    </Button>
                     <Button variant="danger" onClick={() => handleDelete(tree)} data-testid={`delete-${tree.id}`}>
                       删除
                     </Button>

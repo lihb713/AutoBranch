@@ -30,6 +30,18 @@
 - **WHEN** 规则缺少目标树、间隔/时间字段，或时间格式非法
 - **THEN** 系统返回 422 并说明原因，不保存规则
 
+### Requirement: 目标树与入参动态表单
+
+前端创建/编辑调度时 SHALL 根据所选目标行为树的 `inputs` 声明动态渲染入参输入项（str 文本框、int/float 数字框、bool 复选框），不得要求用户手写 JSON。目标树选择 SHALL 只展示正式版且入参全部可构造的行为树。
+
+#### Scenario: 选择带入参行为树
+- **WHEN** 用户选择声明了 `count: int` 的行为树
+- **THEN** 表单出现 `count` 数字输入框，保存时以数值写入调度 `inputs`
+
+#### Scenario: 隐藏不可调度树
+- **WHEN** 行为树声明了 `page_ref` 入参
+- **THEN** 该树不出现在调度目标下拉中
+
 ### Requirement: 目标树与入参
 
 系统 SHALL 在创建/更新规则时校验目标树存在且为 `published`，并通过 `validate_run_inputs` 校验静态入参；含不可由文本构造类型（`page_ref`/`object`）的目标树 SHALL 拒绝创建调度。执行时目标树必须为 `published`，草稿状态 SHALL 跳过执行并记录原因。

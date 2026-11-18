@@ -1424,6 +1424,28 @@ details.run-meta__section > summary { cursor: pointer; }
   flex: 1;
   min-width: 140px;
 }
+.schedule-inputs {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+}
+.schedule-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.schedule-inline-field > span {
+  min-width: 160px;
+}
+.schedule-inline-field > input[type="text"],
+.schedule-inline-field > input[type="number"] {
+  flex: 1;
+  padding: 7px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
 .schedule-deps {
   display: flex;
   gap: 8px 16px;

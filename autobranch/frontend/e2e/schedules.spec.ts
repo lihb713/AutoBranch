@@ -97,3 +97,42 @@ test("调度管理页：自动触发执行 → 来源标注 → 查看报告", a
     timeout: 120_000,
   });
 });
+
+test("前端新建调度时按目标行为树入参动态渲染表单", async ({ page }) => {
+  const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
+  const name = `调度入参${Date.now()}`;
+  const content = `tree: ${name}
+inputs:
+  count: int
+  enabled: bool
+  title: str
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: FunctionCall
+    name: 求和
+    function: compute.add
+    args: [Param.count, Param.count]
+    returns: {total: int}
+root: n1
+`;
+  await createTree(api, name, content);
+  await api.dispose();
+
+  const ruleName = `入参规则${Date.now()}`;
+  await page.goto("/schedules");
+  await page.getByTestId("new-schedule").click();
+  await page.getByTestId("schedule-name").fill(ruleName);
+  await page.getByTestId("schedule-tree").selectOption({ label: name });
+  await expect(page.getByTestId("schedule-input-count")).toBeVisible();
+  await expect(page.getByTestId("schedule-input-enabled")).toBeVisible();
+  await expect(page.getByTestId("schedule-input-title")).toBeVisible();
+  await page.getByTestId("schedule-input-count").fill("3");
+  await page.getByTestId("schedule-input-enabled").check();
+  await page.getByTestId("schedule-input-title").fill("日报");
+  await page.getByTestId("schedule-save").click();
+  await expect(page.getByTestId("schedule-table")).toContainText(ruleName);
+});

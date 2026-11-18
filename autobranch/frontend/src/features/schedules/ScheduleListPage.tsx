@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { schedulesApi } from "../../api/schedules";
 import { treesApi } from "../../api/trees";
+import { typesApi } from "../../api/types";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
@@ -48,6 +49,56 @@ function emptyForm(trees: TreeOut[]): ScheduleRuleInput {
   };
 }
 
+function inputValuesFor(
+  tree: TreeOut | undefined,
+  values: Record<string, unknown> = {},
+): Record<string, string | boolean> {
+  const result: Record<string, string | boolean> = {};
+  for (const [name, type] of Object.entries(tree?.inputs ?? {})) {
+    if (type === "bool") {
+      result[name] = Boolean(values[name]);
+    } else {
+      const value = values[name];
+      result[name] = value == null ? "" : String(value);
+    }
+  }
+  return result;
+}
+
+function buildInputs(
+  tree: TreeOut | undefined,
+  values: Record<string, string | boolean>,
+): { inputs: Record<string, unknown>; error: string | null } {
+  const inputs: Record<string, unknown> = {};
+  for (const [name, type] of Object.entries(tree?.inputs ?? {})) {
+    const raw = values[name];
+    if (type === "bool") {
+      inputs[name] = raw === true || raw === "true";
+      continue;
+    }
+    const text = typeof raw === "string" ? raw : "";
+    if (text === "" && (type === "int" || type === "float")) {
+      continue;
+    }
+    if (type === "int") {
+      const parsed = Number(text);
+      if (!Number.isFinite(parsed)) {
+        return { inputs: {}, error: `入参 ${name} 需要整数` };
+      }
+      inputs[name] = Math.trunc(parsed);
+    } else if (type === "float") {
+      const parsed = Number(text);
+      if (!Number.isFinite(parsed)) {
+        return { inputs: {}, error: `入参 ${name} 需要数字` };
+      }
+      inputs[name] = parsed;
+    } else {
+      inputs[name] = text;
+    }
+  }
+  return { inputs, error: null };
+}
+
 function toInput(rule: ScheduleRule): ScheduleRuleInput {
   return {
     name: rule.name,
@@ -76,19 +127,28 @@ export function ScheduleListPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<ScheduleRule | null>(null);
   const [form, setForm] = useState<ScheduleRuleInput | null>(null);
-  const [inputsText, setInputsText] = useState("{}");
+  const [inputValues, setInputValues] = useState<Record<string, string | boolean>>({});
+  const [constructible, setConstructible] = useState<Set<string>>(
+    new Set(["str", "int", "float", "bool"]),
+  );
   const [records, setRecords] = useState<ScheduleRule | null>(null);
   const [recordRuns, setRecordRuns] = useState<RunOut[]>([]);
   const [recordsView, setRecordsView] = useState<"target" | "all">("target");
 
   const load = useCallback(async () => {
     try {
-      const [ruleList, treeList] = await Promise.all([
+      const [ruleList, treeList, typeList] = await Promise.all([
         schedulesApi.listSchedules(),
         treesApi.listTrees(true),
+        typesApi.listTypes().catch(() => null),
       ]);
       setRules(ruleList);
       setTrees(treeList);
+      if (typeList) {
+        setConstructible(
+          new Set(typeList.filter((item) => item.constructible).map((item) => item.token)),
+        );
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "加载调度规则失败");
@@ -103,15 +163,17 @@ export function ScheduleListPage() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm(trees));
-    setInputsText("{}");
+    const first = availableTrees[0];
+    setForm(emptyForm(availableTrees));
+    setInputValues(inputValuesFor(first));
     setError(null);
   };
 
   const openEdit = (rule: ScheduleRule) => {
     setEditing(rule);
+    const target = trees.find((tree) => tree.id === rule.target_tree_id);
     setForm(toInput(rule));
-    setInputsText(JSON.stringify(rule.inputs ?? {}, null, 2));
+    setInputValues(inputValuesFor(target, rule.inputs));
     setError(null);
   };
 
@@ -122,14 +184,13 @@ export function ScheduleListPage() {
 
   const save = async () => {
     if (!form) return;
-    let inputs: Record<string, unknown>;
-    try {
-      inputs = JSON.parse(inputsText || "{}") as Record<string, unknown>;
-    } catch {
-      setError("入参必须是合法 JSON 对象");
+    const targetTree = trees.find((tree) => tree.id === form.target_tree_id);
+    const built = buildInputs(targetTree, inputValues);
+    if (built.error) {
+      setError(built.error);
       return;
     }
-    const payload: ScheduleRuleInput = { ...form, inputs };
+    const payload: ScheduleRuleInput = { ...form, inputs: built.inputs };
     try {
       if (editing) {
         await schedulesApi.updateSchedule(editing.id, payload);
@@ -194,8 +255,19 @@ export function ScheduleListPage() {
     setRecordRuns([]);
   };
 
+  const availableTrees = useMemo(
+    () =>
+      trees.filter((tree) =>
+        Object.values(tree.inputs ?? {}).every((type) => constructible.has(type)),
+      ),
+    [trees, constructible],
+  );
   const dependencyOptions = useMemo(
-    () => trees.filter((tree) => tree.id !== form?.target_tree_id),
+    () => availableTrees.filter((tree) => tree.id !== form?.target_tree_id),
+    [availableTrees, form?.target_tree_id],
+  );
+  const targetTree = useMemo(
+    () => trees.find((tree) => tree.id === form?.target_tree_id),
     [trees, form?.target_tree_id],
   );
 
@@ -203,7 +275,11 @@ export function ScheduleListPage() {
     <section className="page" data-testid="schedule-list-page">
       <header className="page-header">
         <h1 className="page-title">调度管理</h1>
-        <Button onClick={openCreate} data-testid="new-schedule" disabled={trees.length === 0}>
+        <Button
+          onClick={openCreate}
+          data-testid="new-schedule"
+          disabled={availableTrees.length === 0}
+        >
           新建调度
         </Button>
       </header>
@@ -211,6 +287,10 @@ export function ScheduleListPage() {
       {notice ? <div className="notice" data-testid="schedule-notice">{notice}</div> : null}
       {trees.length === 0 ? (
         <p className="hint">暂无正式版行为树，请先保存行为树为正式版后再创建调度。</p>
+      ) : availableTrees.length === 0 ? (
+        <p className="hint">
+          暂无可直接调度的正式版行为树（含 page_ref/object 入参的树仅支持 ref 调用）。
+        </p>
       ) : null}
 
       {loading && rules.length === 0 ? (
@@ -319,11 +399,14 @@ export function ScheduleListPage() {
             <select
               data-testid="schedule-tree"
               value={String(form.target_tree_id)}
-              onChange={(e) =>
-                setForm({ ...form, target_tree_id: Number(e.target.value), dependencies: [] })
-              }
+              onChange={(e) => {
+                const nextId = Number(e.target.value);
+                const nextTree = availableTrees.find((tree) => tree.id === nextId);
+                setForm({ ...form, target_tree_id: nextId, dependencies: [] });
+                setInputValues(inputValuesFor(nextTree));
+              }}
             >
-              {trees.map((tree) => (
+              {availableTrees.map((tree) => (
                 <option key={tree.id} value={String(tree.id)}>
                   {tree.name}
                 </option>
@@ -510,15 +593,44 @@ export function ScheduleListPage() {
               <option value="skip">跳过</option>
             </select>
           </label>
-          <label className="schedule-field">
-            <span>静态入参（JSON）</span>
-            <textarea
-              data-testid="schedule-inputs"
-              rows={4}
-              value={inputsText}
-              onChange={(e) => setInputsText(e.target.value)}
-            />
-          </label>
+          <div className="schedule-field">
+            <span>数据入参</span>
+            {targetTree && Object.keys(targetTree.inputs ?? {}).length > 0 ? (
+              <div className="schedule-inputs" data-testid="schedule-inputs">
+                {Object.entries(targetTree.inputs).map(([name, type]) => (
+                  <label key={name} className="schedule-inline-field">
+                    <span>
+                      {name} <span className="muted">({type})</span>
+                    </span>
+                    {type === "bool" ? (
+                      <input
+                        type="checkbox"
+                        data-testid={`schedule-input-${name}`}
+                        checked={inputValues[name] === true}
+                        onChange={(e) =>
+                          setInputValues((prev) => ({ ...prev, [name]: e.target.checked }))
+                        }
+                      />
+                    ) : (
+                      <input
+                        type={type === "int" || type === "float" ? "number" : "text"}
+                        step={type === "float" ? "any" : undefined}
+                        data-testid={`schedule-input-${name}`}
+                        value={
+                          typeof inputValues[name] === "string" ? inputValues[name] : ""
+                        }
+                        onChange={(e) =>
+                          setInputValues((prev) => ({ ...prev, [name]: e.target.value }))
+                        }
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <span className="muted">该行为树无入参</span>
+            )}
+          </div>
           <label className="schedule-check">
             <input
               type="checkbox"
