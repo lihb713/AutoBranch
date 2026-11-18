@@ -184,13 +184,15 @@ def _check_function_ref(
         )
         return
     required = (spec.parameters or {}).get("required", [])
-    if node.args and len(node.args) != len(required):
+    properties = list((spec.parameters or {}).get("properties", {}))
+    max_args = len(properties) if properties else len(required)
+    if node.args and not (len(required) <= len(node.args) <= max_args):
         issues.append(
             make_issue(
                 "ref",
                 "args_mismatch",
-                f"函数 '{fn}' 实参数量 {len(node.args)} ≠ 入参数量 {len(required)}"
-                f"（位于 {at}）",
+                f"函数 '{fn}' 实参数量 {len(node.args)} 应在 {len(required)}~{max_args}"
+                f"（必填~全部参数）之间（位于 {at}）",
                 node.loc,
             )
         )

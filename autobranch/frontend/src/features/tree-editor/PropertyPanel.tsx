@@ -172,6 +172,14 @@ export function PropertyPanel({
     updateNode({ args });
   };
 
+  const setFunctionArg = (i: number, value: string) => {
+    const args = [...(node.args ?? [])];
+    while (args.length <= i) args.push("");
+    args[i] = value;
+    while (args.length > 0 && args[args.length - 1] === "") args.pop();
+    updateNode({ args });
+  };
+
   const setReturnName = (i: number, name: string) => {
     const returns = { ...(node.returns ?? {}) };
     const keys = Object.keys(returns);
@@ -456,7 +464,7 @@ export function PropertyPanel({
               placeholder="变量名或字面量"
               disabled={readonly}
               data-testid={`fc-arg-${node.id}-${i}`}
-              onChange={(e) => setArg(i, e.target.value)}
+              onChange={(e) => setFunctionArg(i, e.target.value)}
             />
           ))
         )}

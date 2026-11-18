@@ -173,6 +173,7 @@ returns:
 - 函数不存在 / 实参求值失败（变量未定义）/ 执行失败 → 该节点 FAILURE，失败原因含函数全名与错误。
 - 实参从当前帧求值；返回值按 `returns` 回收写父帧（按声明类型 coerce）。
 - `function` 指向的能力来自插件集（M7）；引擎核心不感知具体能力（能力经插件框架 M3 分发）。
+- FunctionCall `args` 按函数参数声明顺序填写；必填参数不能省略，可选参数可省略。
 - **函数标识 = 全名 `插件名.函数名`**（如 `compute.add`）：同一插件内函数名唯一，**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）。
 - **LLM 工具名转义**：对 LLM 暴露的工具名为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），叶子分发时按转义名反查回全名。
 - **保存/执行前校验**：服务端保存（`/api/trees`）与执行前，经共享插件注册表校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐；函数不存在 / 参数不匹配时保存被 422 拒绝。
@@ -986,7 +987,7 @@ ref 语义:
 
 ```
 插件框架 (M3) + 插件集 (M7):
-  - 预置插件位于 autobranch/plugins/（browser/compute/ssh/file/http/vars + common 共享库）
+  - 预置插件位于 autobranch/plugins/（browser/compute/ssh/file/http/vars/transform + common 共享库）
   - 浏览器插件自包含：driver/（浏览器驱动）+ semantic_graph/（语义图）+ probe/refmap
   - 引擎核心不感知具体能力；经 registry.call(name, args) 分发
 
@@ -2183,7 +2184,7 @@ M3  插件框架            无依赖（注册/懒装配/use_capability/分发/�
 M4  叶子 agent          M0+M2+M3（两级能力选择 + 变量落笔）
 M5  编排器              M1+M2+M4+M6（FunctionCall 节点/插件分发/资源释放）
 M6  报告机制            M3（引擎基础 + 插件附加，插件驱动）
-M7  插件集              M3（browser/compute/ssh/file/http/vars + 自定义插件）
+M7  插件集              M3（browser/compute/ssh/file/http/vars/transform + 自定义插件）
 M8  管理后端            M1+M5+M6+M3+M7+DB（文档/运行/插件 API）
 M9  前端 UI             M8（行为树编辑器 + 插件管理页 + 调度管理页）
 M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理页）
@@ -2250,7 +2251,9 @@ M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理�
 #### M7 插件集
 ```
 功能: 浏览器插件（驱动/语义图/页面对象自包含，open/click/extract/semantic_graph 等）;
-     计算插件（multiply/add/sum/sort/compare 纯函数）; SSH 插件（会话创建/远程执行）;
+     计算插件（四则/取模/幂/开方/聚合/排序/比较纯函数）;
+     SSH 插件（直连/SOCKS5/跳板机、非交互退出码、交互式流式通道）;
+     数据变换插件（路径/索引/键提取、字符串、JSON、正则、比较）;
      文件插件（读/写/对比）; 用户自定义插件（DB 源码，仅标准库）
      ——浏览器插件健壮性：submit/button/reset 输入=button（标签在 value 并渲染）;
        ref 选择器按 id→文本→input[value]→真实 DOM 索引路径（nth-of-type）生成;
@@ -2431,7 +2434,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 插件框架:    M3 插件框架 ◄──┴──────────────┘
                 ▲
                 │ 加载
-插件集:      M7 插件集（browser/compute/ssh/file/http/vars + 自定义）
+插件集:      M7 插件集（browser/compute/ssh/file/http/vars/transform + 自定义）
                 │
 管理系统:    M8 管理后端 ◄── M9 前端 UI
             (内嵌引擎 + 插件 API)
@@ -2463,7 +2466,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 - **单文件 Python 脚本**，源码保存在系统（DB），在「插件管理」页编写。
 - **仅可使用 Python 标准库**；不 import 其他插件 / `common` / 三方库。
 - **直接使用内置注入的名字** `PluginBase` / `engine_function` / `FunctionResult`（无需 import `autobranch`）。
-- 插件名：小写字母 / 数字 / `_` / `-`，且**不得与预置插件同名**（browser/compute/ssh/file/http/vars）。
+- 插件名：小写字母 / 数字 / `_` / `-`，且**不得与预置插件同名**（browser/compute/ssh/file/http/vars/transform）。
 
 ### 13.2 插件模板
 

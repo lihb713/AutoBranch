@@ -1,11 +1,18 @@
-"""SSH 插件（M7 插件集）：创建 / 关闭远程会话、在远程主机执行命令。
+"""SSH 插件：直连 / SOCKS5 / 跳板机、非交互执行与交互式流式会话。
 
-会话对象（``SSHConnection``）作为泛型对象值在变量中存储与传递。函数只
-返回值、不写变量。命令非零退出码 / 超时返回失败结果。
+设计要点：
+- 非交互命令（默认）读取 stdout/stderr 直到 SSH 通道返回 exit-status，
+  因此可以可靠判断“执行完成 + 退出码”。
+- 交互命令（``interactive=True``）使用 PTY，等待 idle_timeout 后返回当前输出
+  与 ``channel_id``；后续用 ``ssh_send`` / ``ssh_read`` / ``ssh_close_channel``
+  像终端一样持续交互。
+- 跳板机：先连接 jump 主机（可经 SOCKS5），再从 jump 的 transport 打开
+  ``direct-tcpip`` 通道连接目标机；从 jump 到目标机不再使用 SOCKS5。
 """
 
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -18,11 +25,24 @@ def _params(required: tuple[str, ...], **props: dict) -> dict:
 
 
 @dataclass
+class _ChannelState:
+    """交互式命令的通道状态。"""
+
+    channel: Any
+    stdin: Any
+    stdout: Any
+    stderr: Any
+
+
+@dataclass
 class SSHConnection:
     """远程 SSH 会话对象（泛型 ``object`` 值）。"""
 
     id: str
     client: Any = field(repr=False)
+    jump_client: Any | None = field(default=None, repr=False)
+    jump_channel: Any | None = field(default=None, repr=False)
+    channels: dict[str, _ChannelState] = field(default_factory=dict, repr=False)
 
     def __str__(self) -> str:
         return f"SSHConnection(id={self.id[:8]}…)"
@@ -32,12 +52,12 @@ class SSHConnection:
 
 
 class SSHPlugin(PluginBase):
-    """SSH 能力：会话创建 / 关闭、远程执行。"""
+    """SSH 能力：直连/代理/跳板会话、非交互命令、交互式流式命令。"""
 
     name = "ssh"
     description = (
-        "SSH 远程能力：创建会话（create_session）、执行命令（ssh_exec）、"
-        "关闭会话（close_session）"
+        "SSH 远程能力：直连/SOCKS5/跳板机会话；非交互命令返回退出码；"
+        "交互命令返回流式通道（send/read/close）"
     )
 
     def __init__(self) -> None:
@@ -48,23 +68,52 @@ class SSHPlugin(PluginBase):
 
     def release(self) -> None:
         for conn in list(self._connections.values()):
-            try:
-                conn.client.close()
-            except Exception:  # noqa: BLE001
-                pass
+            self._close_connection(conn)
         self._connections.clear()
+
+    # ------------------------------------------------------------- 会话
 
     @engine_function(
         name="create_session",
-        description="创建远程 SSH 会话（返回会话对象，可存入变量供 ssh_exec / close_session 使用）",
+        description=(
+            "创建远程 SSH 会话。支持密码/私钥、SOCKS5 代理、SSH 跳板机；"
+            "有 jump 时 proxy 用于连接跳板机，jump 到目标机固定走 SSH direct-tcpip"
+        ),
         parameters=_params(
             ("host",),
-            host={"type": "string", "description": "远程主机 IP / 域名"},
+            host={"type": "string", "description": "目标主机 IP / 域名"},
             port={"type": "integer", "description": "SSH 端口（默认 22）"},
             user={"type": "string", "description": "登录用户名"},
-            pwd={"type": "string", "description": "密码（与密钥二选一）"},
-            key={"type": "string", "description": "私钥文件路径（与密码二选一）"},
+            pwd={"type": "string", "description": "密码（与 key 二选一）"},
+            key={"type": "string", "description": "私钥文件路径（与 pwd 二选一）"},
             timeout={"type": "number", "description": "连接超时秒数（默认 15）"},
+            proxy={
+                "type": "object",
+                "description": "SOCKS5 代理：{host, port, user?, pwd?}",
+                "properties": {
+                    "type": {"type": "string", "enum": ["socks5"]},
+                    "host": {"type": "string"},
+                    "port": {"type": "integer"},
+                    "user": {"type": "string"},
+                    "pwd": {"type": "string"},
+                },
+            },
+            jump={
+                "type": "object",
+                "description": (
+                    "跳板机：{host, port?, user?, pwd?, key?, timeout?, proxy?}；"
+                    "jump.proxy 为连接跳板机的 SOCKS5 代理"
+                ),
+                "properties": {
+                    "host": {"type": "string"},
+                    "port": {"type": "integer"},
+                    "user": {"type": "string"},
+                    "pwd": {"type": "string"},
+                    "key": {"type": "string"},
+                    "timeout": {"type": "number"},
+                    "proxy": {"type": "object"},
+                },
+            },
         ),
         returns={"session": "object"},
         output_param="save_to",
@@ -77,6 +126,8 @@ class SSHPlugin(PluginBase):
         pwd: str | None = None,
         key: str | None = None,
         timeout: float = 15.0,
+        proxy: dict | None = None,
+        jump: dict | None = None,
     ) -> FunctionResult:
         try:
             import paramiko
@@ -84,39 +135,121 @@ class SSHPlugin(PluginBase):
             return FunctionResult.failure(
                 "paramiko 未安装（ssh 插件依赖，请联系环境安装）", code="SSH_ERROR"
             )
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        jump_client = None
+        jump_channel = None
+        client = None
         try:
-            client.connect(
-                hostname=host,
-                port=port,
-                username=user,
-                password=pwd,
-                key_filename=key,
-                timeout=timeout,
-            )
+            if jump:
+                jump_host = str(jump.get("host") or "").strip()
+                if not jump_host:
+                    return FunctionResult.failure("jump.host 不能为空", code="SSH_ERROR")
+                jump_proxy = jump.get("proxy") or proxy
+                jump_client = self._connect_client(
+                    paramiko,
+                    host=jump_host,
+                    port=int(jump.get("port") or 22),
+                    user=str(jump.get("user") or "root"),
+                    pwd=jump.get("pwd"),
+                    key=jump.get("key"),
+                    timeout=float(jump.get("timeout") or timeout),
+                    proxy=jump_proxy,
+                )
+                transport = jump_client.get_transport()
+                if transport is None:
+                    raise RuntimeError("跳板机 SSH transport 不可用")
+                jump_channel = transport.open_channel(
+                    "direct-tcpip",
+                    (host, int(port)),
+                    (jump_host, int(jump.get("port") or 22)),
+                    timeout=timeout,
+                )
+                client = self._connect_client(
+                    paramiko,
+                    host=host,
+                    port=int(port),
+                    user=user,
+                    pwd=pwd,
+                    key=key,
+                    timeout=timeout,
+                    sock=jump_channel,
+                )
+            else:
+                client = self._connect_client(
+                    paramiko,
+                    host=host,
+                    port=int(port),
+                    user=user,
+                    pwd=pwd,
+                    key=key,
+                    timeout=timeout,
+                    proxy=proxy,
+                )
         except Exception as exc:  # noqa: BLE001
+            self._safe_close(jump_channel)
+            self._safe_close(jump_client)
+            self._safe_close(client)
             return FunctionResult.failure(f"SSH 连接失败: {exc}", code="SSH_ERROR")
-        conn = SSHConnection(id=uuid.uuid4().hex, client=client)
+
+        conn = SSHConnection(
+            id=uuid.uuid4().hex,
+            client=client,
+            jump_client=jump_client,
+            jump_channel=jump_channel,
+        )
         self._connections[conn.id] = conn
         return FunctionResult.success(conn)
 
     @engine_function(
+        name="close_session",
+        description="关闭远程 SSH 会话（同时关闭跳板机连接与交互通道）",
+        parameters=_params(
+            ("session",),
+            session={
+                "type": "string",
+                "description": "SSH 会话对象，使用 Param.变量名 引用",
+            },
+        ),
+    )
+    def close_session(self, session: SSHConnection) -> FunctionResult:
+        conn = self._find(session)
+        if conn is None:
+            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        self._close_connection(conn)
+        self._connections.pop(conn.id, None)
+        return FunctionResult.success()
+
+    # ------------------------------------------------------------- 执行
+
+    @engine_function(
         name="ssh_exec",
-        description="在远程会话执行命令，返回 stdout / stderr / 退出码（非零退出码为失败）",
+        description=(
+            "执行命令。默认非交互模式：流式读取直到进程退出，返回 stdout/stderr/exit_code，"
+            "非零退出码为失败；interactive=true 时使用 PTY，等待 idle_timeout 后返回当前输出"
+            "与 channel_id，后续用 ssh_send/ssh_read 交互"
+        ),
         parameters=_params(
             ("session", "command"),
             session={
                 "type": "string",
-                "description": (
-                    "SSH 会话对象，使用 Param.变量名 引用"
-                    "（create_session 返回并保存的变量）"
-                ),
+                "description": "SSH 会话对象，使用 Param.变量名 引用",
             },
             command={"type": "string", "description": "要执行的命令"},
-            timeout={"type": "number", "description": "命令超时秒数（默认 30）"},
+            timeout={"type": "number", "description": "非交互命令总超时（默认 30 秒）"},
+            stdin={"type": "string", "description": "启动后立即写入的标准输入"},
+            interactive={"type": "boolean", "description": "是否使用 PTY 交互模式"},
+            idle_timeout={
+                "type": "number",
+                "description": "交互模式无输出多久后返回（默认 1 秒）",
+            },
         ),
-        returns={"stdout": "str", "stderr": "str", "exit_code": "int"},
+        returns={
+            "stdout": "str",
+            "stderr": "str",
+            "exit_code": "int",
+            "channel_id": "str",
+            "exited": "bool",
+        },
         output_param="save_to",
     )
     def ssh_exec(
@@ -124,19 +257,64 @@ class SSHPlugin(PluginBase):
         session: SSHConnection,
         command: str,
         timeout: float = 30.0,
+        stdin: str | None = None,
+        interactive: bool = False,
+        idle_timeout: float = 1.0,
     ) -> FunctionResult:
         conn = self._find(session)
         if conn is None:
             return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
         try:
-            _stdin, stdout, stderr = conn.client.exec_command(
-                command, timeout=timeout
+            stdin_stream, stdout, stderr = conn.client.exec_command(
+                command,
+                timeout=timeout,
+                get_pty=bool(interactive),
             )
-            out = stdout.read().decode("utf-8", "replace")
-            err = stderr.read().decode("utf-8", "replace")
-            code = stdout.channel.recv_exit_status()
+            channel = stdout.channel
+            if stdin:
+                self._write(stdin_stream, channel, stdin, newline=False)
         except Exception as exc:  # noqa: BLE001
             return FunctionResult.failure(f"命令执行失败: {exc}", code="SSH_ERROR")
+
+        if interactive:
+            out, err, code, exited, timed_out = self._read_channel(
+                channel, timeout=idle_timeout, require_exit=False
+            )
+            if timed_out:
+                return FunctionResult.failure(
+                    "交互命令读取超时",
+                    code="SSH_ERROR",
+                    stdout=out,
+                    stderr=err,
+                    exit_code=code,
+                )
+            result = FunctionResult.success(out, err, code, "", exited)
+            if not exited:
+                channel_id = uuid.uuid4().hex
+                conn.channels[channel_id] = _ChannelState(
+                    channel=channel,
+                    stdin=stdin_stream,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+                result.values = (out, err, code, channel_id, False)
+            else:
+                self._safe_close(channel)
+            return result
+
+        out, err, code, exited, timed_out = self._read_channel(
+            channel, timeout=timeout, require_exit=True
+        )
+        self._safe_close(channel)
+        if timed_out or not exited:
+            return FunctionResult.failure(
+                f"命令执行超时（{timeout} 秒）",
+                code="SSH_ERROR",
+                stdout=out,
+                stderr=err,
+                exit_code=code,
+                timed_out=True,
+            )
         if code != 0:
             return FunctionResult.failure(
                 f"命令退出码 {code}: {err}",
@@ -145,37 +323,232 @@ class SSHPlugin(PluginBase):
                 stderr=err,
                 exit_code=code,
             )
-        return FunctionResult.success(out, err, code)
+        return FunctionResult.success(out, err, code, "", True)
 
     @engine_function(
-        name="close_session",
-        description="关闭远程 SSH 会话",
+        name="ssh_send",
+        description="向交互式命令通道写入标准输入（newline=true 自动追加换行）",
         parameters=_params(
-            ("session",),
-            session={
+            ("session", "channel_id", "data"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            channel_id={
                 "type": "string",
-                "description": (
-                    "SSH 会话对象，使用 Param.变量名 引用"
-                    "（create_session 返回并保存的变量）"
-                ),
+                "description": "ssh_exec(interactive=true) 返回的通道 ID",
             },
+            data={"type": "string", "description": "要写入的文本"},
+            newline={"type": "boolean", "description": "是否追加换行（默认 true）"},
         ),
     )
-    def close_session(self, session: SSHConnection) -> FunctionResult:
+    def ssh_send(
+        self,
+        session: SSHConnection,
+        channel_id: str,
+        data: str,
+        newline: bool = True,
+    ) -> FunctionResult:
         conn = self._find(session)
-        if conn is None:
-            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        state = conn.channels.get(channel_id) if conn is not None else None
+        if conn is None or state is None:
+            return FunctionResult.failure("交互通道不存在或已关闭", code="SSH_ERROR")
         try:
-            conn.client.close()
-        except Exception:  # noqa: BLE001
-            pass
-        self._connections.pop(conn.id, None)
+            self._write(state.stdin, state.channel, data, newline=newline)
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"写入交互通道失败: {exc}", code="SSH_ERROR")
         return FunctionResult.success()
+
+    @engine_function(
+        name="ssh_read",
+        description=(
+            "读取交互式命令通道的新输出（无输出 idle_timeout 秒后返回）；"
+            "返回 stdout/stderr/exit_code/exited"
+        ),
+        parameters=_params(
+            ("session", "channel_id"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            channel_id={"type": "string", "description": "交互通道 ID"},
+            idle_timeout={"type": "number", "description": "无输出等待秒数（默认 1）"},
+        ),
+        returns={
+            "stdout": "str",
+            "stderr": "str",
+            "exit_code": "int",
+            "exited": "bool",
+        },
+    )
+    def ssh_read(
+        self,
+        session: SSHConnection,
+        channel_id: str,
+        idle_timeout: float = 1.0,
+    ) -> FunctionResult:
+        conn = self._find(session)
+        state = conn.channels.get(channel_id) if conn is not None else None
+        if conn is None or state is None:
+            return FunctionResult.failure("交互通道不存在或已关闭", code="SSH_ERROR")
+        out, err, code, exited, timed_out = self._read_channel(
+            state.channel, timeout=idle_timeout, require_exit=False
+        )
+        if timed_out:
+            return FunctionResult.failure(
+                "读取交互通道超时",
+                code="SSH_ERROR",
+                stdout=out,
+                stderr=err,
+                exit_code=code,
+            )
+        if exited:
+            self._safe_close(state.channel)
+            conn.channels.pop(channel_id, None)
+        return FunctionResult.success(out, err, code, exited)
+
+    @engine_function(
+        name="ssh_close_channel",
+        description="关闭交互式命令通道（不关闭 SSH 会话）",
+        parameters=_params(
+            ("session", "channel_id"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            channel_id={"type": "string", "description": "交互通道 ID"},
+        ),
+    )
+    def ssh_close_channel(self, session: SSHConnection, channel_id: str) -> FunctionResult:
+        conn = self._find(session)
+        state = conn.channels.pop(channel_id, None) if conn is not None else None
+        if conn is None or state is None:
+            return FunctionResult.failure("交互通道不存在或已关闭", code="SSH_ERROR")
+        self._safe_close(state.channel)
+        return FunctionResult.success()
+
+    # ------------------------------------------------------------- 内部
 
     def _find(self, session: SSHConnection) -> SSHConnection | None:
         if not isinstance(session, SSHConnection):
             return None
         return self._connections.get(session.id)
+
+    @staticmethod
+    def _connect_client(
+        paramiko_module: Any,
+        *,
+        host: str,
+        port: int,
+        user: str,
+        pwd: str | None,
+        key: str | None,
+        timeout: float,
+        proxy: dict | None = None,
+        sock: Any = None,
+    ) -> Any:
+        client = paramiko_module.SSHClient()
+        client.set_missing_host_key_policy(paramiko_module.AutoAddPolicy())
+        kwargs: dict[str, Any] = {}
+        if sock is not None:
+            kwargs["sock"] = sock
+        elif proxy:
+            kwargs["sock"] = SSHPlugin._open_socks5(proxy, host, port, timeout)
+        client.connect(
+            hostname=host,
+            port=port,
+            username=user,
+            password=pwd,
+            key_filename=key,
+            timeout=timeout,
+            **kwargs,
+        )
+        return client
+
+    @staticmethod
+    def _open_socks5(proxy: dict, host: str, port: int, timeout: float) -> Any:
+        proxy_host = str(proxy.get("host") or "").strip()
+        proxy_port = int(proxy.get("port") or 1080)
+        if not proxy_host:
+            raise ValueError("proxy.host 不能为空")
+        if str(proxy.get("type") or "socks5").lower() not in ("socks5", "socks"):
+            raise ValueError("目前仅支持 SOCKS5 代理")
+        try:
+            import socks
+        except ImportError as exc:
+            raise RuntimeError("SOCKS5 代理需要安装 PySocks") from exc
+        return socks.create_connection(
+            (host, port),
+            timeout=timeout,
+            proxy_type=socks.SOCKS5,
+            proxy_addr=proxy_host,
+            proxy_port=proxy_port,
+            proxy_username=proxy.get("user"),
+            proxy_password=proxy.get("pwd"),
+        )
+
+    @staticmethod
+    def _write(stdin: Any, channel: Any, data: str, *, newline: bool) -> None:
+        text = str(data) + ("\n" if newline else "")
+        if stdin is not None and hasattr(stdin, "write"):
+            stdin.write(text)
+            if hasattr(stdin, "flush"):
+                stdin.flush()
+        else:
+            channel.sendall(text)
+
+    @staticmethod
+    def _read_channel(
+        channel: Any, *, timeout: float, require_exit: bool
+    ) -> tuple[str, str, int, bool, bool]:
+        """读取通道：返回 (stdout, stderr, exit_code, exited, timed_out)。
+
+        ``require_exit=True`` 用于非交互命令：只有 exit-status 就绪且无剩余数据
+        才认为命令结束；``require_exit=False`` 用于交互通道：无输出超过 timeout
+        即返回当前快照。
+        """
+        out: list[str] = []
+        err: list[str] = []
+        start = time.monotonic()
+        last_data = start
+        exited = False
+        timed_out = False
+        while True:
+            now = time.monotonic()
+            ready = channel.exit_status_ready()
+            has_out = channel.recv_ready()
+            has_err = channel.recv_stderr_ready()
+            if has_out:
+                out.append(channel.recv(65536).decode("utf-8", "replace"))
+                last_data = now
+            if has_err:
+                err.append(channel.recv_stderr(65536).decode("utf-8", "replace"))
+                last_data = now
+            if ready and not has_out and not has_err:
+                exited = True
+                break
+            if require_exit:
+                if now - start > timeout:
+                    timed_out = True
+                    break
+            elif now - last_data > timeout:
+                break
+            time.sleep(0.02)
+        code = 0
+        if exited:
+            try:
+                code = int(channel.recv_exit_status())
+            except Exception:  # noqa: BLE001
+                code = -1
+        return "".join(out), "".join(err), code, exited, timed_out
+
+    @staticmethod
+    def _safe_close(resource: Any) -> None:
+        if resource is None:
+            return
+        try:
+            resource.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _close_connection(self, conn: SSHConnection) -> None:
+        for state in list(conn.channels.values()):
+            self._safe_close(state.channel)
+        conn.channels.clear()
+        self._safe_close(conn.client)
+        self._safe_close(conn.jump_channel)
+        self._safe_close(conn.jump_client)
 
 
 plugin = SSHPlugin()

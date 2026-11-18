@@ -4,7 +4,7 @@
 
 ## Purpose
 
-预置插件集（浏览器 / 计算 / SSH / 文件 / HTTP / 变量）与用户自定义插件，作为引擎核心之外的「能力层」：插件只返回值（业务值 + 报告附加信息），不写变量（引擎落笔）。
+预置插件集（浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换）与用户自定义插件，作为引擎核心之外的「能力层」：插件只返回值（业务值 + 报告附加信息），不写变量（引擎落笔）。
 
 ## Requirements
 
@@ -31,7 +31,21 @@
 
 ### 计算插件
 
-确定性纯函数：`multiply(a, b)`、`add(a, b)`、`sum(values)`、`sort(data, desc)`、`compare(a, b)`；同输入同输出、无副作用。
+确定性纯函数：`add` / `subtract` / `multiply` / `divide` / `floor_divide` / `modulo` / `power` / `sqrt` / `abs_value` / `negate` / `round_value` / `sum` / `average` / `min_values` / `max_values` / `clamp` / `percentage` / `increment` / `decrement` / `sort` / `compare`；同输入同输出、无副作用。
+
+- `divide` / `floor_divide` / `modulo` / `percentage` 除数为 0 返回失败；`sqrt` 负数返回失败。
+- `compare(a, b, op)` 支持 `gt/ge/lt/le/eq/ne`，默认 `gt`。
+
+### 数据变换插件
+
+`transform` 提供无副作用的数据提取/变换：
+
+- 路径/索引/键：`get_path(data, path)`（如 `0.a.b.1` / `a[0].b[-1]`）、`get_index`、`get_key`；可选 `required=false` + `default`。
+- 字符串：`split` / `join` / `contains` / `index_of` / `replace` / `strip`。
+- 容器：`length` / `slice` / `keys` / `values`。
+- 转换：`to_string` / `to_int` / `to_number` / `to_bool` / `json_parse` / `json_dumps`。
+- 比较：`compare(a, b, op, ignore_case)`，支持 `eq/ne/gt/ge/lt/le/contains/startswith/endswith`。
+- 正则：`regex_match` / `regex_extract` / `regex_findall`。
 
 ### vars 插件
 
@@ -43,7 +57,15 @@
 
 ### SSH 插件
 
-会话对象（`SSHConnection`）作为泛型 `object` 值；`create_session`（端口/认证/超时，`output_param="save_to"`）、`ssh_exec`（命令超时、非零退出码 = 失败，`output_param="save_to"`，可保存 stdout/stderr/exit_code）、`close_session`；release 关闭全部会话。LLM 用 `Param.变量名` 引用会话对象，如 `ssh.ssh_exec(session="Param.ssh_conn", command="ls /home", save_to={"stdout": "home_list"})`。
+会话对象（`SSHConnection`）作为泛型 `object` 值。
+
+- `create_session(host, port?, user?, pwd?/key?, timeout?, proxy?, jump?)`：直连；`proxy` 为 SOCKS5；`jump` 为 SSH 跳板机。有 jump 时 proxy 用于连接跳板机，jump→目标固定走 SSH `direct-tcpip`。
+- `ssh_exec(session, command, timeout?, stdin?, interactive?, idle_timeout?)`：
+  - 默认非交互：流式读取 stdout/stderr，直到 SSH 通道返回 exit-status；返回 `stdout/stderr/exit_code/channel_id/exited`，非零退出码失败。
+  - `interactive=true`：PTY 模式，idle_timeout 无输出后返回当前输出与 `channel_id`；不强制等待退出。
+- 交互：`ssh_send(session, channel_id, data, newline?)`、`ssh_read(session, channel_id, idle_timeout?)`、`ssh_close_channel`。
+- `close_session` / `release` 关闭目标、跳板与全部通道。
+- 依赖 `paramiko` + `PySocks`（pyproject 依赖）。
 
 ### 文件插件
 
@@ -90,7 +112,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 
 - **预置插件位于 `autobranch/plugins/`**（工具的一部分，随工具分发）：
   - `autobranch/plugins/browser/`：浏览器插件——**自包含**浏览器驱动（`driver/` 子包）、语义图生成（`semantic_graph/` 子包）、元素引用映射（`refmap.py`）、页面探针（`probe.py`）、**代理路由**（`proxy.py` + `proxy.config.json` 配置 + `proxy.config.example.json` 示例）+ 插件类（`__init__.py`）。
-  - `autobranch/plugins/compute/`、`autobranch/plugins/ssh/`、`autobranch/plugins/file/`、`autobranch/plugins/common/`（共享库）。
+  - `autobranch/plugins/compute/`、`autobranch/plugins/ssh/`、`autobranch/plugins/file/`、`autobranch/plugins/transform/`、`autobranch/plugins/common/`（共享库）。
 - 每个插件包以 `plugin` 变量暴露 `PluginBase` 实例；引擎启动经 `load_builtin_plugins` 扫描 `autobranch/plugins` 注册。
 - **浏览器代理路由**（browser-proxy-routing）：代理决策不进行为树描述，由插件内 `proxy.config.json`（缺失则不启用）按站点规则匹配——`default` + `profiles`（system / direct / 自定义）+ `rules`（首条命中）。`BrowserDriver.open(url)` 按 URL 路由到对应会话（context-per-mode，懒建）；`direct` 经独立 `--no-proxy-server` 浏览器承载（Playwright 不支持 context 级 `direct://`）；system/custom 共用一个默认浏览器。
 - 兼容转发层：`autobranch.browser` / `autobranch.semantic_graph` / `autobranch.engine.probe` / `autobranch.engine.refmap` 为薄转发（物理实现在浏览器插件内），供引擎核心 / 旧非插件路径引用。

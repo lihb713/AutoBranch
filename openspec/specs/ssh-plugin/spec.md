@@ -7,7 +7,9 @@ SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等�
 ## Requirements
 ### Requirement: SSH 会话与远程执行
 
-系统 SHALL 通过 SSH 插件提供：创建会话、关闭会话、在远程主机执行命令等函数；会话对象 SHALL 作为泛型对象值存储与传递（与页面对象一致），函数只返回值、不写变量。会话创建 SHALL 支持端口、认证方式（密码 / 密钥）、连接超时；`ssh_exec` SHALL 支持命令超时；命令非零退出码 SHALL 作为失败结果返回。
+系统 SHALL 通过 SSH 插件提供：创建会话、关闭会话、在远程主机执行命令等函数；会话对象 SHALL 作为泛型对象值存储与传递，函数只返回值、不写变量。会话创建 SHALL 支持端口、密码/密钥、连接超时、SOCKS5 代理与 SSH 跳板机；有跳板机时 proxy 仅用于连接跳板机，跳板机到目标机 SHALL 使用 SSH `direct-tcpip`（不再走 SOCKS5）。
+
+`ssh_exec` 默认 SHALL 以非交互模式流式读取 stdout/stderr，等待 SSH 通道 exit-status 后返回 stdout/stderr/exit_code，非零退出码作为失败；交互模式（`interactive=true`）SHALL 使用 PTY，idle 超时后返回当前输出与 `channel_id`，并通过 `ssh_send`/`ssh_read`/`ssh_close_channel` 持续交互。
 
 #### Scenario: 创建会话并执行命令
 - **WHEN** 调用 `create_session(host='192.168.1.10', port=22, user='root', pwd='...')` 后调用 `ssh_exec(session, 'echo hi')`
@@ -24,3 +26,15 @@ SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等�
 #### Scenario: 会话作为变量传递
 - **WHEN** 创建会话返回会话对象
 - **THEN** 该对象可存入变量、经 args / returns 传递给后续函数
+
+#### Scenario: SOCKS5 代理
+- **WHEN** `create_session` 传入 `proxy={host, port}`
+- **THEN** SSH 连接经 SOCKS5 代理建立
+
+#### Scenario: SSH 跳板机
+- **WHEN** `create_session` 传入 `jump={host, user, ...}`
+- **THEN** 先连接跳板机，再从跳板机用 `direct-tcpip` 连接目标机
+
+#### Scenario: 交互式命令
+- **WHEN** `ssh_exec(interactive=true)` 启动需要输入的命令
+- **THEN** 返回当前输出与 channel_id；后续 `ssh_send` 写入输入、`ssh_read` 读取增量输出

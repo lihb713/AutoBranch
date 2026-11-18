@@ -274,16 +274,19 @@ class Traverser:
             )
         frame = self.ctx.current_frame
         required = list((spec.parameters or {}).get("required", []))
-        if len(node.args) != len(required):
+        properties = list((spec.parameters or {}).get("properties", {}))
+        param_names = properties or required
+        if not (len(required) <= len(node.args) <= len(param_names)):
             return (
                 self._note_failure(
                     node,
-                    f"函数 {node.function} 实参数量 {len(node.args)} ≠ 入参数量 {len(required)}",
+                    f"函数 {node.function} 实参数量 {len(node.args)} 应在 "
+                    f"{len(required)}~{len(param_names)} 之间",
                 )
                 or FAILURE
             )
         args: dict[str, object] = {}
-        for name, expr in zip(required, node.args, strict=False):
+        for name, expr in zip(param_names, node.args, strict=False):
             val = self._eval_arg(frame, expr)
             if val is _MISSING:
                 return self._note_failure(node, f"实参 '{expr}' 求值失败（变量未定义）") or FAILURE

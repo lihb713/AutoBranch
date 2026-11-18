@@ -81,23 +81,74 @@ def test_file_diff(tmp_path):
 
 
 class _FakeChannel:
-    def recv_exit_status(self):
-        return 0
+    def __init__(
+        self,
+        chunks: list[bytes] | None = None,
+        *,
+        exit_code: int = 0,
+        exit_ready: bool = True,
+    ) -> None:
+        self._chunks = list(chunks or [])
+        self._err_chunks: list[bytes] = []
+        self.exit_code = exit_code
+        self._exit_ready = exit_ready
+        self.sent: list[bytes] = []
+        self.closed = False
+
+    def recv_ready(self) -> bool:
+        return bool(self._chunks)
+
+    def recv(self, _size: int) -> bytes:
+        return self._chunks.pop(0)
+
+    def recv_stderr_ready(self) -> bool:
+        return bool(self._err_chunks)
+
+    def recv_stderr(self, _size: int) -> bytes:
+        return self._err_chunks.pop(0)
+
+    def exit_status_ready(self) -> bool:
+        return self._exit_ready and not self._chunks and not self._err_chunks
+
+    def recv_exit_status(self) -> int:
+        return self.exit_code
+
+    def sendall(self, data: bytes) -> None:
+        self.sent.append(data)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class _FakeStream:
-    def __init__(self, text: str) -> None:
-        self._text = text
-        self.channel = _FakeChannel()
+    def __init__(self, channel: _FakeChannel) -> None:
+        self.channel = channel
 
-    def read(self) -> bytes:
-        return self._text.encode("utf-8")
+    def write(self, text: str) -> None:
+        self.channel.sent.append(text.encode("utf-8"))
+
+    def flush(self) -> None:
+        pass
+
+
+class _FakeTransport:
+    def __init__(self) -> None:
+        self.opened: list[tuple] = []
+
+    def open_channel(self, kind, dest, src, timeout=None):
+        self.opened.append((kind, dest, src, timeout))
+        return _FakeChannel([b"jump-ok\n"])
 
 
 class _FakeClient:
+    instances: list[_FakeClient] = []
+
     def __init__(self) -> None:
         self.closed = False
         self.connected = False
+        self.channel = _FakeChannel([b"hi\n"])
+        self.transport = _FakeTransport()
+        _FakeClient.instances.append(self)
 
     def set_missing_host_key_policy(self, policy):
         self.policy = policy
@@ -106,9 +157,14 @@ class _FakeClient:
         self.connected = True
         self.connect_kwargs = kwargs
 
-    def exec_command(self, command, timeout=None):
+    def get_transport(self):
+        return self.transport
+
+    def exec_command(self, command, timeout=None, get_pty=False):
         self.last_command = command
-        return None, _FakeStream("hi\n"), _FakeStream("")
+        self.last_get_pty = get_pty
+        stdin = _FakeStream(self.channel)
+        return stdin, _FakeStream(self.channel), _FakeStream(self.channel)
 
     def close(self):
         self.closed = True
@@ -116,9 +172,26 @@ class _FakeClient:
 
 def _install_fake_paramiko(monkeypatch):
     fake = types.ModuleType("paramiko")
+    _FakeClient.instances = []
     fake.SSHClient = _FakeClient
     fake.AutoAddPolicy = lambda: None
     monkeypatch.setitem(sys.modules, "paramiko", fake)
+    return fake
+
+
+def _install_fake_socks(monkeypatch):
+    fake = types.ModuleType("socks")
+    fake.SOCKS5 = 2
+    calls: list[tuple] = []
+
+    def create_connection(address, **kwargs):
+        calls.append((address, kwargs))
+        return "fake-socks-socket"
+
+    fake.create_connection = create_connection
+    fake.calls = calls
+    monkeypatch.setitem(sys.modules, "socks", fake)
+    return fake
 
 
 def test_ssh_session_and_exec(monkeypatch):
@@ -134,6 +207,7 @@ def test_ssh_session_and_exec(monkeypatch):
     assert out.ok
     assert out.values[0] == "hi\n"
     assert out.values[2] == 0
+    assert out.values[4] is True
     closed = reg.call("ssh.close_session", {"session": session.value})
     assert closed.ok
 
@@ -159,6 +233,112 @@ def test_ssh_release_closes_sessions(monkeypatch):
     assert client.closed
 
 
+def test_ssh_noninteractive_nonzero_exit_is_failure(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call("ssh.create_session", {"host": "h"})
+    session.value.client.channel = _FakeChannel([b"bad\n"], exit_code=2)
+    result = reg.call("ssh.ssh_exec", {"session": session.value, "command": "false"})
+    assert not result.ok
+    assert result.detail["exit_code"] == 2
+    assert result.detail["stdout"] == "bad\n"
+
+
+def test_ssh_noninteractive_timeout_is_failure(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call("ssh.create_session", {"host": "h"})
+    session.value.client.channel = _FakeChannel([], exit_ready=False)
+    result = reg.call(
+        "ssh.ssh_exec",
+        {"session": session.value, "command": "sleep 99", "timeout": 0.01},
+    )
+    assert not result.ok
+    assert result.detail["timed_out"] is True
+
+
+def test_ssh_socks5_proxy_for_target(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    fake_socks = _install_fake_socks(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call(
+        "ssh.create_session",
+        {
+            "host": "target",
+            "proxy": {"host": "proxy.local", "port": 1080, "user": "u", "pwd": "p"},
+        },
+    )
+    assert session.ok
+    assert fake_socks.calls[0][0] == ("target", 22)
+    assert session.value.client.connect_kwargs["sock"] == "fake-socks-socket"
+
+
+def test_ssh_jump_host_uses_direct_tcpip(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    fake_socks = _install_fake_socks(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call(
+        "ssh.create_session",
+        {
+            "host": "target",
+            "proxy": {"host": "proxy.local", "port": 1080},
+            "jump": {"host": "jump", "port": 2222, "user": "ops"},
+        },
+    )
+    assert session.ok
+    jump_client, target_client = _FakeClient.instances
+    assert jump_client.connect_kwargs["hostname"] == "jump"
+    assert jump_client.connect_kwargs["sock"] == "fake-socks-socket"
+    assert fake_socks.calls[0][0] == ("jump", 2222)
+    kind, dest, src, _timeout = jump_client.transport.opened[0]
+    assert kind == "direct-tcpip"
+    assert dest == ("target", 22)
+    assert src == ("jump", 2222)
+    assert target_client.connect_kwargs["sock"] is not None
+
+
+def test_ssh_interactive_stream_send_read(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call("ssh.create_session", {"host": "h"})
+    channel = session.value.client.channel
+    channel._chunks = [b"user@host:~$ "]
+    channel._exit_ready = False
+
+    started = reg.call(
+        "ssh.ssh_exec",
+        {"session": session.value, "command": "bash", "interactive": True, "idle_timeout": 0.01},
+    )
+    assert started.ok
+    assert started.values[0] == "user@host:~$ "
+    channel_id = started.values[3]
+    assert channel_id
+    assert started.values[4] is False
+    assert session.value.client.last_get_pty is True
+
+    sent = reg.call(
+        "ssh.ssh_send",
+        {"session": session.value, "channel_id": channel_id, "data": "ls"},
+    )
+    assert sent.ok
+    assert channel.sent[-1] == b"ls\n"
+
+    channel._chunks = [b"file.txt\n"]
+    channel._exit_ready = True
+    read = reg.call(
+        "ssh.ssh_read",
+        {"session": session.value, "channel_id": channel_id, "idle_timeout": 0.01},
+    )
+    assert read.ok
+    assert read.values[0] == "file.txt\n"
+    assert read.values[3] is True
+
+
 def test_ssh_functions_declare_save_to():
     reg = PluginRegistry()
     reg.register(SSHPlugin())
@@ -171,4 +351,6 @@ def test_ssh_functions_declare_save_to():
         "stdout": "str",
         "stderr": "str",
         "exit_code": "int",
+        "channel_id": "str",
+        "exited": "bool",
     }

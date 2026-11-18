@@ -48,7 +48,7 @@ AutoBranch 是一个**自然语言驱动的行为树自动化工具**。你不�
 | 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall/Define） | §6.1 |
 | 变量 | `Param.x` 读、`NewParam.x[:类型]` 写（仅 Action 描述）、`returns` 裸名接收、`Define` 声明 | §8 |
 | 入参/出参 | 文档级 `inputs`（外部传入）、`outputs`（对外返回） | §6.5 |
-| 插件 | 能力集合（浏览器/计算/SSH/文件/自定义），函数以 `插件名.函数名` 标识 | §10/§11 |
+| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/自定义），函数以 `插件名.函数名` 标识 | §10/§11 |
 | 执行实例 | 一次执行 = 自包含实例（快照 + 入参 + 出参） | §9 |
 | 报告 | 执行报告（节点结果+截图）/ 回溯报告（含 LLM 推理） | §9.5 |
 
@@ -368,7 +368,7 @@ n14:
   returns: {total: object}   # 接收名；类型取自函数 returns 声明（只读）
 ```
 
-- 函数不存在 / 参数数量不匹配 / 引用仅 LLM 函数 → 保存校验 422 拒绝。
+- 函数不存在 / 实参少于必填或超过全部参数 / 引用仅 LLM 函数 → 保存校验 422 拒绝；可选参数可省略（按函数属性顺序填写）。
 - 未填写接收名时自动生成 `<节点id>_<函数返回参数名>`；类型取函数声明，用户只改名称。
 - 常用函数见 §10。
 
@@ -662,9 +662,14 @@ n15:
 |---|---|---|
 | `add` | `a`、`b` | 两数之和 |
 | `multiply` | `a`、`b` | 两数之积 |
-| `compare` | `a`、`b` | `a > b` 布尔结果 |
+| `subtract` | `a`、`b` | 减法 |
+| `divide` / `floor_divide` / `modulo` | `a`、`b` | 除法/整除/取余（除数为 0 失败） |
+| `power` / `sqrt` | `a`、`b` / `value` | 幂/平方根（负数开方失败） |
+| `abs_value` / `negate` / `round_value` | `value`、`digits?` | 绝对值/相反数/四舍五入 |
+| `sum` / `average` / `min_values` / `max_values` | `values`（列表） | 聚合计算 |
+| `clamp` / `percentage` / `increment` / `decrement` | `value`、`low`/`high` 等 | 区间限制/百分比/增减 |
+| `compare` | `a`、`b`、`op`（可选，默认 gt） | 比较结果（gt/ge/lt/le/eq/ne） |
 | `sort` | `data`（列表）、`desc`（可选） | 排序后的列表 |
-| `sum` | `values`（列表） | 求和 |
 
 FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: object}`。接收名默认自动生成（如 `n3_total`），类型取函数声明、用户不可编辑。
 
@@ -672,11 +677,33 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 
 | 函数 | 参数 | 说明 |
 |---|---|---|
-| `create_session` | `host`、`port`（默认22）、`user`、`pwd`/`key` 二选一、`timeout` | 建 SSH 会话（返回会话对象） |
-| `ssh_exec` | `session`、`command`、`timeout` | 执行命令，返回 stdout/stderr/exit_code（非零退出码为失败） |
-| `close_session` | `session` | 关闭会话 |
+| `create_session` | `host`、`port`、`user`、`pwd`/`key`、`timeout`、`proxy`、`jump` | 直连/SOCKS5/SSH 跳板机会话（返回会话对象） |
+| `ssh_exec` | `session`、`command`、`timeout`、`stdin`、`interactive`、`idle_timeout` | 非交互命令流式读取并判断退出码；交互模式返回 `channel_id` |
+| `ssh_send` | `session`、`channel_id`、`data`、`newline` | 向交互命令写入输入 |
+| `ssh_read` | `session`、`channel_id`、`idle_timeout` | 读取交互命令的新输出 |
+| `ssh_close_channel` | `session`、`channel_id` | 关闭交互通道 |
+| `close_session` | `session` | 关闭会话（含跳板机与所有通道） |
 
-> 依赖 `paramiko`，未安装时调用返回"paramiko 未安装"。
+- **代理/跳板**：`proxy={host, port, user?, pwd?}` 为 SOCKS5；`jump={host, port?, user?, pwd?, key?, proxy?}`。有 jump 时 proxy 只用于连跳板机，跳板机到目标机固定走 SSH 转发。
+- **非交互**：自动等待 exit-status，能判断命令结束与退出码；非零退出码为失败。
+- **交互**：`interactive=true` 使用 PTY，`ssh_exec` 在 idle_timeout 无输出后返回当前输出和 `channel_id`；随后用 `ssh_send`/`ssh_read` 像终端一样交互，由使用方判断何时结束。
+- 依赖 `paramiko` + `PySocks`（`pip install -e .` 会安装；未安装时调用返回明确错误）。
+
+### 10.3b 数据变换插件 `transform`
+
+| 函数 | 说明 |
+|---|---|
+| `get_path` | 按点路径取嵌套值，如 `0.a.b.1`、`a[0].b[-1]`；可设 `required=false` + `default` |
+| `get_index` / `get_key` | 取列表索引 / 字典键值 |
+| `split` / `join` | 字符串按分隔符切分为列表 / 列表拼接为字符串 |
+| `contains` / `index_of` / `replace` / `strip` | 字符串搜索、位置、替换、去空白 |
+| `length` / `slice` / `keys` / `values` | 容器长度、切片、字典键/值 |
+| `compare` | 通用比较：eq/ne/gt/ge/lt/le/contains/startswith/endswith |
+| `to_string` / `to_int` / `to_number` / `to_bool` | 类型转换 |
+| `json_parse` / `json_dumps` | JSON 文本 ↔ 对象 |
+| `regex_match` / `regex_extract` / `regex_findall` | 正则匹配 / 提取 / 全部匹配 |
+
+示例：`transform.get_path(data=Param.resp, path="data.items.0.name")`；`transform.split(text=Param.line, separator=",")`。
 
 ### 10.4 文件插件 `file`
 
@@ -849,6 +876,6 @@ autobranch/plugins/browser/proxy.config.json
 - **类型 token**：`str` `int` `float` `bool` `page_ref` `object`
 - **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / experience_*）
 - **代理配置**：`autobranch/plugins/browser/proxy.config.json`
-- **内置插件**：`browser` `compute` `ssh` `file`；函数全名 `插件名.函数名`
+- **内置插件**：`browser` `compute` `ssh` `file` `http` `vars` `transform`；函数全名 `插件名.函数名`
 - **端口**：后端 8001，前端 5174
 - **数据库**：`data/autobranch.db`（自动创建）

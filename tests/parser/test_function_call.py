@@ -15,6 +15,13 @@ class FakeRegistry:
     def function(self, name):
         if name == "compute.multiply":
             return types.SimpleNamespace(parameters={"required": ["a", "b"]})
+        if name == "compute.divide":
+            return types.SimpleNamespace(
+                parameters={
+                    "required": ["a", "b"],
+                    "properties": {"a": {}, "b": {}, "op": {}},
+                }
+            )
         if name == "browser.semantic_graph":
             return types.SimpleNamespace(
                 parameters={"required": ["scope", "lod"]}, user_visible=False
@@ -64,6 +71,21 @@ def test_args_mismatch_fails_check():
     result = parse(_doc(args=["a"]), None, function_registry=FakeRegistry())
     assert not result.checks.ok
     assert any(i.code.startswith("ref.args_mismatch") for i in result.checks.issues)
+
+
+def test_optional_args_allow_more_than_required():
+    result = parse(
+        _doc(function="compute.divide", args=["a", "b", "float"]),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert result.checks.ok
+    too_many = parse(
+        _doc(function="compute.divide", args=["a", "b", "float", "extra"]),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert not too_many.checks.ok
 
 
 def test_llm_only_function_rejected_for_function_call():
