@@ -1346,6 +1346,16 @@ details.run-meta__section > summary { cursor: pointer; }
   overflow: auto;
 }
 
+/* ===== 文件管理目录 ===== */
+.file-breadcrumbs {
+  margin: 8px 16px;
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+.file-breadcrumbs .link {
+  padding: 0;
+}
+
 /* ===== M10 调度管理 ===== */
 .notice {
   margin: 12px 16px;

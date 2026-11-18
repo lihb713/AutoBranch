@@ -8,6 +8,17 @@ from autobranch.server.db import Base
 from autobranch.timeutil import now_local_naive
 
 
+class FileDirectory(Base):
+    """文件管理平台的目录元数据（path 为相对存储根的 POSIX 路径）。"""
+
+    __tablename__ = "plugin_file_directories"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    path = Column(String(512), nullable=False, unique=True)
+    created_at = Column(DateTime, default=now_local_naive)
+    updated_at = Column(DateTime, default=now_local_naive, onupdate=now_local_naive)
+
+
 class FileRecord(Base):
     """文件管理平台的文件元数据。"""
 
@@ -22,4 +33,4 @@ class FileRecord(Base):
     updated_at = Column(DateTime, default=now_local_naive, onupdate=now_local_naive)
 
 
-__all__ = ["FileRecord"]
+__all__ = ["FileRecord", "FileDirectory"]

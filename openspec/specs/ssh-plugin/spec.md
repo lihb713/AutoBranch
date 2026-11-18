@@ -38,3 +38,20 @@ SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等�
 #### Scenario: 交互式命令
 - **WHEN** `ssh_exec(interactive=true)` 启动需要输入的命令
 - **THEN** 返回当前输出与 channel_id；后续 `ssh_send` 写入输入、`ssh_read` 读取增量输出
+
+
+### Requirement: SSH 文件平台互通与输出清洗
+
+SSH 插件 SHALL 提供 `upload_file(session, file_path, remote_path)` 与 `download_file(session, remote_path, file_path?)`，在文件管理平台与远程主机之间传输文件。直连模式 SHALL 使用 SFTP；跳板 shell 模式 SHALL 使用 base64。SSH 命令/交互输出 SHALL 过滤 ANSI 转义序列。
+
+#### Scenario: 从平台上传
+- **WHEN** 调用 `upload_file` 指定平台路径与远程路径
+- **THEN** 平台文件内容上传到远程文件
+
+#### Scenario: 下载到平台
+- **WHEN** 调用 `download_file` 指定远程路径与平台路径
+- **THEN** 远程文件写入文件管理平台
+
+#### Scenario: ANSI 输出
+- **WHEN** 远程命令输出包含颜色转义序列
+- **THEN** 返回结果中不包含 ANSI 控制码

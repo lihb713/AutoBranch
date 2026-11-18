@@ -12,6 +12,9 @@
 
 from __future__ import annotations
 
+import base64
+import io
+import posixpath
 import re
 import shlex
 import time
@@ -20,6 +23,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from autobranch.plugin_system import FunctionResult, PluginBase, engine_function
+
+_ANSI_RE = re.compile(
+    r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
+)
+
+
+def strip_ansi(text: str) -> str:
+    """移除常见 ANSI CSI/OSC 转义序列（终端颜色/控制码）。"""
+    return _ANSI_RE.sub("", text)
 
 
 def _params(required: tuple[str, ...], **props: dict) -> dict:
@@ -459,6 +471,162 @@ class SSHPlugin(PluginBase):
         self._safe_close(state.channel)
         return FunctionResult.success()
 
+    # ------------------------------------------------------------- 文件传输
+
+    @engine_function(
+        name="upload_file",
+        description=(
+            "从文件管理平台读取文件并上传到远程主机路径；jump 模式通过目标 shell "
+            "的 base64 写入，直连模式使用 SFTP"
+        ),
+        parameters=_params(
+            ("session", "file_path", "remote_path"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            file_path={"type": "string", "description": "文件管理平台中的文件路径"},
+            remote_path={
+                "type": "string",
+                "description": "远程目标文件路径（以 / 结尾时自动使用平台文件名）",
+            },
+            timeout={"type": "number", "description": "传输超时秒数（默认 60）"},
+        ),
+        returns={"size": "int", "path": "str"},
+    )
+    def upload_file(
+        self,
+        session: SSHConnection,
+        file_path: str,
+        remote_path: str,
+        timeout: float = 60.0,
+    ) -> FunctionResult:
+        conn = self._find(session)
+        if conn is None:
+            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        try:
+            from autobranch.plugins.file.store import read_platform_file
+
+            filename, content = read_platform_file(file_path)
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"读取文件管理平台文件失败: {exc}", code="SSH_ERROR")
+        target = str(remote_path or "")
+        if not target or target.endswith("/"):
+            target = posixpath.join(target or ".", filename)
+        try:
+            if conn.jump_shell is not None:
+                self._upload_jump_shell(conn, target, content, timeout)
+            else:
+                self._upload_sftp(conn, target, content, timeout)
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"上传失败: {exc}", code="SSH_ERROR")
+        return FunctionResult.success(len(content), target)
+
+    @engine_function(
+        name="download_file",
+        description=(
+            "从远程主机下载文件并保存到文件管理平台；jump 模式通过目标 shell "
+            "的 base64 读取，直连模式使用 SFTP"
+        ),
+        parameters=_params(
+            ("session", "remote_path"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            remote_path={"type": "string", "description": "远程文件路径"},
+            file_path={
+                "type": "string",
+                "description": "文件管理平台目标路径（空/以 / 结尾时使用远程文件名）",
+            },
+            timeout={"type": "number", "description": "传输超时秒数（默认 60）"},
+        ),
+        returns={"size": "int", "path": "str"},
+    )
+    def download_file(
+        self,
+        session: SSHConnection,
+        remote_path: str,
+        file_path: str = "",
+        timeout: float = 60.0,
+    ) -> FunctionResult:
+        conn = self._find(session)
+        if conn is None:
+            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        try:
+            if conn.jump_shell is not None:
+                content = self._download_jump_shell(conn, remote_path, timeout)
+            else:
+                content = self._download_sftp(conn, remote_path)
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"下载失败: {exc}", code="SSH_ERROR")
+        try:
+            from autobranch.plugins.file.store import (
+                resolve_download_path,
+                write_platform_file,
+            )
+
+            target = resolve_download_path(remote_path, file_path)
+            record = write_platform_file(target, content, filename=posixpath.basename(remote_path))
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"写入文件管理平台失败: {exc}", code="SSH_ERROR")
+        return FunctionResult.success(len(content), record["path"])
+
+    @classmethod
+    def _upload_jump_shell(
+        cls, conn: SSHConnection, remote_path: str, content: bytes, timeout: float
+    ) -> None:
+        parent = posixpath.dirname(remote_path)
+        encoded = base64.b64encode(content).decode("ascii")
+        command = ""
+        if parent:
+            command += f"mkdir -p {shlex.quote(parent)} && "
+        command += (
+            f"base64 -d > {shlex.quote(remote_path)} <<'__AB_B64__'\n"
+            f"{encoded}\n__AB_B64__"
+        )
+        result = cls._exec_shell(conn, command, timeout)
+        if not result.ok:
+            raise RuntimeError(result.error or "远程写入失败")
+
+    @classmethod
+    def _download_jump_shell(
+        cls, conn: SSHConnection, remote_path: str, timeout: float
+    ) -> bytes:
+        result = cls._exec_shell(conn, f"base64 < {shlex.quote(remote_path)}", timeout)
+        if not result.ok:
+            raise RuntimeError(result.error or "远程读取失败")
+        try:
+            return base64.b64decode(result.values[0], validate=False)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"远程 base64 解码失败: {exc}") from exc
+
+    @staticmethod
+    def _upload_sftp(
+        conn: SSHConnection, remote_path: str, content: bytes, timeout: float
+    ) -> None:
+        if conn.client is None:
+            raise RuntimeError("目标 SSH 客户端不可用")
+        parent = posixpath.dirname(remote_path)
+        if parent:
+            _stdin, stdout, _stderr = conn.client.exec_command(
+                f"mkdir -p {shlex.quote(parent)}", timeout=timeout
+            )
+            code = stdout.channel.recv_exit_status()
+            if code != 0:
+                raise RuntimeError(f"创建远程目录失败（exit={code}）")
+        sftp = conn.client.open_sftp()
+        try:
+            sftp.putfo(io.BytesIO(content), remote_path)
+        finally:
+            sftp.close()
+
+    @staticmethod
+    def _download_sftp(conn: SSHConnection, remote_path: str) -> bytes:
+        if conn.client is None:
+            raise RuntimeError("目标 SSH 客户端不可用")
+        sftp = conn.client.open_sftp()
+        try:
+            buffer = io.BytesIO()
+            sftp.getfo(remote_path, buffer)
+            return buffer.getvalue()
+        finally:
+            sftp.close()
+
     # ------------------------------------------------------------- 内部
 
     @classmethod
@@ -600,7 +768,7 @@ class SSHPlugin(PluginBase):
                 if start_index < 0:
                     continue
                 output = buffer[start_index + len(start_marker) : match.start()]
-                output = output.lstrip("\r\n").rstrip("\r\n")
+                output = strip_ansi(output.lstrip("\r\n").rstrip("\r\n"))
                 conn.jump_buffer = ""
                 code = int(match.group(1))
                 if code != 0:
@@ -617,7 +785,7 @@ class SSHPlugin(PluginBase):
         return FunctionResult.failure(
             f"命令执行超时（{timeout} 秒）",
             code="SSH_ERROR",
-            stdout=buffer,
+            stdout=strip_ansi(buffer),
             stderr="",
             exit_code=-1,
             timed_out=True,
@@ -751,7 +919,7 @@ class SSHPlugin(PluginBase):
                 code = int(channel.recv_exit_status())
             except Exception:  # noqa: BLE001
                 code = -1
-        return "".join(out), "".join(err), code, exited, timed_out
+        return strip_ansi("".join(out)), strip_ansi("".join(err)), code, exited, timed_out
 
     @staticmethod
     def _safe_close(resource: Any) -> None:

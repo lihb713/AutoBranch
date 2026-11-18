@@ -50,11 +50,10 @@ class FilePlugin(PluginBase):
     # ------------------------------------------------------------ 模块化扩展
 
     def init(self, runtime: Any = None) -> None:
-        from .service import FileService
+        from .store import get_service
 
-        storage_path = os.path.join(os.path.dirname(__file__), "data")
-        os.makedirs(storage_path, exist_ok=True)
-        self._service = FileService(storage_path, max_file_size=self._max_file_size)
+        self._service = get_service()
+        self._service.max_file_size = self._max_file_size
 
     def register_routes(self, app: Any) -> None:
         from .api import create_file_router
@@ -109,6 +108,98 @@ class FilePlugin(PluginBase):
             self._max_file_size = int(mb * 1024 * 1024)
             if self._service is not None:
                 self._service.max_file_size = self._max_file_size
+            try:
+                from . import store
+
+                if store.SERVICE is not None:
+                    store.SERVICE.max_file_size = self._max_file_size
+            except Exception:  # noqa: BLE001
+                pass
+
+
+    @engine_function(
+        name="list_dir",
+        description="列出文件管理平台指定目录的直接子目录与文件（path 为空表示根目录）",
+        parameters=_params(
+            ("path",),
+            path={"type": "string", "description": "平台内目录路径（空=根目录）"},
+        ),
+        returns={"entries": "object"},
+    )
+    def list_dir(self, path: str = "") -> FunctionResult:
+        from .store import get_service, session_scope
+
+        try:
+            with session_scope() as db:
+                return FunctionResult.success(get_service().list_entries(db, path))
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"列出目录失败: {exc}", code="FILE_ERROR")
+
+    @engine_function(
+        name="mkdir",
+        description="在文件管理平台创建目录（自动创建父目录）",
+        parameters=_params(
+            ("path",),
+            path={"type": "string", "description": "目录路径，如 reports/2026"},
+        ),
+        returns={"directory": "object"},
+    )
+    def mkdir(self, path: str) -> FunctionResult:
+        from .store import get_service, session_scope
+
+        try:
+            with session_scope() as db:
+                return FunctionResult.success(get_service().create_directory(db, path))
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"创建目录失败: {exc}", code="FILE_ERROR")
+
+    @engine_function(
+        name="rmdir",
+        description="删除文件管理平台目录（recursive=true 时连同内容删除）",
+        parameters=_params(
+            ("path",),
+            path={"type": "string", "description": "目录路径"},
+            recursive={"type": "boolean", "description": "是否递归删除（默认 true）"},
+        ),
+    )
+    def rmdir(self, path: str, recursive: bool = True) -> FunctionResult:
+        from .store import get_service, session_scope
+
+        try:
+            with session_scope() as db:
+                service = get_service()
+                record = service.get_directory_by_path(db, path)
+                if record is None:
+                    return FunctionResult.failure(f"目录不存在: {path}", code="FILE_ERROR")
+                service.delete_directory(db, record["id"], recursive=bool(recursive))
+            return FunctionResult.success()
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"删除目录失败: {exc}", code="FILE_ERROR")
+
+    @engine_function(
+        name="mvdir",
+        description="重命名/移动文件管理平台目录（同步移动其中文件路径）",
+        parameters=_params(
+            ("path", "new_path"),
+            path={"type": "string", "description": "原目录路径"},
+            new_path={"type": "string", "description": "新目录路径"},
+        ),
+        returns={"directory": "object"},
+    )
+    def mvdir(self, path: str, new_path: str) -> FunctionResult:
+        from .store import get_service, session_scope
+
+        try:
+            with session_scope() as db:
+                service = get_service()
+                record = service.get_directory_by_path(db, path)
+                if record is None:
+                    return FunctionResult.failure(f"目录不存在: {path}", code="FILE_ERROR")
+                return FunctionResult.success(
+                    service.rename_directory(db, record["id"], new_path)
+                )
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"移动目录失败: {exc}", code="FILE_ERROR")
 
     @engine_function(
         name="read",

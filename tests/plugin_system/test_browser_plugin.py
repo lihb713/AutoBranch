@@ -97,6 +97,8 @@ def test_register_browser_plugin_exposes_functions():
         "browser.uncheck_capture",
         "browser.scroll_capture",
         "browser.upload_capture",
+        "browser.upload_from_platform",
+        "browser.download_to_platform",
     } <= names
     assert reg.function("browser.extract").is_producing  # output_param target
     assert reg.function("browser.open").returns == {"page": "object"}
@@ -149,6 +151,53 @@ def test_scroll_without_page_fails():
     reg, _ = _make_ready(FakeBrowser())
     result = reg.call("browser.scroll", {"direction": "down"})
     assert not result.ok
+
+
+class _PlatformPageHandle:
+    def __init__(self) -> None:
+        self.uploaded: str | None = None
+
+    def upload(self, _ref, path):
+        self.uploaded = path
+        return OpResult(True, detail={"file": path})
+
+    def download(self, _ref, save_dir):
+        import os
+
+        path = os.path.join(save_dir, "downloaded.txt")
+        with open(path, "wb") as handle:
+            handle.write(b"payload")
+        return OpResult(True, detail={"path": path, "filename": "downloaded.txt"})
+
+
+def test_browser_upload_download_interop_with_file_platform(monkeypatch):
+    reg, plugin = _make_ready(FakeBrowser())
+    handle = _PlatformPageHandle()
+    plugin._bind = lambda ref: (handle, types.SimpleNamespace(selector="input"), None)  # type: ignore[method-assign]
+    from autobranch.plugins.file import store
+
+    monkeypatch.setattr(
+        store, "read_platform_file", lambda path: ("up.txt", b"upload-bytes")
+    )
+    uploaded = reg.call(
+        "browser.upload_from_platform", {"ref": "1", "file_path": "a/up.txt"}
+    )
+    assert uploaded.ok
+    assert handle.uploaded is not None
+
+    written: dict = {}
+
+    def fake_write(path, content, content_type="application/octet-stream", **kwargs):
+        written.update({"path": path, "content": content})
+        return {"path": path}
+
+    monkeypatch.setattr(store, "write_platform_file", fake_write)
+    downloaded = reg.call(
+        "browser.download_to_platform", {"ref": "1", "file_path": "out/"}
+    )
+    assert downloaded.ok
+    assert written["path"] == "out/downloaded.txt"
+    assert written["content"] == b"payload"
 
 
 def test_loader_scans_plugins_excluding_common():

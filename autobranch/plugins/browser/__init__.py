@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import tempfile
 import time
 from typing import Any
 
@@ -288,6 +290,85 @@ class BrowserPlugin(PluginBase):
         if failure is not None:
             return failure
         return self._ok_result(handle.upload(ElementRef(resolution.selector), path))
+
+    @llm_function(
+        name="upload_from_platform",
+        description="从文件管理平台路径取文件并上传到当前页面的文件选择控件",
+        parameters=_props(
+            ("ref", "file_path"),
+            ref={"type": "string", "description": _REF_DESC},
+            file_path={"type": "string", "description": "文件管理平台中的文件路径"},
+        ),
+    )
+    def upload_from_platform(self, ref: str, file_path: str) -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        try:
+            from autobranch.plugins.file.store import read_platform_file
+
+            filename, content = read_platform_file(file_path)
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"读取文件管理平台文件失败: {exc}", code="UPLOAD_FAILED")
+        fd, temp_path = tempfile.mkstemp(suffix=os.path.splitext(filename)[1])
+        try:
+            with os.fdopen(fd, "wb") as temp_file:
+                temp_file.write(content)
+            result = handle.upload(ElementRef(resolution.selector), temp_path)
+        finally:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+        out = self._ok_result(result)
+        if out.ok:
+            out.detail = {**out.detail, "file_path": file_path, "size": len(content)}
+        return out
+
+    @llm_function(
+        name="download_to_platform",
+        description="触发当前页面下载，并把文件保存到文件管理平台（可选目标路径）",
+        parameters=_props(
+            ("ref",),
+            ref={"type": "string", "description": _REF_DESC},
+            file_path={
+                "type": "string",
+                "description": "平台目标文件路径（空/以 / 结尾时使用下载文件名）",
+            },
+        ),
+    )
+    def download_to_platform(self, ref: str, file_path: str = "") -> FunctionResult:
+        handle, resolution, failure = self._bind(ref)
+        if failure is not None:
+            return failure
+        temp_dir = tempfile.mkdtemp(prefix="autobranch-download-")
+        try:
+            result = handle.download(ElementRef(resolution.selector), temp_dir)
+            if not result.ok:
+                return self._ok_result(result)
+            local_path = str((result.detail or {}).get("path") or "")
+            filename = str((result.detail or {}).get("filename") or os.path.basename(local_path))
+            if not local_path or not os.path.isfile(local_path):
+                return FunctionResult.failure("下载文件不存在", code="DOWNLOAD_FAILED")
+            with open(local_path, "rb") as source:
+                content = source.read()
+            from autobranch.plugins.file.store import (
+                resolve_download_path,
+                write_platform_file,
+            )
+
+            target = resolve_download_path(filename, file_path)
+            record = write_platform_file(target, content, filename=filename)
+            return FunctionResult.success(
+                record["path"],
+                path=record["path"],
+                size=len(content),
+                filename=filename,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"保存到文件管理平台失败: {exc}", code="DOWNLOAD_FAILED")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     # ------------------------------------------------------------ 语义图
 

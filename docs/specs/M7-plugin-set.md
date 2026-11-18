@@ -18,6 +18,7 @@
 - **多标签页**：`list_tabs` / `switch_tab` 管理新标签页；操作返回 `new_tabs`/`tabs_hint`。
 - **捕获操作**：`click_capture` / `type_capture` / `press_capture` / `select_capture` / `check_capture` / `uncheck_capture` / `scroll_capture` / `upload_capture` 封装 clear→操作→批量响应。
 - 页面对象（`PageObject`）作为泛型 `object` 值在变量中存储与传递；当前活动页由插件维护。
+- **文件平台联动**：`upload_from_platform(ref, file_path)` / `download_to_platform(ref, file_path?)` 从文件管理平台取文件上传到页面，或把页面下载保存到文件管理平台（平台路径）。
 
 **元素角色分类（ARIA 对齐）**：`<input type="submit|button|reset">` SHALL 分类为 `button`（其标签存于 `value`）；`checkbox/radio/number/range` 分别映射；其余输入为 `textbox`。语义图序列化时，input 型按钮 SHALL 渲染 `value="..."`（标签），使 LLM 能识别按钮文本。
 
@@ -65,12 +66,19 @@
   - `interactive=true`：PTY 模式，idle_timeout 无输出后返回当前输出与 `channel_id`；不强制等待退出。
   - 跳板机模式：非交互命令通过唯一标记（start/exit）分割目标 PTY shell 输出并解析退出码；交互命令使用 `channel_id="jump-shell"`。
 - 交互：`ssh_send(session, channel_id, data, newline?)`、`ssh_read(session, channel_id, idle_timeout?)`、`ssh_close_channel`。
+- 文件平台联动：`upload_file(session, file_path, remote_path?)` 从文件管理平台上传到远程；`download_file(session, remote_path, file_path?)` 下载到文件管理平台；直连用 SFTP，jump shell 用 base64。
+- SSH stdout/stderr/交互输出 SHALL 过滤 ANSI 转义序列（颜色/控制码）。
 - `close_session` / `release` 关闭目标、跳板与全部通道。
 - 依赖 `paramiko` + `PySocks`（pyproject 依赖）。
 
 ### 文件插件
 
-`read` / `write` / `diff`；路径以引擎工作目录为基址；失败返回原因；单文件上限 10MB。
+- 引擎工作区函数：`read` / `write` / `diff`（路径以引擎工作目录为基址）。
+- 文件管理平台：目录表 `plugin_file_directories` + 文件表 `plugin_file_records`，所有文件/目录使用 POSIX 相对路径（如 `reports/2026/a.txt`）。
+- 目录能力：`list_dir` / `mkdir` / `rmdir` / `mvdir`；目录重命名同步更新后代文件路径。
+- API：`/api/plugins/file/entries`、`/directories` CRUD、`/files`（支持 `path` form）、`/download?path=`（目录返回 ZIP）。
+- 前端文件管理支持目录导航、新建/重命名/递归删除、上传文件、上传目录（多文件保留相对路径）、下载文件/目录。
+- 单文件上限 10MB（可配置）。
 
 ### 用户自定义插件（开发指南）
 

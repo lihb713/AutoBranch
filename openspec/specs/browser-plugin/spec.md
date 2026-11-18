@@ -94,3 +94,16 @@
 
 - **WHEN** 多个页面匹配同一代理
 - **THEN** 它们在同一个会话（context）中打开，共享 cookie 与代理
+
+
+### Requirement: 浏览器与文件平台互通
+
+浏览器插件 SHALL 提供 `upload_from_platform(ref, file_path)` 与 `download_to_platform(ref, file_path?)`：前者从文件管理平台取文件上传到页面文件控件，后者把页面下载文件保存到文件管理平台。平台路径 SHALL 使用文件平台 POSIX 相对路径。
+
+#### Scenario: 从平台上传到页面
+- **WHEN** 调用 `upload_from_platform` 指定平台文件路径
+- **THEN** 该文件被设置到页面文件控件
+
+#### Scenario: 页面下载到平台
+- **WHEN** 调用 `download_to_platform` 触发下载
+- **THEN** 下载文件写入文件管理平台并返回平台路径

@@ -48,7 +48,7 @@ AutoBranch 是一个**自然语言驱动的行为树自动化工具**。你不�
 | 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall/Define） | §6.1 |
 | 变量 | `Param.x` 读、`NewParam.x[:类型]` 写（仅 Action 描述）、`returns` 裸名接收、`Define` 声明 | §8 |
 | 入参/出参 | 文档级 `inputs`（外部传入）、`outputs`（对外返回） | §6.5 |
-| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/自定义），函数以 `插件名.函数名` 标识 | §10/§11 |
+| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/自定义），函数以 `插件名.函数名` 标识；文件/SSH/浏览器共享文件管理平台路径 | §10/§11 |
 | 执行实例 | 一次执行 = 自包含实例（快照 + 入参 + 出参） | §9 |
 | 报告 | 执行报告（节点结果+截图）/ 回溯报告（含 LLM 推理） | §9.5 |
 
@@ -622,6 +622,8 @@ n15:
 | `scroll` | 用户+LLM | `direction`（up/down/left/right/top/bottom） | 滚动页面 |
 | `wait` | 用户+LLM | `condition`（`selector: <CSS>` / `text: <文本>` / `url: <子串>`） | 等待条件满足 |
 | `http.request` | 用户+LLM | `method`、`url`、可选 `headers` / `params` / `body` / `json` / `timeout` | 独立 HTTP 请求，返回 `status` / `body` / `headers`（`http` 插件） |
+| `upload_from_platform` | 仅 LLM | `ref`、`file_path` | 从文件管理平台取文件上传到页面控件 |
+| `download_to_platform` | 仅 LLM | `ref`、`file_path`（可选） | 页面下载后保存到文件管理平台 |
 | `activate` | 仅 LLM | `page`（页面对象） | 切换已有页签为活动页 |
 | `semantic_graph` | 仅 LLM | `scope`（full 或区域 id）、`lod`（0~3） | 生成当前页语义图（"看页面"），同时截图 |
 | `click` | 仅 LLM | `ref` | 点击元素 |
@@ -684,10 +686,13 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 | `ssh_send` | `session`、`channel_id`、`data`、`newline` | 向交互命令写入输入 |
 | `ssh_read` | `session`、`channel_id`、`idle_timeout` | 读取交互命令的新输出 |
 | `ssh_close_channel` | `session`、`channel_id` | 关闭交互通道 |
+| `upload_file` | `session`、`file_path`、`remote_path` | 从文件管理平台上传文件到远程 |
+| `download_file` | `session`、`remote_path`、`file_path` | 从远程下载文件到文件管理平台 |
 | `close_session` | `session` | 关闭会话（含跳板机与所有通道） |
 
 - **代理/跳板**：`proxy={host, port, user?, pwd?}` 为 SOCKS5；`jump={host, port?, user?, pwd?, key?, proxy?}`。有 jump 时 proxy 只用于连跳板机；跳板机到目标机改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁止 direct-tcpip 的环境），因此目标认证需提供 `pwd`。
 - **跳板交互**：非交互命令通过唯一标记分割输出并解析退出码；交互命令返回 `channel_id="jump-shell"`，`ssh_send`/`ssh_read` 直接操作目标 shell。
+- **ANSI 过滤**：SSH 输出会移除颜色/控制转义序列；文件传输使用平台路径（直连 SFTP，跳板模式 base64）。
 - **非交互**：自动等待 exit-status，能判断命令结束与退出码；非零退出码为失败。
 - **交互**：`interactive=true` 使用 PTY，`ssh_exec` 在 idle_timeout 无输出后返回当前输出和 `channel_id`；随后用 `ssh_send`/`ssh_read` 像终端一样交互，由使用方判断何时结束。
 - 依赖 `paramiko` + `PySocks`（`pip install -e .` 会安装；未安装时调用返回明确错误）。
@@ -710,13 +715,24 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 
 ### 10.4 文件插件 `file`
 
+**工作区文件函数**（路径相对引擎工作目录）：
+
 | 函数 | 参数 | 说明 |
 |---|---|---|
 | `read` | `path` | 读文件内容（UTF-8，>10MB 拒绝） |
 | `write` | `path`、`content` | 写文件（覆盖） |
 | `diff` | `file_a`、`file_b` | 对比两个文件，返回是否相同与差异 |
 
-> 相对路径以引擎工作目录为基址。
+**文件管理平台目录函数**（路径相对平台根）：
+
+| 函数 | 参数 | 说明 |
+|---|---|---|
+| `list_dir` | `path` | 列出目录直接子目录/文件 |
+| `mkdir` | `path` | 创建目录（自动创建父目录） |
+| `rmdir` | `path`、`recursive` | 删除目录（默认递归） |
+| `mvdir` | `path`、`new_path` | 重命名/移动目录并同步文件路径 |
+
+文件管理页支持目录导航、新建/重命名/递归删除目录、上传文件、上传目录（保留相对路径）、下载文件或目录 ZIP。所有文件/目录使用路径表示，如 `reports/2026/a.txt`。
 
 ### 10.5 函数清单查看
 

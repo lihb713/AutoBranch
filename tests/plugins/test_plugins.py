@@ -162,8 +162,11 @@ class _FakeShell:
             if match:
                 token = match.group(1)
                 code = 2 if "false" in text else 0
+                output = b"YWJj" if "base64 <" in text else b"hi"
                 self._chunks.append(
-                    f"\n__AB_START_{token}__\nhi\n\n__AB_EXIT_{token}__{code}\n".encode()
+                    b"\n__AB_START_" + token.encode() + b"__\n"
+                    + output
+                    + b"\n\n__AB_EXIT_" + token.encode() + b"__" + str(code).encode() + b"\n"
                 )
         elif "bash" in text:
             self._chunks.append(b"$ ")
@@ -278,6 +281,17 @@ def test_ssh_release_closes_sessions(monkeypatch):
     client = session.value.client
     reg.release()
     assert client.closed
+
+
+def test_ssh_exec_strips_ansi(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call("ssh.create_session", {"host": "h"})
+    session.value.client.channel = _FakeChannel([b"\x1b[31mhi\x1b[0m\n"])
+    result = reg.call("ssh.ssh_exec", {"session": session.value, "command": "ls"})
+    assert result.ok
+    assert result.values[0] == "hi\n"
 
 
 def test_ssh_noninteractive_nonzero_exit_is_failure(monkeypatch):
@@ -419,6 +433,51 @@ def test_ssh_interactive_stream_send_read(monkeypatch):
     assert read.ok
     assert read.values[0] == "file.txt\n"
     assert read.values[3] is True
+
+
+def test_ssh_jump_file_upload_download_with_file_platform(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call(
+        "ssh.create_session",
+        {
+            "host": "target",
+            "pwd": "target-pwd",
+            "jump": {"host": "jump"},
+        },
+    )
+    assert session.ok
+    from autobranch.plugins.file import store
+
+    monkeypatch.setattr(
+        store, "read_platform_file", lambda path: ("a.txt", b"abc")
+    )
+    written: dict = {}
+
+    def fake_write(path, content, content_type="application/octet-stream", **kwargs):
+        written.update({"path": path, "content": content})
+        return {"path": path}
+
+    monkeypatch.setattr(store, "write_platform_file", fake_write)
+    uploaded = reg.call(
+        "ssh.upload_file",
+        {
+            "session": session.value,
+            "file_path": "input/a.txt",
+            "remote_path": "/tmp/",
+        },
+    )
+    assert uploaded.ok
+    assert uploaded.values == (3, "/tmp/a.txt")
+
+    downloaded = reg.call(
+        "ssh.download_file",
+        {"session": session.value, "remote_path": "/tmp/b.txt", "file_path": ""},
+    )
+    assert downloaded.ok
+    assert written["path"] == "b.txt"
+    assert written["content"] == b"abc"
 
 
 def test_ssh_functions_declare_save_to():
