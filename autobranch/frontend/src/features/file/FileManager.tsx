@@ -216,6 +216,7 @@ export function FileManager() {
               <th>名称</th>
               <th>路径</th>
               <th>大小</th>
+              <th>MD5</th>
               <th>更新时间</th>
               <th>操作</th>
             </tr>
@@ -233,6 +234,7 @@ export function FileManager() {
                   </button>
                 </td>
                 <td className="run-cell-json">{directory.path}</td>
+                <td>—</td>
                 <td>—</td>
                 <td>{directory.updated_at}</td>
                 <td>
@@ -261,6 +263,9 @@ export function FileManager() {
                 <td>{file.filename}</td>
                 <td className="run-cell-json">{file.path}</td>
                 <td>{formatSize(file.size)}</td>
+                <td className="file-md5" title={file.md5}>
+                  {file.md5 ? `${file.md5.slice(0, 12)}…` : "—"}
+                </td>
                 <td>{file.updated_at}</td>
                 <td>
                   <div className="tree-table__actions">

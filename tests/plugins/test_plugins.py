@@ -44,35 +44,43 @@ def test_compute_sum():
 # ------------------------------------------------------------ file
 
 
-def test_file_read_write(tmp_path):
+def _file_reg(tmp_path):
     reg = PluginRegistry()
-    reg.register(FilePlugin())
-    a = tmp_path / "a.txt"
-    a.write_text("hello", encoding="utf-8")
-    assert reg.call("file.read", {"path": str(a)}).value == "hello"
-    b = tmp_path / "b.txt"
-    assert reg.call("file.write", {"path": str(b), "content": "world"}).ok
-    assert b.read_text(encoding="utf-8") == "world"
+    reg.register(FilePlugin(storage_dir=str(tmp_path)))
+    return reg
+
+
+def test_file_read_write_is_confined_to_platform_root(tmp_path):
+    reg = _file_reg(tmp_path)
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    assert reg.call("file.read", {"path": "a.txt"}).value == "hello"
+    assert reg.call("file.write", {"path": "sub/b.txt", "content": "world"}).ok
+    assert (tmp_path / "sub" / "b.txt").read_text(encoding="utf-8") == "world"
+    assert not reg.call("file.read", {"path": "../outside.txt"}).ok
+    assert not reg.call("file.read", {"path": str(tmp_path / "a.txt")}).ok
+
+
+def test_file_md5(tmp_path):
+    reg = _file_reg(tmp_path)
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    result = reg.call("file.md5", {"path": "a.txt"})
+    assert result.value == "5d41402abc4b2a76b9719d911017c592"
 
 
 def test_file_read_missing_returns_error(tmp_path):
-    reg = PluginRegistry()
-    reg.register(FilePlugin())
-    result = reg.call("file.read", {"path": str(tmp_path / "nope.txt")})
+    reg = _file_reg(tmp_path)
+    result = reg.call("file.read", {"path": "nope.txt"})
     assert not result.ok
 
 
 def test_file_diff(tmp_path):
-    reg = PluginRegistry()
-    reg.register(FilePlugin())
-    a = tmp_path / "a.txt"
-    b = tmp_path / "b.txt"
-    a.write_text("x\ny", encoding="utf-8")
-    b.write_text("x\ny", encoding="utf-8")
-    same = reg.call("file.diff", {"file_a": str(a), "file_b": str(b)})
+    reg = _file_reg(tmp_path)
+    (tmp_path / "a.txt").write_text("x\ny", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("x\ny", encoding="utf-8")
+    same = reg.call("file.diff", {"file_a": "a.txt", "file_b": "b.txt"})
     assert same.ok and same.value.same is True
-    b.write_text("x\nZ", encoding="utf-8")
-    diff = reg.call("file.diff", {"file_a": str(a), "file_b": str(b)})
+    (tmp_path / "b.txt").write_text("x\nZ", encoding="utf-8")
+    diff = reg.call("file.diff", {"file_a": "a.txt", "file_b": "b.txt"})
     assert diff.ok and diff.value.same is False
     assert isinstance(diff.value, FileDiff)
 

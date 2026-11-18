@@ -43,17 +43,26 @@ class FilePlugin(PluginBase):
     name = "file"
     description = "文件能力：读取、写入、对比、文件管理"
 
-    def __init__(self) -> None:
+    def __init__(self, storage_dir: str | None = None) -> None:
         self._service: Any = None
         self._max_file_size = MAX_FILE_SIZE
+        self._custom_storage = storage_dir is not None
+        self._storage_dir = storage_dir or os.path.join(os.path.dirname(__file__), "data")
+        os.makedirs(self._storage_dir, exist_ok=True)
 
     # ------------------------------------------------------------ 模块化扩展
 
     def init(self, runtime: Any = None) -> None:
+        if self._custom_storage:
+            from .service import FileService
+
+            self._service = FileService(self._storage_dir, max_file_size=self._max_file_size)
+            return
         from .store import get_service
 
         self._service = get_service()
         self._service.max_file_size = self._max_file_size
+        self._storage_dir = self._service.storage_root
 
     def register_routes(self, app: Any) -> None:
         from .api import create_file_router
@@ -116,6 +125,20 @@ class FilePlugin(PluginBase):
             except Exception:  # noqa: BLE001
                 pass
 
+
+    @engine_function(
+        name="md5",
+        description="计算文件管理根目录下文件的 MD5（相对路径）",
+        parameters=_params(("path",), path={"type": "string", "description": "相对文件路径"}),
+        returns={"md5": "str"},
+    )
+    def md5(self, path: str) -> FunctionResult:
+        try:
+            from .service import FileService
+
+            return FunctionResult.success(FileService._md5_file(self._resolve_path(path)))
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"计算 MD5 失败: {exc}", code="FILE_ERROR")
 
     @engine_function(
         name="list_dir",
@@ -201,6 +224,21 @@ class FilePlugin(PluginBase):
         except Exception as exc:  # noqa: BLE001
             return FunctionResult.failure(f"移动目录失败: {exc}", code="FILE_ERROR")
 
+    def _resolve_path(self, path: str) -> str:
+        """把插件内路径限制在文件管理根目录（data/）下。"""
+        from .service import normalize_path
+
+        if os.path.isabs(str(path or "")):
+            raise ValueError("路径必须是相对文件管理根目录的相对路径")
+        normalized = normalize_path(path)
+        base = os.path.realpath(self._storage_dir)
+        full = os.path.realpath(
+            os.path.join(base, *normalized.split("/")) if normalized else base
+        )
+        if full != base and not full.startswith(base + os.sep):
+            raise ValueError("路径越界：文件操作限制在文件管理根目录下")
+        return full
+
     @engine_function(
         name="read",
         description="读取文件内容（UTF-8；相对路径以引擎工作目录为基址）",
@@ -209,12 +247,13 @@ class FilePlugin(PluginBase):
     )
     def read(self, path: str) -> FunctionResult:
         try:
-            if os.path.getsize(path) > self._max_file_size:
+            full = self._resolve_path(path)
+            if os.path.getsize(full) > self._max_file_size:
                 return FunctionResult.failure(
                     f"文件过大（>{self._max_file_size // (1024 * 1024)}MB）: {path}",
                     code="FILE_ERROR",
                 )
-            with open(path, encoding="utf-8") as f:
+            with open(full, encoding="utf-8") as f:
                 return FunctionResult.success(f.read())
         except Exception as exc:  # noqa: BLE001 - 读失败返回失败结果
             return FunctionResult.failure(f"读取文件失败: {exc}", code="FILE_ERROR")
@@ -230,7 +269,9 @@ class FilePlugin(PluginBase):
     )
     def write(self, path: str, content: str) -> FunctionResult:
         try:
-            with open(path, "w", encoding="utf-8") as f:
+            full = self._resolve_path(path)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w", encoding="utf-8") as f:
                 f.write(content)
             return FunctionResult.success()
         except Exception as exc:  # noqa: BLE001
@@ -248,9 +289,9 @@ class FilePlugin(PluginBase):
     )
     def diff(self, file_a: str, file_b: str) -> FunctionResult:
         try:
-            with open(file_a, encoding="utf-8") as f:
+            with open(self._resolve_path(file_a), encoding="utf-8") as f:
                 a_lines = f.read().splitlines()
-            with open(file_b, encoding="utf-8") as f:
+            with open(self._resolve_path(file_b), encoding="utf-8") as f:
                 b_lines = f.read().splitlines()
         except Exception as exc:  # noqa: BLE001
             return FunctionResult.failure(f"读取对比文件失败: {exc}", code="FILE_ERROR")

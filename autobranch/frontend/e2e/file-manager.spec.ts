@@ -26,6 +26,7 @@ test("文件管理：新建目录、上传文件并按路径下载", async ({ pa
   const fileRow = page.locator('[data-testid^="file-row-"]', { hasText: "hello.txt" });
   await expect(fileRow).toBeVisible();
   await expect(fileRow).toContainText(`${DIR}/hello.txt`);
+  await expect(fileRow.locator(".file-md5")).toHaveText(/[a-f0-9]{12}…/);
 
   const downloadPromise = page.waitForEvent("download");
   await fileRow.getByRole("link", { name: "下载" }).click();

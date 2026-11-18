@@ -7,7 +7,7 @@
 ## Requirements
 ### Requirement: 文件函数
 
-系统 SHALL 通过文件插件提供文件读取、写入、对比、路径操作等函数；函数只返回值、不写变量。文件路径 SHALL 以引擎工作目录为基址（相对路径）；读取失败（不存在 / 无权限）SHALL 返回错误结果（含原因）；单文件大小 SHALL 有上限（默认 10MB，超限返回错误）。
+系统 SHALL 通过文件插件提供文件读取、写入、对比、路径操作等函数；函数只返回值、不写变量。文件路径 SHALL 限制在文件管理根目录 `autobranch/plugins/file/data/` 下（相对路径，禁止绝对路径与 `..` 越界）。
 
 #### Scenario: 读取文件
 - **WHEN** 调用 `read(path='data/a.txt')` 且该文件内容为 `x`
@@ -45,3 +45,12 @@
 #### Scenario: 下载目录
 - **WHEN** 请求下载目录
 - **THEN** 返回包含该目录全部内容的 ZIP
+
+
+### Requirement: 文件 MD5
+
+文件插件 SHALL 提供 `md5(path)` 函数，并在文件管理列表展示文件 MD5。
+
+#### Scenario: 列表展示 MD5
+- **WHEN** 用户打开文件管理页
+- **THEN** 文件行展示 MD5 签名

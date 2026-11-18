@@ -36,6 +36,7 @@ const ROOT: FileEntries = {
       path: "root.txt",
       size: 12,
       content_type: "text/plain",
+      md5: "abcdef1234567890",
       created_at: "",
       updated_at: "",
     },
@@ -52,6 +53,7 @@ const DOCS: FileEntries = {
       path: "docs/a.txt",
       size: 3,
       content_type: "text/plain",
+      md5: "abcdef1234567890",
       created_at: "",
       updated_at: "",
     },
@@ -71,6 +73,7 @@ describe("FileManager", () => {
   it("展示目录/文件并进入目录", async () => {
     render(<FileManager />);
     expect(await screen.findByTestId("file-dir-1")).toBeInTheDocument();
+    expect(screen.getByText("abcdef123456…")).toBeInTheDocument();
     fireEvent.click(screen.getByText("📁 docs"));
     expect(await screen.findByText("a.txt")).toBeInTheDocument();
     expect(screen.getByTestId("file-breadcrumbs")).toHaveTextContent("docs");

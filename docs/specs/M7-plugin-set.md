@@ -73,11 +73,11 @@
 
 ### 文件插件
 
-- 引擎工作区函数：`read` / `write` / `diff`（路径以引擎工作目录为基址）。
+- 工作区函数：`read` / `write` / `diff` / `md5`；所有路径均限制在文件管理根目录 `autobranch/plugins/file/data/` 下（相对路径，禁止绝对路径与 `..` 越界）。
 - 文件管理平台：目录表 `plugin_file_directories` + 文件表 `plugin_file_records`，所有文件/目录使用 POSIX 相对路径（如 `reports/2026/a.txt`）。
 - 目录能力：`list_dir` / `mkdir` / `rmdir` / `mvdir`；目录重命名同步更新后代文件路径。
 - API：`/api/plugins/file/entries`、`/directories` CRUD、`/files`（支持 `path` form）、`/download?path=`（目录返回 ZIP）。
-- 前端文件管理支持目录导航、新建/重命名/递归删除、上传文件、上传目录（多文件保留相对路径）、下载文件/目录。
+- 前端文件管理支持目录导航、新建/重命名/递归删除、上传文件、上传目录（多文件保留相对路径）、下载文件/目录；文件列表展示 MD5。
 - 单文件上限 10MB（可配置）。
 
 ### 用户自定义插件（开发指南）

@@ -8,6 +8,7 @@ export interface FileRecord {
   path: string;
   size: number;
   content_type: string;
+  md5: string;
   created_at: string;
   updated_at: string;
 }

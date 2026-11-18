@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import shutil
@@ -65,6 +66,10 @@ class FileService:
         self._storage_dir = storage_dir
         self.max_file_size = max_file_size
         self._ensure_dir()
+
+    @property
+    def storage_root(self) -> str:
+        return os.path.abspath(self._storage_dir)
 
     def _ensure_dir(self) -> None:
         os.makedirs(self._storage_dir, exist_ok=True)
@@ -254,6 +259,15 @@ class FileService:
         db.refresh(existing)
         return self._to_dict(existing)
 
+    def md5_by_path(self, db: Session, path: str) -> str | None:
+        record = self._file_by_path(db, normalize_path(path))
+        if record is None:
+            return None
+        full_path = self._full_path(record.path)
+        if not os.path.isfile(full_path):
+            return None
+        return self._md5_file(full_path)
+
     def get_file(self, db: Session, file_id: int) -> dict | None:
         record = db.get(FileRecord, file_id)
         return self._to_dict(record) if record is not None else None
@@ -367,17 +381,26 @@ class FileService:
             "updated_at": record.updated_at.isoformat() if record.updated_at else "",
         }
 
-    @staticmethod
-    def _to_dict(record: FileRecord) -> dict:
+    def _to_dict(self, record: FileRecord) -> dict:
+        full_path = self._full_path(record.path)
         return {
             "id": record.id,
             "filename": record.filename,
             "path": record.path,
             "size": record.size,
             "content_type": record.content_type,
+            "md5": self._md5_file(full_path) if os.path.isfile(full_path) else "",
             "created_at": record.created_at.isoformat() if record.created_at else "",
             "updated_at": record.updated_at.isoformat() if record.updated_at else "",
         }
+
+    @staticmethod
+    def _md5_file(path: str) -> str:
+        digest = hashlib.md5()  # noqa: S324 - 用于文件指纹展示，不用于安全认证
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
 
 __all__ = [

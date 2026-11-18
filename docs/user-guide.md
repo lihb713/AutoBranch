@@ -715,13 +715,14 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 
 ### 10.4 文件插件 `file`
 
-**工作区文件函数**（路径相对引擎工作目录）：
+**工作区文件函数**（路径相对文件管理根目录 `autobranch/plugins/file/data/`，禁止绝对路径与 `..` 越界）：
 
 | 函数 | 参数 | 说明 |
 |---|---|---|
 | `read` | `path` | 读文件内容（UTF-8，>10MB 拒绝） |
 | `write` | `path`、`content` | 写文件（覆盖） |
 | `diff` | `file_a`、`file_b` | 对比两个文件，返回是否相同与差异 |
+| `md5` | `path` | 计算文件 MD5 |
 
 **文件管理平台目录函数**（路径相对平台根）：
 
@@ -732,7 +733,7 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 | `rmdir` | `path`、`recursive` | 删除目录（默认递归） |
 | `mvdir` | `path`、`new_path` | 重命名/移动目录并同步文件路径 |
 
-文件管理页支持目录导航、新建/重命名/递归删除目录、上传文件、上传目录（保留相对路径）、下载文件或目录 ZIP。所有文件/目录使用路径表示，如 `reports/2026/a.txt`。
+文件管理页支持目录导航、新建/重命名/递归删除目录、上传文件、上传目录（保留相对路径）、下载文件或目录 ZIP；文件列表展示 MD5。所有文件/目录使用路径表示，如 `reports/2026/a.txt`。
 
 ### 10.5 函数清单查看
 

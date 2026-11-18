@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import uuid
 import zipfile
@@ -29,6 +30,7 @@ def test_directory_crud_and_path_file_upload(client):
     assert upload.status_code == 200, upload.text
     record = upload.json()
     assert record["path"] == f"{nested}/report.txt"
+    assert record["md5"] == hashlib.md5(b"hello-dir").hexdigest()
 
     entries = client.get("/api/plugins/file/entries", params={"path": nested}).json()
     assert any(f["path"] == record["path"] for f in entries["files"])
