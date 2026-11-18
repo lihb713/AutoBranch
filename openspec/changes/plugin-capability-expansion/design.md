@@ -23,7 +23,7 @@
 ### D4: 代理与跳板
 
 - SOCKS5 通过 PySocks `create_connection` 建 socket，传给 Paramiko `connect(sock=...)`。
-- 跳板：先连 jump（可经 top-level/jump.proxy 的 SOCKS5），再用 jump transport `open_channel("direct-tcpip", target)` 作为目标 `sock`；jump→target 不再使用 SOCKS5。
+- 跳板：先连 jump（可经 top-level/jump.proxy 的 SOCKS5），在 jump 上 `invoke_shell` 打开 PTY，执行 `ssh -tt ... user@target` 并输入密码；后续命令通过该 PTY shell 执行。不使用 `direct-tcpip`（部分环境禁用）。
 - 会话对象保存 target client、jump client/channel 与交互通道；关闭/release 统一释放。
 
 ## Risks

@@ -59,10 +59,11 @@
 
 会话对象（`SSHConnection`）作为泛型 `object` 值。
 
-- `create_session(host, port?, user?, pwd?/key?, timeout?, proxy?, jump?)`：直连；`proxy` 为 SOCKS5；`jump` 为 SSH 跳板机。有 jump 时 proxy 用于连接跳板机，jump→目标固定走 SSH `direct-tcpip`。
+- `create_session(host, port?, user?, pwd?/key?, timeout?, proxy?, jump?)`：直连；`proxy` 为 SOCKS5；`jump` 为 SSH 跳板机。有 jump 时 proxy 用于连接跳板机；jump→目标改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁用 `direct-tcpip` 的环境），目标认证需提供 `pwd`。
 - `ssh_exec(session, command, timeout?, stdin?, interactive?, idle_timeout?)`：
   - 默认非交互：流式读取 stdout/stderr，直到 SSH 通道返回 exit-status；返回 `stdout/stderr/exit_code/channel_id/exited`，非零退出码失败。
   - `interactive=true`：PTY 模式，idle_timeout 无输出后返回当前输出与 `channel_id`；不强制等待退出。
+  - 跳板机模式：非交互命令通过唯一标记（start/exit）分割目标 PTY shell 输出并解析退出码；交互命令使用 `channel_id="jump-shell"`。
 - 交互：`ssh_send(session, channel_id, data, newline?)`、`ssh_read(session, channel_id, idle_timeout?)`、`ssh_close_channel`。
 - `close_session` / `release` 关闭目标、跳板与全部通道。
 - 依赖 `paramiko` + `PySocks`（pyproject 依赖）。

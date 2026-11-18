@@ -6,12 +6,14 @@
 - 交互命令（``interactive=True``）使用 PTY，等待 idle_timeout 后返回当前输出
   与 ``channel_id``；后续用 ``ssh_send`` / ``ssh_read`` / ``ssh_close_channel``
   像终端一样持续交互。
-- 跳板机：先连接 jump 主机（可经 SOCKS5），再从 jump 的 transport 打开
-  ``direct-tcpip`` 通道连接目标机；从 jump 到目标机不再使用 SOCKS5。
+- 跳板机：先连接 jump 主机（可经 SOCKS5），在 jump 上打开 PTY shell 并执行
+  ``ssh`` 命令登录目标机；不在 jump 上使用 ``direct-tcpip``（部分环境禁用）。
 """
 
 from __future__ import annotations
 
+import re
+import shlex
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -39,9 +41,10 @@ class SSHConnection:
     """远程 SSH 会话对象（泛型 ``object`` 值）。"""
 
     id: str
-    client: Any = field(repr=False)
+    client: Any | None = field(default=None, repr=False)
     jump_client: Any | None = field(default=None, repr=False)
-    jump_channel: Any | None = field(default=None, repr=False)
+    jump_shell: Any | None = field(default=None, repr=False)
+    jump_buffer: str = field(default="", repr=False)
     channels: dict[str, _ChannelState] = field(default_factory=dict, repr=False)
 
     def __str__(self) -> str:
@@ -77,14 +80,17 @@ class SSHPlugin(PluginBase):
         name="create_session",
         description=(
             "创建远程 SSH 会话。支持密码/私钥、SOCKS5 代理、SSH 跳板机；"
-            "有 jump 时 proxy 用于连接跳板机，jump 到目标机固定走 SSH direct-tcpip"
+            "有 jump 时 proxy 用于连接跳板机，jump 到目标机通过在 jump 上执行 ssh 命令跳转"
         ),
         parameters=_params(
             ("host",),
             host={"type": "string", "description": "目标主机 IP / 域名"},
             port={"type": "integer", "description": "SSH 端口（默认 22）"},
             user={"type": "string", "description": "登录用户名"},
-            pwd={"type": "string", "description": "密码（与 key 二选一）"},
+            pwd={
+                "type": "string",
+                "description": "目标密码（jump 模式必需；直连时与 key 二选一）",
+            },
             key={"type": "string", "description": "私钥文件路径（与 pwd 二选一）"},
             timeout={"type": "number", "description": "连接超时秒数（默认 15）"},
             proxy={
@@ -137,7 +143,7 @@ class SSHPlugin(PluginBase):
             )
 
         jump_client = None
-        jump_channel = None
+        jump_shell = None
         client = None
         try:
             if jump:
@@ -155,24 +161,15 @@ class SSHPlugin(PluginBase):
                     timeout=float(jump.get("timeout") or timeout),
                     proxy=jump_proxy,
                 )
-                transport = jump_client.get_transport()
-                if transport is None:
-                    raise RuntimeError("跳板机 SSH transport 不可用")
-                jump_channel = transport.open_channel(
-                    "direct-tcpip",
-                    (host, int(port)),
-                    (jump_host, int(jump.get("port") or 22)),
-                    timeout=timeout,
-                )
-                client = self._connect_client(
-                    paramiko,
+                if not pwd:
+                    raise RuntimeError("跳板机跳转模式目标认证需要 pwd（密码）")
+                jump_shell = self._open_jump_shell(
+                    jump_client,
                     host=host,
                     port=int(port),
                     user=user,
                     pwd=pwd,
-                    key=key,
                     timeout=timeout,
-                    sock=jump_channel,
                 )
             else:
                 client = self._connect_client(
@@ -186,7 +183,7 @@ class SSHPlugin(PluginBase):
                     proxy=proxy,
                 )
         except Exception as exc:  # noqa: BLE001
-            self._safe_close(jump_channel)
+            self._safe_close(jump_shell)
             self._safe_close(jump_client)
             self._safe_close(client)
             return FunctionResult.failure(f"SSH 连接失败: {exc}", code="SSH_ERROR")
@@ -195,7 +192,7 @@ class SSHPlugin(PluginBase):
             id=uuid.uuid4().hex,
             client=client,
             jump_client=jump_client,
-            jump_channel=jump_channel,
+            jump_shell=jump_shell,
         )
         self._connections[conn.id] = conn
         return FunctionResult.success(conn)
@@ -264,6 +261,20 @@ class SSHPlugin(PluginBase):
         conn = self._find(session)
         if conn is None:
             return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        if conn.jump_shell is not None:
+            if interactive:
+                payload = f"{command}\n"
+                if stdin:
+                    payload += stdin + ("\n" if not stdin.endswith("\n") else "")
+                try:
+                    conn.jump_shell.sendall(payload)
+                    out = self._read_shell_idle(conn, idle_timeout)
+                except Exception as exc:  # noqa: BLE001
+                    return FunctionResult.failure(
+                        f"跳板机 shell 命令执行失败: {exc}", code="SSH_ERROR"
+                    )
+                return FunctionResult.success(out, "", 0, "jump-shell", False)
+            return self._exec_shell(conn, command, timeout)
         try:
             stdin_stream, stdout, stderr = conn.client.exec_command(
                 command,
@@ -347,6 +358,17 @@ class SSHPlugin(PluginBase):
         newline: bool = True,
     ) -> FunctionResult:
         conn = self._find(session)
+        if conn is not None and conn.jump_shell is not None and channel_id in (
+            "jump-shell",
+            "",
+        ):
+            try:
+                conn.jump_shell.sendall(str(data) + ("\n" if newline else ""))
+            except Exception as exc:  # noqa: BLE001
+                return FunctionResult.failure(
+                    f"写入跳板机 shell 失败: {exc}", code="SSH_ERROR"
+                )
+            return FunctionResult.success()
         state = conn.channels.get(channel_id) if conn is not None else None
         if conn is None or state is None:
             return FunctionResult.failure("交互通道不存在或已关闭", code="SSH_ERROR")
@@ -382,6 +404,17 @@ class SSHPlugin(PluginBase):
         idle_timeout: float = 1.0,
     ) -> FunctionResult:
         conn = self._find(session)
+        if conn is not None and conn.jump_shell is not None and channel_id in (
+            "jump-shell",
+            "",
+        ):
+            try:
+                out = self._read_shell_idle(conn, idle_timeout)
+            except Exception as exc:  # noqa: BLE001
+                return FunctionResult.failure(
+                    f"读取跳板机 shell 失败: {exc}", code="SSH_ERROR"
+                )
+            return FunctionResult.success(out, "", 0, False)
         state = conn.channels.get(channel_id) if conn is not None else None
         if conn is None or state is None:
             return FunctionResult.failure("交互通道不存在或已关闭", code="SSH_ERROR")
@@ -412,6 +445,14 @@ class SSHPlugin(PluginBase):
     )
     def ssh_close_channel(self, session: SSHConnection, channel_id: str) -> FunctionResult:
         conn = self._find(session)
+        if conn is not None and conn.jump_shell is not None and channel_id in (
+            "jump-shell",
+            "",
+        ):
+            self._safe_close(conn.jump_shell)
+            conn.jump_shell = None
+            conn.jump_buffer = ""
+            return FunctionResult.success()
         state = conn.channels.pop(channel_id, None) if conn is not None else None
         if conn is None or state is None:
             return FunctionResult.failure("交互通道不存在或已关闭", code="SSH_ERROR")
@@ -419,6 +460,185 @@ class SSHPlugin(PluginBase):
         return FunctionResult.success()
 
     # ------------------------------------------------------------- 内部
+
+    @classmethod
+    def _open_jump_shell(
+        cls,
+        jump_client: Any,
+        *,
+        host: str,
+        port: int,
+        user: str,
+        pwd: str,
+        timeout: float,
+    ) -> Any:
+        """在跳板机上打开 PTY shell，并用 ssh 命令登录目标机。
+
+        部分跳板机禁止 ``direct-tcpip``，但允许在 shell 中执行 ssh；
+        登录后关闭 shell echo，便于后续用唯一标记切分命令输出。
+        """
+        shell = jump_client.invoke_shell(width=200, height=50)
+        try:
+            cls._drain_shell(shell, 0.05)
+            target = shlex.quote(f"{user}@{host}")
+            command = (
+                "ssh -tt -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+                f"-o ConnectTimeout={max(1, int(timeout))} -p {int(port)} {target}\n"
+            )
+            shell.sendall(command)
+            buffer = ""
+            password_sent = False
+            start = time.monotonic()
+            last_data = start
+            while time.monotonic() - start < timeout:
+                chunk = cls._pump_shell(shell)
+                now = time.monotonic()
+                if chunk:
+                    buffer += chunk
+                    last_data = now
+                lowered = buffer.lower()
+                if any(
+                    marker in lowered
+                    for marker in (
+                        "permission denied",
+                        "connection refused",
+                        "no route to host",
+                        "could not resolve",
+                    )
+                ):
+                    raise RuntimeError(f"跳板机登录目标失败: {buffer[-300:]}")
+                if not password_sent and (
+                    "password:" in lowered or "password for" in lowered
+                ):
+                    shell.sendall(pwd + "\n")
+                    password_sent = True
+                    buffer = ""
+                    last_data = now
+                    continue
+                if (
+                    password_sent
+                    and buffer.strip()
+                    and re.search(r"[$#] ?$", buffer.strip())
+                    and now - last_data > 0.2
+                ):
+                    break
+                if password_sent and now - last_data > 1.0:
+                    break
+                if (
+                    not password_sent
+                    and buffer.strip()
+                    and re.search(r"[$#] ?$", buffer.strip())
+                    and now - last_data > 0.5
+                ):
+                    break
+                time.sleep(0.03)
+            else:
+                raise RuntimeError("跳板机登录目标超时（未检测到目标 shell 提示符）")
+            if "permission denied" in buffer.lower():
+                raise RuntimeError(f"跳板机登录目标失败: {buffer[-300:]}")
+            shell.sendall("stty -echo 2>/dev/null || true\n")
+            time.sleep(0.1)
+            cls._drain_shell(shell, 0.05)
+            return shell
+        except Exception:
+            cls._safe_close(shell)
+            raise
+
+    @staticmethod
+    def _pump_shell(channel: Any) -> str:
+        parts: list[bytes] = []
+        while channel.recv_ready():
+            parts.append(channel.recv(65536))
+        while channel.recv_stderr_ready():
+            parts.append(channel.recv_stderr(65536))
+        return b"".join(parts).decode("utf-8", "replace")
+
+    @classmethod
+    def _drain_shell(cls, channel: Any, idle_timeout: float) -> str:
+        parts: list[str] = []
+        last_data = time.monotonic()
+        while time.monotonic() - last_data <= idle_timeout:
+            chunk = cls._pump_shell(channel)
+            if chunk:
+                parts.append(chunk)
+                last_data = time.monotonic()
+            else:
+                time.sleep(0.02)
+        return "".join(parts)
+
+    @classmethod
+    def _exec_shell(
+        cls, conn: SSHConnection, command: str, timeout: float
+    ) -> FunctionResult:
+        shell = conn.jump_shell
+        if shell is None:
+            return FunctionResult.failure("跳板机 shell 已关闭", code="SSH_ERROR")
+        token = uuid.uuid4().hex
+        start_marker = f"__AB_START_{token}__"
+        end_marker = f"__AB_EXIT_{token}__"
+        payload = (
+            f"printf '\\n{start_marker}\\n'; {command}\n"
+            f"printf '\\n{end_marker}%s\\n' \"$?\"\n"
+        )
+        try:
+            conn.jump_buffer = ""
+            shell.sendall(payload)
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"跳板机 shell 写入失败: {exc}", code="SSH_ERROR")
+        start = time.monotonic()
+        buffer = ""
+        pattern = re.compile(re.escape(end_marker) + r"(\d+)")
+        while time.monotonic() - start <= timeout:
+            try:
+                buffer += cls._pump_shell(shell)
+            except Exception as exc:  # noqa: BLE001
+                return FunctionResult.failure(f"跳板机 shell 读取失败: {exc}", code="SSH_ERROR")
+            matches = list(pattern.finditer(buffer))
+            if matches:
+                match = matches[-1]
+                start_index = buffer.rfind(start_marker, 0, match.start())
+                if start_index < 0:
+                    continue
+                output = buffer[start_index + len(start_marker) : match.start()]
+                output = output.lstrip("\r\n").rstrip("\r\n")
+                conn.jump_buffer = ""
+                code = int(match.group(1))
+                if code != 0:
+                    return FunctionResult.failure(
+                        f"命令退出码 {code}: {output[-500:]}",
+                        code="SSH_ERROR",
+                        stdout=output,
+                        stderr="",
+                        exit_code=code,
+                    )
+                return FunctionResult.success(output, "", code, "", True)
+            time.sleep(0.03)
+        conn.jump_buffer = buffer
+        return FunctionResult.failure(
+            f"命令执行超时（{timeout} 秒）",
+            code="SSH_ERROR",
+            stdout=buffer,
+            stderr="",
+            exit_code=-1,
+            timed_out=True,
+        )
+
+    @classmethod
+    def _read_shell_idle(cls, conn: SSHConnection, idle_timeout: float) -> str:
+        shell = conn.jump_shell
+        if shell is None:
+            raise RuntimeError("跳板机 shell 已关闭")
+        parts = [conn.jump_buffer]
+        conn.jump_buffer = ""
+        last_data = time.monotonic()
+        while time.monotonic() - last_data <= idle_timeout:
+            chunk = cls._pump_shell(shell)
+            if chunk:
+                parts.append(chunk)
+                last_data = time.monotonic()
+            else:
+                time.sleep(0.02)
+        return "".join(parts)
 
     def _find(self, session: SSHConnection) -> SSHConnection | None:
         if not isinstance(session, SSHConnection):
@@ -547,7 +767,7 @@ class SSHPlugin(PluginBase):
             self._safe_close(state.channel)
         conn.channels.clear()
         self._safe_close(conn.client)
-        self._safe_close(conn.jump_channel)
+        self._safe_close(conn.jump_shell)
         self._safe_close(conn.jump_client)
 
 

@@ -131,6 +131,49 @@ class _FakeStream:
         pass
 
 
+class _FakeShell:
+    def __init__(self) -> None:
+        self._chunks: list[bytes] = []
+        self.sent: list[str] = []
+        self.closed = False
+
+    def recv_ready(self) -> bool:
+        return bool(self._chunks)
+
+    def recv(self, _size: int) -> bytes:
+        return self._chunks.pop(0)
+
+    def recv_stderr_ready(self) -> bool:
+        return False
+
+    def recv_stderr(self, _size: int) -> bytes:
+        return b""
+
+    def sendall(self, data: str | bytes) -> None:
+        text = data.decode() if isinstance(data, bytes) else data
+        self.sent.append(text)
+        if text.startswith("ssh "):
+            self._chunks.append(b"target password: ")
+        elif text.strip() == "target-pwd":
+            self._chunks.append(b"Last login\r\nuser@target:~$ ")
+        elif "__AB_START_" in text:
+            import re
+            match = re.search(r"__AB_START_([0-9a-f]+)__", text)
+            if match:
+                token = match.group(1)
+                code = 2 if "false" in text else 0
+                self._chunks.append(
+                    f"\n__AB_START_{token}__\nhi\n\n__AB_EXIT_{token}__{code}\n".encode()
+                )
+        elif "bash" in text:
+            self._chunks.append(b"$ ")
+        elif text.strip() == "ls":
+            self._chunks.append(b"file.txt\n")
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class _FakeTransport:
     def __init__(self) -> None:
         self.opened: list[tuple] = []
@@ -159,6 +202,10 @@ class _FakeClient:
 
     def get_transport(self):
         return self.transport
+
+    def invoke_shell(self, width=80, height=24):
+        self.shell = _FakeShell()
+        return self.shell
 
     def exec_command(self, command, timeout=None, get_pty=False):
         self.last_command = command
@@ -276,7 +323,7 @@ def test_ssh_socks5_proxy_for_target(monkeypatch):
     assert session.value.client.connect_kwargs["sock"] == "fake-socks-socket"
 
 
-def test_ssh_jump_host_uses_direct_tcpip(monkeypatch):
+def test_ssh_jump_host_uses_shell_ssh(monkeypatch):
     _install_fake_paramiko(monkeypatch)
     fake_socks = _install_fake_socks(monkeypatch)
     reg = PluginRegistry()
@@ -285,20 +332,55 @@ def test_ssh_jump_host_uses_direct_tcpip(monkeypatch):
         "ssh.create_session",
         {
             "host": "target",
+            "port": 2222,
+            "user": "deploy",
+            "pwd": "target-pwd",
             "proxy": {"host": "proxy.local", "port": 1080},
             "jump": {"host": "jump", "port": 2222, "user": "ops"},
         },
     )
     assert session.ok
-    jump_client, target_client = _FakeClient.instances
+    jump_client = _FakeClient.instances[0]
     assert jump_client.connect_kwargs["hostname"] == "jump"
     assert jump_client.connect_kwargs["sock"] == "fake-socks-socket"
     assert fake_socks.calls[0][0] == ("jump", 2222)
-    kind, dest, src, _timeout = jump_client.transport.opened[0]
-    assert kind == "direct-tcpip"
-    assert dest == ("target", 22)
-    assert src == ("jump", 2222)
-    assert target_client.connect_kwargs["sock"] is not None
+    assert jump_client.transport.opened == []  # 不再使用 direct-tcpip
+    assert jump_client.shell.sent[0].startswith("ssh -tt ")
+    assert "deploy@target" in jump_client.shell.sent[0]
+    assert "-p 2222" in jump_client.shell.sent[0]
+    assert any("target-pwd" in item for item in jump_client.shell.sent)
+
+    out = reg.call("ssh.ssh_exec", {"session": session.value, "command": "echo hi"})
+    assert out.ok
+    assert out.values[0] == "hi"
+    assert out.values[2] == 0
+
+    failed = reg.call("ssh.ssh_exec", {"session": session.value, "command": "false"})
+    assert not failed.ok
+    assert failed.detail["exit_code"] == 2
+
+    started = reg.call(
+        "ssh.ssh_exec",
+        {
+            "session": session.value,
+            "command": "bash",
+            "interactive": True,
+            "idle_timeout": 0.01,
+        },
+    )
+    assert started.ok
+    assert started.values[3] == "jump-shell"
+    sent = reg.call(
+        "ssh.ssh_send",
+        {"session": session.value, "channel_id": "jump-shell", "data": "ls"},
+    )
+    assert sent.ok
+    read = reg.call(
+        "ssh.ssh_read",
+        {"session": session.value, "channel_id": "jump-shell", "idle_timeout": 0.01},
+    )
+    assert read.ok
+    assert "file.txt" in read.values[0]
 
 
 def test_ssh_interactive_stream_send_read(monkeypatch):
