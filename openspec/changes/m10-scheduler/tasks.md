@@ -16,3 +16,4 @@
 - [x] 4.5 执行详情展示来源与关联调度规则/频率
 - [x] 5.1 更新 docs/specs、contract、OpenSpec 主 spec 与 change
 - [x] 5.2 运行 pytest/ruff/前端 typecheck/lint/test/build
+- [x] 5.3 统一项目时区（默认 Asia/Shanghai，可配置）；旧库 UTC 审计列一次性迁移

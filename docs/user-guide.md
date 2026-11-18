@@ -166,7 +166,8 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
   "max_concurrent_runs": 3,
   "experience_feedback": true,
   "experience_retention": 5,
-  "scheduler_tick_seconds": 10
+  "scheduler_tick_seconds": 10,
+  "timezone": "Asia/Shanghai"
 }
 ```
 
@@ -218,6 +219,7 @@ AutoBranch 的配置来源：**配置文件 `autobranch.config.json`（项目根
 | `experience_feedback` | 经验回灌开关（关：不采集不注入） | true |
 | `experience_retention` | 经验老化：每匹配组保留最近 N 条 | 5 |
 | `scheduler_tick_seconds` | M10 调度线程检查间隔（秒） | 10 |
+| `timezone` | 项目时区（IANA 名称，影响时间戳与 cron 解释） | `Asia/Shanghai` |
 
 ### 4.2 环境变量
 

@@ -25,6 +25,7 @@ from autobranch.server.db import session_factory
 from autobranch.server.errors import AppError
 from autobranch.server.models import Run, Tree
 from autobranch.server.services.runs import RunService, validate_run_inputs
+from autobranch.timeutil import now_local_naive
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class SchedulerEngine:
     ) -> None:
         self._run_service = run_service
         self._tick_seconds = max(0.1, float(tick_seconds))
-        self._now = now or datetime.now
+        self._now = now or now_local_naive
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._wake = threading.Event()

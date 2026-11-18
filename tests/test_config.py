@@ -32,6 +32,7 @@ def config_file(tmp_path):
                     "report_dir": "custom_reports",
                 },
                 "max_concurrent_runs": 5,
+                "timezone": "Asia/Tokyo",
             }
         ),
         encoding="utf-8",
@@ -51,6 +52,7 @@ def test_defaults_when_no_file(tmp_path, monkeypatch):
     assert cfg.run.timeout == 240.0
     assert cfg.run.max_rounds == 20
     assert cfg.max_concurrent_runs == 3  # 默认并发上限
+    assert cfg.timezone == "Asia/Shanghai"  # 默认北京时间
 
 
 def test_load_from_file(config_file):
@@ -66,6 +68,7 @@ def test_load_from_file(config_file):
     assert cfg.run.max_rounds == 6
     assert cfg.run.report_dir == "custom_reports"
     assert cfg.max_concurrent_runs == 5  # 配置文件覆盖
+    assert cfg.timezone == "Asia/Tokyo"
 
 
 def test_env_api_key_overrides_file(config_file, monkeypatch):

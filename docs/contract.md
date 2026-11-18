@@ -2381,7 +2381,8 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 - **M10 调度**：`schedule_rules` + 守护线程；`interval`/`cron` 到点触发，前置依赖全部成功后才执行目标，
   失败可立即重试，重启按 `last_run_at` 判断错过；调度/依赖执行在 `runs.source` 标注，
   `GET /api/runs?schedule_id=` 过滤；前端 `/schedules` 管理规则。检查间隔
-  `scheduler_tick_seconds`（默认 10s）。详见 `docs/specs/M10-scheduler.md`。
+  `scheduler_tick_seconds`（默认 10s）、`timezone`（默认 `Asia/Shanghai`，影响时间戳与 cron 解释）。
+  详见 `docs/specs/M10-scheduler.md`。
 
 **草稿 / 正式版与后端权威编辑（default-return-param-names 已实现）：**
 - `trees.status ∈ {draft, published}`，同一棵树只有一份文档，不存在“正式版+草稿副本”。

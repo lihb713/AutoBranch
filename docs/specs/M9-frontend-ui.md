@@ -113,6 +113,7 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - API 客户端集中于 `src/api/`（`request.ts` 封装，`/api` 前缀，snake_case 类型对齐后端 Pydantic）。
 - 报告页：`usePolling` 轮询 `/api/runs/{run_id}/state`（shouldStop=finished），渲染进度条/当前节点/SUCCESS/FAILURE 着色 + 截图（经 `/api/reports/{path}`）。
 - 调度管理页：`features/schedules/ScheduleListPage.tsx`，调用 `/api/schedules` CRUD/启停/立即执行/执行记录；执行列表增加来源列（手动/调度/依赖）。
+- 时间展示：后端时间戳为项目本地 naive 时间（默认北京时间），前端按墙钟时间展示，不再做二次时区换算。
 
 **运行约定**（AGENTS.md 端口约束）：vite dev 固定端口 **5174**（`strictPort`，避开 NexusOps 的 5173），`vite.config.ts` 的 `/api` 代理 target 指向 `http://127.0.0.1:8001`（**禁用 8000/5173**）。一键启动：项目根 `dev-restart.ps1`。
 

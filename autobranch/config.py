@@ -146,6 +146,8 @@ class AutoBranchConfig:
     experience_feedback: bool = True
     #: M10 调度线程检查间隔（秒；默认 10）。
     scheduler_tick_seconds: float = 10.0
+    #: 项目时区（IANA 名称；默认北京时间）。
+    timezone: str = "Asia/Shanghai"
     #: 经验老化：每个匹配组（hash + inputs + node_desc）只保留最近 N 条。
     experience_retention: int = 5
 
@@ -164,6 +166,7 @@ class AutoBranchConfig:
             scheduler_tick_seconds=float(
                 data.get("scheduler_tick_seconds", cls.scheduler_tick_seconds)
             ),
+            timezone=str(data.get("timezone", cls.timezone)),
         )
 
     @classmethod

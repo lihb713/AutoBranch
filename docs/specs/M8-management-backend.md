@@ -128,6 +128,7 @@ class ExecStateOut:
   - `trees`：id、name(唯一)、content(yaml)、status(draft/published，默认 published)、created_at/updated_at
   - `runs`（执行实例，Change A 快照化）：id、tree_id(FK→trees.id **ON DELETE SET NULL，可空**——删除树保留历史)、status(CheckConstraint pending/running/success/failure)、failure_reason、report_path(相对路径)、`content_snapshot`(Text，触发时刻冻结树内容)、`tree_name_snapshot`、`tree_content_hash`(执行结构指纹，index)、`inputs`(JSON)、`outputs`(JSON，可空)、`source`(manual/schedule/dependency)、`schedule_id`(可空，index)、created_at/updated_at
   - SQLite 开启 `PRAGMA foreign_keys=ON` 使级联/SET NULL 生效；报告/截图文件落盘 `data/reports/<run_id>/`，库中只存相对路径（database-rules §6）。
+  - **时间统一**：`created_at`/`updated_at` 按项目 `timezone`（默认 `Asia/Shanghai`）写入本地 naive 时间；旧库 UTC 审计列启动时一次性迁移（`PRAGMA user_version=1`），不重复转换。
   - **执行结构指纹**（`parser/snapshot.py::compute_tree_content_hash`）：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys` 规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
   - `experiences`（经验回灌，Change C）：id、run_id(FK→runs.id ON DELETE CASCADE)、tree_content_hash、inputs_norm、node_desc、node_type、tool_calls(JSON)、decision、created_at/updated_at；匹配组索引 `(tree_content_hash, inputs_norm, node_desc)`。
   - **迁移**：`scripts/migrate_runs_snapshot.py`（幂等：新列 ALTER ADD + tree_id 约束表重建），开发期一次性迁移（database-rules §5）；`experiences` 为新表由 `create_all` 自动创建。M10 在 `configure_database` 中对旧库 `runs` 做 `source/schedule_id` 轻量补列 + 索引，不重建数据库。

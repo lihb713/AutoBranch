@@ -18,7 +18,12 @@
 #### Scenario: 创建定时规则
 
 - **WHEN** 用户提交 `schedule_mode=cron` 与周期/时间（每周还需星期）
-- **THEN** 系统按服务端本地时间在对应时间点触发
+- **THEN** 系统按项目配置时区（默认 `Asia/Shanghai`）在对应时间点触发
+
+#### Scenario: 时区配置
+
+- **WHEN** 配置 `timezone` 为 `Asia/Shanghai`
+- **THEN** 时间戳写入、执行列表展示与 cron 触发均按北京时间解释；旧库 UTC 审计列启动时迁移为本地时间
 
 #### Scenario: 校验失败
 

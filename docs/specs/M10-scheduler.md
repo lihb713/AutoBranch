@@ -51,7 +51,7 @@ M10 为行为树增加**自动触发**能力：按固定间隔/定时点触发�
 - **cron hour**：每小时第 N 分钟；支持 `":30"` / `"30"` / `"09:30"`（取分钟）。
 - **cron day**：每天 `HH:MM`。
 - **cron week**：每周指定 `cron_weekday` 的 `HH:MM`。
-- 时间统一按**服务端本地时间**（naive datetime）解释。
+- 时间统一按项目配置时区（`timezone`，默认 `Asia/Shanghai`）解释；数据库存本地 naive 时间。
 
 ### 3.3 前置依赖
 

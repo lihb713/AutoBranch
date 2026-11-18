@@ -10,11 +10,14 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+from autobranch.timeutil import utc_naive_to_local_naive
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
@@ -40,6 +43,7 @@ def configure_database(db_path: str | Path) -> None:
     _ensure_tree_status_column(engine)
     _ensure_plugin_config_column(engine)
     _ensure_run_source_columns(engine)
+    _migrate_timestamps_to_local(engine)
 
 
 def create_all_tables() -> None:
@@ -70,6 +74,47 @@ def _ensure_run_source_columns(engine: Engine) -> None:
                 "ON runs (schedule_id)"
             )
         )
+
+
+def _migrate_timestamps_to_local(engine: Engine) -> None:
+    """一次性把旧库 UTC 时间戳转换为配置时区本地时间（PRAGMA user_version=1）。
+
+    旧版 ``created_at``/``updated_at`` 由 SQLite ``CURRENT_TIMESTAMP`` 写入（UTC），
+    而 ``schedule_rules.last_run_at`` 由 Python 本地时间写入，导致列表时间相差 8 小时。
+    此迁移只转换审计列 ``created_at``/``updated_at``；``last_run_at`` 已经是本地时间，
+    保持不变。新库无数据时仅写入版本标记。
+    """
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        version = int(conn.exec_driver_sql("PRAGMA user_version").scalar() or 0)
+        if version >= 1:
+            return
+        for table in insp.get_table_names():
+            columns = {col["name"] for col in insp.get_columns(table)}
+            targets = [name for name in ("created_at", "updated_at") if name in columns]
+            if not targets:
+                continue
+            rows = conn.exec_driver_sql(
+                f"SELECT id, {', '.join(targets)} FROM {table}"
+            ).fetchall()
+            for row in rows:
+                row_id = row[0]
+                updates: dict[str, datetime] = {}
+                for index, column in enumerate(targets, start=1):
+                    raw = row[index]
+                    if raw is None:
+                        continue
+                    value = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw))
+                    updates[column] = utc_naive_to_local_naive(value)
+                if not updates:
+                    continue
+                assignments = ", ".join(f"{name} = :{name}" for name in updates)
+                conn.exec_driver_sql(
+                    f"UPDATE {table} SET {assignments} WHERE id = :row_id",
+                    {**updates, "row_id": row_id},
+                )
+        # 标记迁移完成；切换时区不会自动回改历史数据。
+        conn.exec_driver_sql("PRAGMA user_version = 1")
 
 
 def _ensure_plugin_config_column(engine: Engine) -> None:

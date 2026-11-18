@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from autobranch.browser import BrowserDriver
@@ -20,6 +19,7 @@ from autobranch.orchestrator.traverser import Traverser, count_nodes
 from autobranch.reporting import ExecState, Reporter
 from autobranch.schema import SchemaSpace, coerce
 from autobranch.schema.errors import SchemaError
+from autobranch.timeutil import now_local_naive
 
 if TYPE_CHECKING:
     from autobranch.parser.models import BehaviorTree, Node
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def _make_run_id(name: str) -> str:
     """生成运行标识（根块名 + 时间戳，经 M8 清洗为安全目录名）。"""
-    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
+    ts = now_local_naive().strftime("%Y%m%d_%H%M%S_%f")
     return f"{name or 'run'}_{ts}"
 
 

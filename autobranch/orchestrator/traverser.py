@@ -15,7 +15,6 @@ import logging
 import os
 import re
 import time
-from datetime import UTC, datetime
 
 from autobranch.browser.errors import FatalBrowserError
 from autobranch.leaf_agent.models import LeafResult
@@ -37,6 +36,7 @@ from autobranch.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeRep
 from autobranch.schema import FrameDecl
 from autobranch.schema.errors import SchemaError
 from autobranch.schema.types import coerce, infer_type
+from autobranch.timeutil import now_local_naive
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ def _load_doc_tree_for_count(resolver, doc_id: str):
 
 
 def _now_iso() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return now_local_naive().isoformat(timespec="seconds")
 
 
 class Traverser:

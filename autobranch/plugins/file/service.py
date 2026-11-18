@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from autobranch.timeutil import now_local_naive
 
 from .models import FileRecord
 
@@ -40,7 +41,7 @@ class FileService:
         if len(content) > self.max_file_size:
             raise ValueError(f"文件过大（>{self.max_file_size} 字节）")
         safe_name = os.path.basename(filename or "unnamed") or "unnamed"
-        stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        stamp = now_local_naive().strftime("%Y%m%d%H%M%S")
         stored_name = f"{stamp}_{uuid.uuid4().hex[:8]}_{safe_name}"
         path = self._full_path(stored_name)
         with open(path, "wb") as f:

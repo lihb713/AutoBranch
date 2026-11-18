@@ -32,6 +32,7 @@ from autobranch.server.services.engine import EmbeddedEngineService, EngineServi
 from autobranch.server.services.plugins import PluginService
 from autobranch.server.services.reports import ReportService
 from autobranch.server.services.runs import RunService
+from autobranch.timeutil import configure_timezone
 
 APP_TITLE = "AutoBranch 行为树管理系统"
 
@@ -61,19 +62,23 @@ def create_app(
 ) -> FastAPI:
     """构建 FastAPI 应用（测试注入临时 settings / mock 引擎，生产走真实内嵌引擎）。"""
     settings = settings or ServerConfig.load()
+    config = settings.autobranch_config()
+    try:
+        configure_timezone(config.timezone)
+    except ValueError as exc:
+        raise RuntimeError(f"时区配置错误: {exc}") from exc
     configure_database(settings.db_path)
     settings.report_root.mkdir(parents=True, exist_ok=True)
 
     registry = PluginRegistry()
     if engine_service is None:
         engine_service = EmbeddedEngineService(
-            settings.autobranch_config(),
+            config,
             settings.report_root,
             registry=registry,
             plugins_dir=PLUGINS_DIR,
         )
     report_service = ReportService(settings.report_root)
-    config = settings.autobranch_config()
     run_service = RunService(
         engine_service, settings.report_root, config, registry=registry
     )

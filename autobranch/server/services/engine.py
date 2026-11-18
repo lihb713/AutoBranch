@@ -15,7 +15,6 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +28,7 @@ from autobranch.reporting import ExecState, Reporter
 from autobranch.reporting.models import NodeReport
 from autobranch.schema import SchemaSpace
 from autobranch.semantic_graph.llm_fill import MockFiller
+from autobranch.timeutil import now_local_naive
 
 #: 引擎构造工厂：``(run_id, report_root) -> Engine``（测试注入自定义装配）。
 EngineFactory = Callable[[int, Path], Engine]
@@ -215,7 +215,7 @@ class EmbeddedEngineService(EngineService):
                 node_type="Action",
                 node_desc="行为树执行",
                 result="failure",
-                timestamp=datetime.now(UTC).isoformat(),
+                timestamp=now_local_naive().isoformat(timespec="seconds"),
                 action_call=None,
                 condition_result=None,
                 page_url=None,
