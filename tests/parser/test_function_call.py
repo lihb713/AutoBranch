@@ -29,7 +29,20 @@ class FakeRegistry:
         return None
 
 
-def _doc(function: str = "compute.multiply", args: list | None = None, returns: dict | None = None):
+def _doc(
+    function: str = "compute.multiply",
+    args: list | None = None,
+    returns: dict | None = None,
+    kwargs: dict | None = None,
+):
+    node = {
+        "type": "FunctionCall",
+        "function": function,
+        "args": args or ["a", "b"],
+        "returns": returns or {"total": "int"},
+    }
+    if kwargs is not None:
+        node["kwargs"] = kwargs
     return DocumentSource(
         id="t",
         data={
@@ -37,12 +50,7 @@ def _doc(function: str = "compute.multiply", args: list | None = None, returns: 
             "inputs": {"session": "object"},
             "nodes": {
                 "r": {"type": "Root", "body": "n1"},
-                "n1": {
-                    "type": "FunctionCall",
-                    "function": function,
-                    "args": args or ["a", "b"],
-                    "returns": returns or {"total": "int"},
-                },
+                "n1": node,
             },
             "root": "r",
         },
@@ -86,6 +94,49 @@ def test_optional_args_allow_more_than_required():
         function_registry=FakeRegistry(),
     )
     assert not too_many.checks.ok
+
+
+def test_named_kwargs_allow_skipping_optional_args():
+    result = parse(
+        _doc(
+            function="compute.divide",
+            args=["a"],
+            kwargs={"b": "2", "op": "named"},
+            returns={"result": "float"},
+        ),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert result.checks.ok
+    call = result.tree.root.children[0]
+    assert call.kwargs == (("b", "2"), ("op", "named"))
+
+
+def test_named_kwargs_reject_unknown_and_duplicate():
+    unknown = parse(
+        _doc(function="compute.divide", args=["a"], kwargs={"nope": "1"}),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert not unknown.checks.ok
+    assert any(i.code.startswith("ref.kwargs_invalid") for i in unknown.checks.issues)
+
+    duplicate = parse(
+        _doc(function="compute.divide", args=["a"], kwargs={"a": "1"}),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert not duplicate.checks.ok
+
+
+def test_missing_required_arg_rejected():
+    result = parse(
+        _doc(function="compute.divide", args=["a"], kwargs={}),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert not result.checks.ok
+    assert any(i.code.startswith("ref.args_mismatch") for i in result.checks.issues)
 
 
 def test_llm_only_function_rejected_for_function_call():

@@ -172,14 +172,6 @@ export function PropertyPanel({
     updateNode({ args });
   };
 
-  const setFunctionArg = (i: number, value: string) => {
-    const args = [...(node.args ?? [])];
-    while (args.length <= i) args.push("");
-    args[i] = value;
-    while (args.length > 0 && args[args.length - 1] === "") args.pop();
-    updateNode({ args });
-  };
-
   const setReturnName = (i: number, name: string) => {
     const returns = { ...(node.returns ?? {}) };
     const keys = Object.keys(returns);
@@ -210,9 +202,46 @@ export function PropertyPanel({
     properties?: Record<string, { type?: string }>;
     required?: string[];
   };
-  const fcParams = schema.properties
-    ? [...(schema.required ?? []), ...Object.keys(schema.properties).filter((k) => !(schema.required ?? []).includes(k))]
-    : [];
+  const allParams = Object.keys(schema.properties ?? {});
+  const requiredParams = (schema.required ?? []).filter((name) => allParams.includes(name));
+  const optionalParams = allParams.filter((name) => !requiredParams.includes(name));
+  const paramIndex = (name: string) => allParams.indexOf(name);
+
+  const optionalValue = (name: string): unknown => {
+    if (node.kwargs && name in node.kwargs) return node.kwargs[name];
+    return (node.args ?? [])[paramIndex(name)] ?? "";
+  };
+
+  const setOptional = (name: string, value: unknown) => {
+    const nextKwargs: Record<string, unknown> = { ...(node.kwargs ?? {}) };
+    // 迁移旧的“可选参数占位在 args 中”的写法，避免 kwargs 与位置参数重复。
+    for (const param of optionalParams) {
+      if (param === name || param in nextKwargs) continue;
+      const legacy = (node.args ?? [])[paramIndex(param)];
+      if (legacy !== undefined && legacy !== "") nextKwargs[param] = legacy;
+    }
+    if (value === "" || value === undefined || value === null) {
+      delete nextKwargs[name];
+    } else {
+      nextKwargs[name] = value;
+    }
+    updateNode({
+      args: (node.args ?? []).slice(0, requiredParams.length),
+      kwargs: nextKwargs,
+    });
+  };
+
+  const setOptionalText = (name: string, type: string | undefined, text: string) => {
+    if (type !== "object" && type !== "array") {
+      setOptional(name, text);
+      return;
+    }
+    try {
+      setOptional(name, JSON.parse(text));
+    } catch {
+      setOptional(name, text);
+    }
+  };
 
   const renderSlotGroup = (title: string, mountList: typeof mounts, withAddSlot = false) => (
     <section className="prop-group" data-testid="prop-group-slot">
@@ -456,17 +485,59 @@ export function PropertyPanel({
         {!selectedFunc ? (
           <p className="property-panel__hint">选择函数后自动列出参数</p>
         ) : (
-          fcParams.map((p, i) => (
+          requiredParams.map((p) => (
             <HighlightedField
               key={`fc-in-${p}`}
               label={`入参 ${p}（${schemaTypeToToken(schema.properties?.[p]?.type)}）`}
-              value={(node.args ?? [])[i] ?? ""}
+              value={(node.args ?? [])[paramIndex(p)] ?? ""}
               placeholder="变量名或字面量"
               disabled={readonly}
-              data-testid={`fc-arg-${node.id}-${i}`}
-              onChange={(e) => setFunctionArg(i, e.target.value)}
+              data-testid={`fc-arg-${node.id}-${paramIndex(p)}`}
+              onChange={(e) => setArg(paramIndex(p), e.target.value)}
             />
           ))
+        )}
+      </section>
+      <section className="prop-group" data-testid="prop-group-fc-kwargs">
+        <h4 className="prop-group__title">可选参数（命名）</h4>
+        {!selectedFunc ? null : optionalParams.length === 0 ? (
+          <p className="property-panel__hint">该函数没有可选参数</p>
+        ) : (
+          optionalParams.map((p) => {
+            const type = schema.properties?.[p]?.type;
+            const value = optionalValue(p);
+            if (type === "object" || type === "array") {
+              return (
+                <label key={`fc-kw-${p}`} className="text-field">
+                  <span className="text-field__label">
+                    可选参数 {p}（{schemaTypeToToken(type)}，JSON）
+                  </span>
+                  <textarea
+                    className="text-field__input"
+                    rows={2}
+                    disabled={readonly}
+                    data-testid={`fc-kwarg-${node.id}-${p}`}
+                    value={
+                      typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2)
+                    }
+                    placeholder={'JSON，如 {"host": "10.0.0.1"}'}
+                    onChange={(e) => setOptionalText(p, type, e.target.value)}
+                  />
+                </label>
+              );
+            }
+            return (
+              <HighlightedField
+                key={`fc-kw-${p}`}
+                label={`可选参数 ${p}（${schemaTypeToToken(type)}）`}
+                value={typeof value === "string" ? value : value == null ? "" : String(value)}
+                placeholder="留空则不传"
+                disabled={readonly}
+                data-testid={`fc-kwarg-${node.id}-${p}`}
+                onChange={(e) => setOptional(p, e.target.value)}
+              />
+            );
+          })
         )}
       </section>
       <section className="prop-group" data-testid="prop-group-fc-returns">

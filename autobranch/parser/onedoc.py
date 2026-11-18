@@ -749,6 +749,19 @@ def _function_call_ir(
                 f"FunctionCall 的 args 必须是列表（位于 {_path(doc_id, path)}）",
             )
         )
+    raw_kwargs = body.get("kwargs", {})
+    kwargs_pairs: list[tuple[str, object]] = []
+    if isinstance(raw_kwargs, dict):
+        kwargs_pairs = [(str(key), value) for key, value in raw_kwargs.items()]
+    elif raw_kwargs:
+        issues.append(
+            _issue(
+                doc_id,
+                "structure",
+                "invalid_value",
+                f"FunctionCall 的 kwargs 必须是映射（位于 {_path(doc_id, path)}）",
+            )
+        )
     returns = body.get("returns", {})
     returns_pairs: list[tuple[str, str]] = []
     if isinstance(returns, dict):
@@ -766,6 +779,7 @@ def _function_call_ir(
         kind="FunctionCall",
         function=(function or "").strip() if isinstance(function, str) else "",
         args=args_tuple,
+        kwargs=tuple(kwargs_pairs),
         returns=tuple(returns_pairs),
         loc=loc,
     )
@@ -1006,6 +1020,7 @@ def _with_children(node: IRNode, children: list[IRNode]) -> IRNode:
         mode=node.mode,
         ref_target=node.ref_target,
         args=node.args,
+        kwargs=node.kwargs,
         returns=node.returns,
     )
 
@@ -1029,6 +1044,7 @@ def _set(node: IRNode, **kwargs) -> IRNode:
         mode=node.mode,
         ref_target=node.ref_target,
         args=node.args,
+        kwargs=node.kwargs,
         returns=node.returns,
     )
 

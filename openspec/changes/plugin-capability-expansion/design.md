@@ -8,11 +8,12 @@
 
 `vars.set` 的语义是“原样写入变量”，不适合承载路径/字符串/正则；新增独立 `transform` 插件，纯函数、无副作用，函数全名 `transform.*`。
 
-### D2: FunctionCall 可选参数
+### D2: FunctionCall 位置参数 + 命名参数
 
-- 校验：`len(required) <= len(args) <= len(properties)`；未提供可选参数时使用函数默认值。
-- 运行时：按 `properties` 声明顺序把已提供 args 映射到参数名（required 必须在前）。
-- 兼容：没有 `properties` 的旧函数仍以 required 数量为上限。
+- 保留 `args` 位置参数；新增 `kwargs` 映射（参数名 → 值）。
+- 校验：位置参数不超过参数总数；`kwargs` 不得包含未知/重复参数；required 参数必须由位置参数或 kwargs 提供。
+- 运行时：位置参数按 `properties` 顺序映射，kwargs 按名称覆盖/补充；值支持字符串表达式、字面量、嵌套 dict/list。
+- 兼容：旧 `args` 树继续工作；没有 `properties` 的旧函数按 required 集合校验。
 
 ### D3: SSH 流式与非交互完成判定
 

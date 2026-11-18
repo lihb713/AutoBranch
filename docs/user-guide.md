@@ -290,7 +290,7 @@ root: n1              # 根节点引用（必须指向 type: Root）
 | `LoopUntil` | 每轮先判条件，满足则退出，否则执行循环体 | `action`（1） | `until`（条件）、`max` |
 | `Action` | 叶子：LLM 执行一个自然语言操作 | — | `description` |
 | `ref` | 叶子：调用另一份行为树文档 | — | `target`/`args`/`returns` |
-| `FunctionCall` | 叶子：确定性调用插件函数（不经 LLM） | — | `function`/`args`/`returns` |
+| `FunctionCall` | 叶子：确定性调用插件函数（不经 LLM） | — | `function`/`args`/`kwargs`/`returns` |
 
 **条件（Condition）没有独立类型**，内嵌为字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。条件也是 LLM 叶子（判断真/假）。
 
@@ -364,11 +364,13 @@ n13:
 n14:
   type: FunctionCall
   function: compute.add       # 全名：插件名.函数名
-  args: [Param.a, 2]          # 实参：本帧变量或字面量，按序对应函数入参
+  args: [Param.a, 2]          # 位置实参：本帧变量或字面量，按序对应函数参数
+  kwargs:                     # 命名可选参数：跳过中间可选参数时使用
+    jump: {host: jump.internal, user: ops}
   returns: {total: object}   # 接收名；类型取自函数 returns 声明（只读）
 ```
 
-- 函数不存在 / 实参少于必填或超过全部参数 / 引用仅 LLM 函数 → 保存校验 422 拒绝；可选参数可省略（按函数属性顺序填写）。
+- 函数不存在 / 实参少于必填或超过全部参数 / 引用仅 LLM 函数 → 保存校验 422 拒绝；可选参数可省略。可选参数推荐用 `kwargs` 按参数名传入，避免为了靠后的参数补一堆前置占位。
 - 未填写接收名时自动生成 `<节点id>_<函数返回参数名>`；类型取函数声明，用户只改名称。
 - 常用函数见 §10。
 

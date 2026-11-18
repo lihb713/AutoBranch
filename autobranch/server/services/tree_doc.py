@@ -72,7 +72,7 @@ def make_node(node_type: str, node_id: str) -> dict[str, Any]:
     if node_type == "ref":
         body.update({"target": "", "args": [], "returns": {}})
     elif node_type == "FunctionCall":
-        body.update({"function": "", "args": [], "returns": {}})
+        body.update({"function": "", "args": [], "kwargs": {}, "returns": {}})
     elif node_type == "Define":
         body["vars"] = {}
     elif node_type == "Sequence":

@@ -96,14 +96,17 @@ class FunctionCallNode(Node):
     """函数调用叶子：确定性调用注册的插件函数（不经 LLM）。
 
     :param function: 注册函数名。
-    :param args: 实参表达式列表（按序对应函数入参）；元素为本树裸变量名
+    :param args: 位置实参表达式列表（按序对应函数参数）；元素为本树裸变量名
       或字面量。
+    :param kwargs: 命名实参 ``(参数名, 值)`` 列表；值可为字面量、dict/list，
+      其中字符串叶子可按 ``Param.x`` 求值。用于跳过中间可选参数。
     :param returns: ``(本树接收名, 类型)`` 列表（按序对应函数多返回值）；
       函数 SUCCESS 后回收写入父帧。
     """
 
     function: str = ""
     args: tuple[str, ...] = ()
+    kwargs: tuple[tuple[str, object], ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
 
 

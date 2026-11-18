@@ -176,3 +176,23 @@
 #### Scenario: 声明 object 类型参数
 - **WHEN** 文档声明 `inputs: {会话: object}` 或 `returns: {会话: object}`
 - **THEN** 解析通过，类型 token 合法
+
+
+### Requirement: FunctionCall 命名参数
+
+FunctionCall SHALL 支持位置参数 `args` 与命名参数 `kwargs`。`args` 按函数参数声明顺序映射；`kwargs` 以参数名为键，可跳过中间可选参数。命名参数值 SHALL 支持字面量、`Param.x` 与嵌套 dict/list（字符串叶子按字面量/变量规则求值）。校验 SHALL 拒绝未知/重复命名参数与缺失必填参数。
+
+#### Scenario: 跳过中间可选参数
+
+- **WHEN** 调用 `ssh.create_session(host=..., jump={host: ...})` 且不提供 key/timeout/proxy
+- **THEN** 校验通过，运行时只传入 host 与 jump，其余参数使用函数默认值
+
+#### Scenario: 命名参数嵌套对象
+
+- **WHEN** `kwargs.jump = {host: jump.internal, user: ops}`
+- **THEN** 运行时把该对象传给函数，字符串叶子按需支持变量求值
+
+#### Scenario: 重复/未知命名参数
+
+- **WHEN** `kwargs` 指定了函数不存在的参数，或与位置参数重复
+- **THEN** 保存校验返回 422

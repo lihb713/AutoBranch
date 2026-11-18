@@ -459,6 +459,7 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
         return FunctionCallNode(
             function=node.function or "",
             args=node.args,
+            kwargs=node.kwargs,
             returns=node.returns,
             loc=node.loc,
         )

@@ -263,3 +263,27 @@ root: n1
     expect(slotFields(node)).toEqual([]);
   });
 });
+describe("FunctionCall kwargs", () => {
+  it("命名参数可嵌套对象并往返序列化", () => {
+    const yaml = `tree: 调用
+nodes:
+  n1: {type: Root, body: n2}
+  n2:
+    type: FunctionCall
+    function: ssh.create_session
+    args: [Param.host]
+    kwargs:
+      jump: {host: jump.local, user: ops}
+      timeout: 5
+    returns: {session: object}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    expect(doc.nodes.n2.kwargs).toEqual({
+      jump: { host: "jump.local", user: "ops" },
+      timeout: 5,
+    });
+    const rebuilt = parseDoc(serializeDoc(doc));
+    expect(rebuilt.nodes.n2.kwargs).toEqual(doc.nodes.n2.kwargs);
+  });
+});

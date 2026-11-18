@@ -49,6 +49,7 @@ export type TreeNode = {
   target?: string;
   function?: string;
   args?: string[];
+  kwargs?: Record<string, unknown>;
   returns?: Record<string, string>;
   vars?: DefineVar[];
 };
@@ -102,6 +103,7 @@ export function makeNode(
   if (type === "FunctionCall") {
     node.function = "";
     node.args = [];
+    node.kwargs = {};
     node.returns = {};
   }
   if (type === "Define") node.vars = [];
@@ -223,6 +225,7 @@ export function parseDoc(yamlText: string): TreeDoc {
     if (type === "FunctionCall") {
       node.function = typeof body["function"] === "string" ? (body["function"] as string) : "";
       node.args = Array.isArray(body["args"]) ? body["args"].map(String) : [];
+      node.kwargs = isRecord(body["kwargs"]) ? { ...body["kwargs"] } : {};
       node.returns = isRecord(body["returns"])
         ? Object.fromEntries(Object.entries(body["returns"]).map(([k, v]) => [k, String(v)]))
         : {};
@@ -282,6 +285,7 @@ export function serializeDoc(doc: TreeDoc): string {
     if (node.type === "FunctionCall") {
       body["function"] = node.function ?? "";
       if (node.args && node.args.length > 0) body["args"] = node.args;
+      if (node.kwargs && Object.keys(node.kwargs).length > 0) body["kwargs"] = node.kwargs;
       if (node.returns && Object.keys(node.returns).length > 0) body["returns"] = node.returns;
     }
     if (node.type === "Define") {

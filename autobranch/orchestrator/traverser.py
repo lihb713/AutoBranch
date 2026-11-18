@@ -276,12 +276,12 @@ class Traverser:
         required = list((spec.parameters or {}).get("required", []))
         properties = list((spec.parameters or {}).get("properties", {}))
         param_names = properties or required
-        if not (len(required) <= len(node.args) <= len(param_names)):
+        if len(node.args) > len(param_names):
             return (
                 self._note_failure(
                     node,
-                    f"函数 {node.function} 实参数量 {len(node.args)} 应在 "
-                    f"{len(required)}~{len(param_names)} 之间",
+                    f"函数 {node.function} 位置实参数量 {len(node.args)} 超过参数总数 "
+                    f"{len(param_names)}",
                 )
                 or FAILURE
             )
@@ -291,6 +291,24 @@ class Traverser:
             if val is _MISSING:
                 return self._note_failure(node, f"实参 '{expr}' 求值失败（变量未定义）") or FAILURE
             args[name] = val
+        for name, raw in node.kwargs or ():
+            if name not in param_names or name in args:
+                return self._note_failure(node, f"命名参数非法或重复: {name}") or FAILURE
+            val = self._eval_value(frame, raw)
+            if val is _MISSING:
+                return (
+                    self._note_failure(
+                        node, f"命名参数 '{name}' 求值失败（变量未定义）"
+                    )
+                    or FAILURE
+                )
+            args[name] = val
+        missing = [name for name in required if name not in args]
+        if missing:
+            return (
+                self._note_failure(node, f"缺少必填参数: {', '.join(missing)}")
+                or FAILURE
+            )
         result = registry.call(node.function, args, runtime=self.ctx.runtime)
         if not result.ok:
             return self._note_failure(node, f"函数 {node.function} 失败: {result.error}") or FAILURE
@@ -526,6 +544,23 @@ class Traverser:
             config=dict(ores.config),
         )
         return expansion.tree, decl
+
+    def _eval_value(self, frame, value):
+        """求值 kwargs 值：字符串走字面量/Param 规则；dict/list 递归求值。"""
+        if isinstance(value, str):
+            return self._eval_arg(frame, value)
+        if isinstance(value, list):
+            items = [self._eval_value(frame, item) for item in value]
+            return _MISSING if any(item is _MISSING for item in items) else items
+        if isinstance(value, dict):
+            result: dict[str, object] = {}
+            for key, item in value.items():
+                evaluated = self._eval_value(frame, item)
+                if evaluated is _MISSING:
+                    return _MISSING
+                result[str(key)] = evaluated
+            return result
+        return value
 
     def _eval_arg(self, frame, expr: str):
         """求值实参表达式：``Param.<名>`` → 读当前帧变量（未定义返回 ``_MISSING`` 哨兵）；

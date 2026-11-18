@@ -82,6 +82,31 @@ def test_function_call_node_passes_optional_args():
     assert space.read(frame, "结果") == 2.35
 
 
+def test_function_call_node_supports_named_kwargs():
+    reg = PluginRegistry()
+    reg.register(ComputePlugin())
+    space = SchemaSpace()
+    frame = space.enter_frame("t", None)
+    ctx = RunContext(
+        config=RunConfig(),
+        space=space,
+        reporter=_FakeReporter(),
+        browser=None,
+        leaf_executor=lambda n, t: None,
+        registry=reg,
+        runtime=PluginRuntime(),
+    )
+    node = FunctionCallNode(
+        function="compute.round_value",
+        args=("2.346",),
+        kwargs=(("digits", "2"),),
+        returns=(("结果", "float"),),
+    )
+    status = Traverser(ctx).tick(node)
+    assert status == "success"
+    assert space.read(frame, "结果") == 2.35
+
+
 def test_function_call_unknown_function_fails():
     reg = PluginRegistry()
     reg.register(ComputePlugin())

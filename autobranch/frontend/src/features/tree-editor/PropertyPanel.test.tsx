@@ -61,6 +61,7 @@ const DIRECT_KEYS = new Set([
   "target",
   "function",
   "args",
+  "kwargs",
   "returns",
   "vars",
 ]);
@@ -463,6 +464,68 @@ describe("PropertyPanel", () => {
     fireEvent.change(argInputs[0], { target: { value: "x" } });
     const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
     expect(next.nodes.fc2.args).toEqual(["x"]);
+  });
+
+  it("FunctionCall：可选参数按命名传入，可跳过中间参数", async () => {
+    functionMocks.listFunctions.mockResolvedValue([
+      {
+        full_name: "ssh.create_session",
+        plugin: "ssh",
+        name: "create_session",
+        description: "建会话",
+        returns: { session: "object" },
+        parameters: {
+          type: "object",
+          properties: {
+            host: { type: "string" },
+            port: { type: "integer" },
+            user: { type: "string" },
+            pwd: { type: "string" },
+            key: { type: "string" },
+            timeout: { type: "number" },
+            proxy: { type: "object" },
+            jump: { type: "object" },
+          },
+          required: ["host"],
+        },
+      },
+    ]);
+    const fc: TreeNode = {
+      id: "fc3",
+      type: "FunctionCall",
+      name: "建会话",
+      fields: {},
+      function: "ssh.create_session",
+      args: [],
+      kwargs: {},
+      returns: { session: "x" },
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: {},
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "fc3" },
+        fc3: fc,
+      },
+    };
+    const onUpdate = vi.fn();
+    renderPanel(doc, fc, { onUpdate });
+    await waitFor(() => expect(screen.getByTestId("fc-arg-fc3-0")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId("fc-arg-fc3-0"), {
+      target: { value: "Param.host" },
+    });
+    fireEvent.change(screen.getByTestId("fc-kwarg-fc3-jump"), {
+      target: { value: '{"host":"jump.local","user":"ops"}' },
+    });
+    const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.fc3.args).toEqual(["Param.host"]);
+    expect(next.nodes.fc3.kwargs).toEqual({
+      jump: { host: "jump.local", user: "ops" },
+    });
   });
 
   it("Define：变量行展示与增删改", () => {

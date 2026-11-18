@@ -155,7 +155,7 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | Retry | 反复执行直到成功 | `body` | `max` |
 | LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
-| FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`returns` |
+| FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`kwargs`、`returns` |
 | Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`） |
 
 **Condition 是概念性节点**（用户不可感知独立类型），内嵌为自有字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。
@@ -173,7 +173,7 @@ returns:
 - 函数不存在 / 实参求值失败（变量未定义）/ 执行失败 → 该节点 FAILURE，失败原因含函数全名与错误。
 - 实参从当前帧求值；返回值按 `returns` 回收写父帧（按声明类型 coerce）。
 - `function` 指向的能力来自插件集（M7）；引擎核心不感知具体能力（能力经插件框架 M3 分发）。
-- FunctionCall `args` 按函数参数声明顺序填写；必填参数不能省略，可选参数可省略。
+- FunctionCall `args` 按函数参数声明顺序填写；`kwargs` 按参数名传命名参数（优先用于可选参数）；必填参数不能省略，可选命名参数可省略；`kwargs` 值可为字面量、`Param.x` 或嵌套 dict/list。
 - **函数标识 = 全名 `插件名.函数名`**（如 `compute.add`）：同一插件内函数名唯一，**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）。
 - **LLM 工具名转义**：对 LLM 暴露的工具名为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），叶子分发时按转义名反查回全名。
 - **保存/执行前校验**：服务端保存（`/api/trees`）与执行前，经共享插件注册表校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐；函数不存在 / 参数不匹配时保存被 422 拒绝。
@@ -2203,7 +2203,7 @@ M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理�
 #### M1 行为树解析器
 ```
 功能: yaml/dict 解析（一文档一树）; 复合节点展开; ref 引用解析;
-     FunctionCall 节点解析（function/args/returns）+ 函数存在/参数校验（经插件注册表）;
+     FunctionCall 节点解析（function/args/kwargs/returns）+ 函数存在/参数校验（经插件注册表）;
      泛型 object 类型 token; 清晰度校验
 依赖: 无（纯逻辑; 函数存在校验可选依赖插件注册表）
 ```
@@ -2300,7 +2300,8 @@ M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理�
 ```
 type: function
 function: compute.add          # 全名：插件名.函数名（跨插件可同名）
-args: [a, b]                # 实参列表（本树裸变量名或字面量，按序对应函数入参）
+args: [a, b]                # 位置实参（本树裸变量名或字面量，按序对应函数入参）
+kwargs: {jump: {host: jump.internal}}  # 命名可选参数（可跳过中间可选参数）
 returns: {total: object}   # 接收名 → 类型（类型由函数声明决定，用户只改名称）
 ```
 

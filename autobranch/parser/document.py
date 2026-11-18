@@ -87,6 +87,7 @@ class IRNode:
     ref_target: str | None = None
     bindings: tuple[tuple[str, str], ...] = ()
     args: tuple[str, ...] = ()
+    kwargs: tuple[tuple[str, object], ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
     function: str | None = None
     vars: tuple[tuple[str, str, str], ...] = ()

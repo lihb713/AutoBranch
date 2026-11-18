@@ -184,7 +184,7 @@ class RefNode(Node):
 
 ### 8.1 FunctionCall 节点解析
 
-解析 `type: FunctionCall` 节点：`function`（**全名 `插件名.函数名`**，如 `compute.add`；跨插件可同名）+ `args`（实参列表，元素为本帧变量 `Param.x` 或字面量）+ `returns`（**键为裸 ASCII 接收名** → 类型，按序对应函数多返回值）。函数返回声明为 `FunctionDef.returns = {返回参数名: 类型}`；未填写接收名时由后端归一化生成 `<节点id>_<返回参数名>`，类型取函数声明（用户不可编辑）。FunctionCall 节点**保留为运行期调用节点**（不展开），运行期经插件框架按全名分发。
+解析 `type: FunctionCall` 节点：`function`（**全名 `插件名.函数名`**，如 `compute.add`；跨插件可同名）+ `args`（位置实参列表，元素为本帧变量 `Param.x` 或字面量）+ `kwargs`（可选命名实参映射，值为字面量/`Param.x`/嵌套 dict·list，用于跳过中间可选参数）+ `returns`（**键为裸 ASCII 接收名** → 类型，按序对应函数多返回值）。函数返回声明为 `FunctionDef.returns = {返回参数名: 类型}`；未填写接收名时由后端归一化生成 `<节点id>_<返回参数名>`，类型取函数声明（用户不可编辑）。FunctionCall 节点**保留为运行期调用节点**（不展开），运行期经插件框架按全名分发。
 
 ### 8.2 函数存在与参数校验
 

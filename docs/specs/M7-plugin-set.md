@@ -105,7 +105,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 - 删除插件会置空引用它的行为树 FunctionCall 引用。
 
 **使用方式**：
-- FunctionCall 节点：`function: <插件名.函数名>`（全名，如 `compute.add`）+ `args`（变量/字面量）+ `returns`（回收多返回值）。
+- FunctionCall 节点：`function: <插件名.函数名>`（全名，如 `compute.add`）+ `args`（位置变量/字面量）+ `kwargs`（命名可选参数，支持嵌套对象/列表）+ `returns`（回收多返回值）。
 - Action/Condition 叶子：LLM 经 `use_capability` 加载能力后调用其函数（工具名为转义全名 `插件__函数`，如 `compute__multiply`）。
 
 ## 关键实现

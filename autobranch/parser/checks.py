@@ -183,16 +183,43 @@ def _check_function_ref(
             )
         )
         return
-    required = (spec.parameters or {}).get("required", [])
+    required = list((spec.parameters or {}).get("required", []))
     properties = list((spec.parameters or {}).get("properties", {}))
-    max_args = len(properties) if properties else len(required)
-    if node.args and not (len(required) <= len(node.args) <= max_args):
+    param_names = properties or required
+    if len(node.args) > len(param_names):
         issues.append(
             make_issue(
                 "ref",
                 "args_mismatch",
-                f"函数 '{fn}' 实参数量 {len(node.args)} 应在 {len(required)}~{max_args}"
-                f"（必填~全部参数）之间（位于 {at}）",
+                f"函数 '{fn}' 位置实参数量 {len(node.args)} 超过参数总数 "
+                f"{len(param_names)}（位于 {at}）",
+                node.loc,
+            )
+        )
+        return
+    positional_names = param_names[: len(node.args)]
+    kwargs = dict(node.kwargs or ())
+    unknown = [name for name in kwargs if name not in param_names]
+    duplicated = [name for name in kwargs if name in positional_names]
+    if unknown or duplicated:
+        detail = "、".join(unknown + duplicated)
+        issues.append(
+            make_issue(
+                "ref",
+                "kwargs_invalid",
+                f"函数 '{fn}' 命名参数非法/重复: {detail}（位于 {at}）",
+                node.loc,
+            )
+        )
+        return
+    provided = set(positional_names) | set(kwargs)
+    missing = [name for name in required if name not in provided]
+    if missing:
+        issues.append(
+            make_issue(
+                "ref",
+                "args_mismatch",
+                f"函数 '{fn}' 缺少必填参数: {', '.join(missing)}（位于 {at}）",
                 node.loc,
             )
         )
