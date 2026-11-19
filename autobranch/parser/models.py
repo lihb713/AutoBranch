@@ -111,6 +111,21 @@ class FunctionCallNode(Node):
 
 
 @dataclass(frozen=True)
+class ForEachNode(Node):
+    """动态遍历节点：按变量的列表值逐项执行 body。
+
+    :param variables: ``(临时变量名, 值表达式/字面量)``；列表变量每轮取一项，
+      非列表变量每轮取同值。
+    :param body: 每轮执行的子节点。
+    :param on_failure: ``continue``（跳过失败继续）| ``abort``（立即失败）。
+    """
+
+    variables: tuple[tuple[str, object], ...] = ()
+    body: Node | None = None
+    on_failure: str = "continue"
+
+
+@dataclass(frozen=True)
 class DefineNode(Node):
     """变量声明叶子：运行期确定性创建变量（不经 LLM）。
 

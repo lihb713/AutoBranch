@@ -155,6 +155,28 @@ export function PropertyPanel({
     updateNode({ vars: (node.vars ?? []).filter((_, j) => j !== i) });
   };
 
+  const foreachRows = Object.entries(node.variables ?? {});
+  const setForeachRow = (index: number, name: string, value: string) => {
+    const next: Record<string, string> = {};
+    foreachRows.forEach(([oldName, oldValue], i) => {
+      const key = i === index ? name.trim() || oldName : oldName;
+      next[key] = i === index ? value : oldValue;
+    });
+    updateNode({ variables: next });
+  };
+  const addForeachRow = () => {
+    const next = { ...(node.variables ?? {}) };
+    let index = 1;
+    while (`item${index}` in next) index += 1;
+    next[`item${index}`] = "";
+    updateNode({ variables: next });
+  };
+  const removeForeachRow = (name: string) => {
+    const next = { ...(node.variables ?? {}) };
+    delete next[name];
+    updateNode({ variables: next });
+  };
+
   const handleRefTarget = (target: string) => {
     if (wouldCreateCycle(target, doc.tree, refTargetsOf)) {
       setCycleError(`引用「${target}」形成跨文档循环`);
@@ -467,6 +489,65 @@ export function PropertyPanel({
     </>
   );
 
+  const renderForEachGroup = () => (
+    <>
+      <section className="prop-group" data-testid="prop-group-foreach-vars">
+        <h4 className="prop-group__title">ForEach 变量</h4>
+        {foreachRows.length === 0 ? (
+          <p className="property-panel__hint">添加变量后逐项遍历</p>
+        ) : (
+          foreachRows.map(([name, value], i) => (
+            <div key={`foreach-${i}`} className="slot-row" data-testid={`foreach-row-${i}`}>
+              <TextField
+                label="变量名"
+                value={name}
+                disabled={readonly}
+                data-testid={`foreach-name-${i}`}
+                onChange={(e) => setForeachRow(i, e.target.value, value)}
+              />
+              <HighlightedField
+                label="值（Param.x 或字面量/JSON 数组）"
+                value={value}
+                disabled={readonly}
+                data-testid={`foreach-value-${i}`}
+                onChange={(e) => setForeachRow(i, name, e.target.value)}
+              />
+              <button
+                type="button"
+                className="link"
+                disabled={readonly}
+                onClick={() => removeForeachRow(name)}
+              >
+                删除
+              </button>
+            </div>
+          ))
+        )}
+        {!readonly ? (
+          <button type="button" className="slot-row__add" onClick={addForeachRow}>
+            增加变量
+          </button>
+        ) : null}
+      </section>
+      <section className="prop-group" data-testid="prop-group-foreach-policy">
+        <h4 className="prop-group__title">失败处理</h4>
+        <label className="text-field">
+          <span className="text-field__label">on_failure</span>
+          <select
+            className="text-field__input"
+            value={node.onFailure ?? "continue"}
+            disabled={readonly}
+            data-testid="foreach-on-failure"
+            onChange={(e) => updateNode({ onFailure: e.target.value })}
+          >
+            <option value="continue">continue（跳过失败继续）</option>
+            <option value="abort">abort（立即停止）</option>
+          </select>
+        </label>
+      </section>
+    </>
+  );
+
   const renderFunctionCallGroup = () => (
     <>
       <section className="prop-group" data-testid="prop-group-fc-function">
@@ -602,6 +683,9 @@ export function PropertyPanel({
         renderFieldGroup("循环参数", FIELD_GROUPS.LoopUntil[0].fields),
         renderSlotGroup("槽位", mounts),
       ];
+      break;
+    case "ForEach":
+      groups = [renderForEachGroup(), renderSlotGroup("循环体", mounts)];
       break;
     case "ref":
       groups = [renderRefGroup()];

@@ -15,6 +15,7 @@ from autobranch.parser.models import (
     ConditionNode,
     DefineNode,
     FinishNode,
+    ForEachNode,
     FunctionCallNode,
     Node,
     RefNode,
@@ -32,6 +33,7 @@ _BASIC_TYPES = (
     SequenceNode,
     SelectorNode,
     RepeatNode,
+    ForEachNode,
     FinishNode,
     RefNode,
 )
@@ -69,6 +71,9 @@ def _walk_expanded(node: Node, issues: list[CheckIssue]) -> None:
         if node.until is not None:
             _walk_expanded(node.until, issues)
         _walk_expanded(node.body, issues)
+    elif isinstance(node, ForEachNode):
+        if node.body is not None:
+            _walk_expanded(node.body, issues)
 
 
 def leaf_locatable_predicate_checks(tree: Node) -> tuple[CheckIssue, ...]:
@@ -114,6 +119,9 @@ def _walk_leaves(node: Node, issues: list[CheckIssue]) -> None:
         if node.until is not None:
             _walk_leaves(node.until, issues)
         _walk_leaves(node.body, issues)
+    elif isinstance(node, ForEachNode):
+        if node.body is not None:
+            _walk_leaves(node.body, issues)
 
 
 def function_call_checks(
@@ -147,6 +155,9 @@ def _walk_functions(
         if node.until is not None:
             _walk_functions(node.until, registry, issues)
         _walk_functions(node.body, registry, issues)
+    elif isinstance(node, ForEachNode):
+        if node.body is not None:
+            _walk_functions(node.body, registry, issues)
 
 
 def _check_function_ref(

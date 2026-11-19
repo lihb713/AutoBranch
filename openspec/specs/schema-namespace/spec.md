@@ -137,3 +137,16 @@
 
 - **WHEN** 目标变量已声明类型（非空 token）且提取值可转换（如 `"42"` 配 `int`）
 - **THEN** 系统 coerce 后存储真实 Python 类型（int 42），而非原样存字符串
+
+
+### Requirement: 帧挂载与向上读取
+
+`SchemaSpace` SHALL 支持按调用栈恢复帧，并支持 `enter_frame(mount=...)` 指定变量隔离父帧；`read` SHALL 在自身帧未定义时向上查找。Ref 帧挂 root；ForEach 子帧挂当前行为树帧。配置继承 SHALL 通过独立 `config_parent` 保持调用链继承。
+
+#### Scenario: ForEach 子帧读取父帧变量
+- **WHEN** 子帧未定义变量但当前行为树帧有同名变量
+- **THEN** 读取到父帧值
+
+#### Scenario: Ref 隔离
+- **WHEN** Ref 帧挂载 root
+- **THEN** 不能读取调用方行为树帧的局部变量

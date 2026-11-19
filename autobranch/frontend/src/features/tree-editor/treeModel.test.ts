@@ -287,3 +287,28 @@ root: n1
     expect(rebuilt.nodes.n2.kwargs).toEqual(doc.nodes.n2.kwargs);
   });
 });
+
+describe("ForEach", () => {
+  it("变量、循环体与失败策略往返序列化", () => {
+    const yaml = `tree: 遍历
+inputs: {env_ids: object}
+nodes:
+  n1: {type: Root, body: n2}
+  n2:
+    type: ForEach
+    name: 遍历环境
+    variables: {env_id: Param.env_ids, label: x}
+    body: n3
+    on_failure: abort
+  n3: {type: Action, name: 处理, description: 处理 Param.env_id}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    expect(doc.nodes.n2.variables).toEqual({ env_id: "Param.env_ids", label: "x" });
+    expect(doc.nodes.n2.body).toBe("n3");
+    expect(doc.nodes.n2.onFailure).toBe("abort");
+    const rebuilt = parseDoc(serializeDoc(doc));
+    expect(rebuilt.nodes.n2.variables).toEqual(doc.nodes.n2.variables);
+    expect(rebuilt.nodes.n2.onFailure).toBe("abort");
+  });
+});

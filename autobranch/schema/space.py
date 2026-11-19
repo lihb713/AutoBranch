@@ -30,6 +30,7 @@ class SchemaSpace:
         self._next_id = 1
         self.root = self._new_frame("<root>", parent=None)
         self._current: SchemaFrame | None = None
+        self._call_stack: list[SchemaFrame | None] = []
         self._inject_config(self.root, global_config or {}, global_config_types or {})
 
     def _new_frame(self, name: str, parent: SchemaFrame | None) -> SchemaFrame:
@@ -37,6 +38,7 @@ class SchemaSpace:
             id=self._next_id,
             name=name,
             parent=parent,
+            config_parent=parent,
             path_segments=parent.path_segments + (name,) if parent else (),
         )
         self._next_id += 1
@@ -57,25 +59,32 @@ class SchemaSpace:
     # ---- 帧生命周期 -------------------------------------------------
 
     def enter_frame(
-        self, name: str, decl: FrameDecl | None = None
+        self,
+        name: str,
+        decl: FrameDecl | None = None,
+        *,
+        mount: SchemaFrame | None = None,
     ) -> SchemaFrame:
-        """进入一次文档引用，创建独立帧并挂接为当前帧的直接子帧。
+        """创建并激活帧；``mount`` 决定变量隔离层级，调用栈记录恢复点。
 
-        帧按调用链形成层级路径（如 ``T/登录/``）；同名变量在不同帧互不
-        冲突。文档的配置参数声明（``decl.config``）进入帧时注入，构成
-        「文档自身配置优先」的覆盖源。
+        - 普通 ref/文档帧：``mount=self.root`` → 父帧为 root（跨树变量隔离）；
+        - ForEach 子帧：``mount=当前行为树帧`` → 可向上读取父帧变量；
+        - 缺省 ``mount`` 使用当前帧（兼容旧调用）。
         """
-        parent = self._current if self._current is not None else self.root
+        caller = self._current
+        parent = mount if mount is not None else (caller or self.root)
         if not name or "/" in name or name == THIS_TOKEN:
             raise SchemaPathError(f"非法文档名: {name!r}")
         if name == parent.name:
             raise SchemaPathError(f"子文档名不能与父文档名相同: {name!r}")
         frame = self._new_frame(name, parent)
+        frame.config_parent = caller if caller is not None else parent
         parent.children[name] = frame
         if decl is not None:
             frame.inputs = dict(decl.inputs)
             frame.outputs = dict(decl.outputs)
             self._inject_config(frame, decl.config, decl.config_types)
+        self._call_stack.append(caller)
         self._current = frame
         return frame
 
@@ -91,7 +100,10 @@ class SchemaSpace:
         current = frame if frame is not None else self._current
         if current is None or (frame is not None and current is not frame):
             raise SchemaError("exit_frame 与当前激活帧不匹配")
-        self._current = current.parent
+        if self._call_stack:
+            self._current = self._call_stack.pop()
+        else:
+            self._current = current.parent
 
     # ---- 业务变量读写（严格作用域） -----------------------------------
 
@@ -118,11 +130,24 @@ class SchemaSpace:
         越权读取抛 ``SchemaScopeError``。
         """
         target, var = resolve_target(frame, path)
-        if var not in target.storage:
-            return None
-        value = target.storage[var]
-        check_type(target.declared[var], value)
-        return value
+        current: SchemaFrame | None = target
+        while current is not None:
+            if var in current.storage:
+                value = current.storage[var]
+                check_type(current.declared[var], value)
+                return value
+            current = current.parent
+        return None
+
+    def has_variable(self, frame: SchemaFrame, path: str) -> bool:
+        """变量是否在帧或祖先帧中定义（ForEach 子帧向上读取用）。"""
+        target, var = resolve_target(frame, path)
+        current: SchemaFrame | None = target
+        while current is not None:
+            if var in current.storage:
+                return True
+            current = current.parent
+        return False
 
     # ---- 配置参数继承 -------------------------------------------------
 
@@ -149,7 +174,7 @@ class SchemaSpace:
         while node is not None:
             if name in node.config:
                 return node.config[name]
-            node = node.parent
+            node = node.config_parent
         return None
 
     # ---- 页面变量机制（契约 §5.10） -----------------------------------

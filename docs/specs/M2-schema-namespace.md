@@ -15,7 +15,7 @@
 | 功能 | 说明 | 契约依据 |
 |---|---|---|
 | 帧模型 | 每次文档引用创建独立执行帧（schema/命名空间） | §5.7.4 |
-| 严格作用域 | 每帧只读写自己的帧（裸变量名） | §5.3.2 |
+| 作用域 | 文档/Ref 帧读写自身；ForEach 子帧可向上读取父帧；Ref 帧挂 root 保持隔离 | §5.3.2 |
 | 变量读写 | `Param.xxx` 读取 / `NewParam.xxx[:类型]` 新建（ASCII 裸变量名；旧语法 `[[get]]`/`[[set]]`/`this/` 已废弃） | §5.3 |
 | 传参/返回值 | 经 ref `args` 注入子文档帧、`returns` 回收子文档输出 | §5.3.2/§5.3.3 |
 | 配置参数继承 | 自己的 schema → 向上找最近祖先 → 全局默认 | §5.3.4/§5.7.5 |
@@ -47,13 +47,13 @@
 
 ```python
 class SchemaSpace:
-    def enter_frame(self, name: str, decl: FrameDecl | None = None) -> SchemaFrame: ...
-    # 创建子文档帧，如 T/登录/
+    def enter_frame(self, name: str, decl: FrameDecl | None = None, *, mount: SchemaFrame | None = None) -> SchemaFrame: ...
+    # 创建子帧：Ref 挂 root（如 登录/）；ForEach 挂当前树帧（如 T/ForEach#1/）
     def exit_frame(self, frame: SchemaFrame | None = None) -> None: ...
     # 退出当前帧并恢复父帧为当前帧（帧数据保留至行为树运行结束，供黑板上报；释放=退出激活栈）
     def write(self, frame: SchemaFrame, path: str, value: Value, value_type: str) -> None: ...
     def read(self, frame: SchemaFrame, path: str) -> Value | None: ...
-    # 读/写严格限定：仅自己的帧（裸变量名 单段，resolve_target 单段化）
+    # 读自身；未定义向上查找（Ref parent=root 隔离，ForEach 子帧可读当前树帧）
     def set_config(self, frame: SchemaFrame, name: str, value: Value, value_type: str | None = None) -> None: ...
     # 在指定帧声明配置参数（文档覆盖全局默认用）
     def resolve_config(self, frame: SchemaFrame, name: str) -> Value: ...
@@ -65,10 +65,10 @@ class SchemaSpace:
 ```
 
 - **数据契约**（`autobranch/schema/models.py`）：
-  - `Value`：`str | int | float | bool | PageRef | None`
+  - `Value`：`str | int | float | bool | PageRef | list | dict | None`
   - `PageRef`：页面引用（`page_id` + 可选 `url`）
   - `FrameDecl`：文档接口声明（`name` 文档名；`inputs`/`outputs`：变量名 → 类型；`config`/`config_types`：配置参数名 → 值/类型；来自 M2，本模块独立定义所需最小结构，避免依赖 M2 包）
-  - `SchemaFrame`：独立执行帧（`id`/`name`/`parent`/`path_segments`/`storage`/`declared`/`config`/`children`/`inputs`/`outputs`/`page_write_order`），帧路径属性 `path`（如 `T/登录/`）
+  - `SchemaFrame`：独立执行帧（`id`/`name`/`parent`/`config_parent`/`path_segments`/`storage`/`declared`/`config`/`children`/`inputs`/`outputs`/`page_write_order`），帧路径属性 `path`（如 `登录/` 或 `T/ForEach#1/`）
 - **异常契约**（`autobranch/schema/errors.py`，基类 `SchemaError` 供 M7 捕获沿树传播）：
   - `SchemaPathError`：路径格式错误
   - `SchemaScopeError`：越权访问（目标帧不是自身帧）
@@ -80,8 +80,8 @@ class SchemaSpace:
 - 首段仅 `this`/自身文档名（自身帧）；直接子文档名不再合法 → 越权（跨帧传参经 ref `args`/`returns`）
 - 目标帧后必须恰好一个变量段（变量名不含 `/`，含 `/` 或多段均被拒绝）
 - 写权限：仅自己的帧
-- 读权限：仅自己的帧
-- 不可见：祖先、兄弟、孙子帧（越权访问 → `SchemaScopeError` 校验/运行时错误）
+- 读权限：自己的帧；未定义时向 parent 查找（Ref 帧 parent=root；ForEach 子帧向上读当前树帧）
+- 跨行为树变量不可见：经 ref args/returns 传参
 - 帧内变量为单段平铺存储（`storage`/`declared` 以变量名为 key）
 
 ### 5.3 可见性规则（§5.3.2）
@@ -112,7 +112,7 @@ TYPE_REGISTRY = {
 
 ### 5.5 配置参数继承（§5.3.4）
 
-- 业务变量：严格作用域，不向上查找
+- 业务变量：文档/Ref 帧读自身并向 parent 查找（Ref parent=root，不读调用方树帧）；ForEach 子帧向上读取当前行为树帧
 - 配置参数（timeout/retry/...）：自己的 schema 未定义 → 最近祖先 → 全局默认
 - 全局默认：工具配置文件注入根级 schema
 
@@ -152,7 +152,8 @@ TYPE_REGISTRY = {
   - `types.py`：`TYPE_REGISTRY` 类型登记表 + `TypeSpec`（token→Python 类→cast）+ `check_type`/`coerce`/`validate_type_name`/`infer_type`
   - `space.py`：`SchemaSpace` 门面（帧生命周期/读写/配置继承/页面变量）
 - **严格作用域解析**（`resolve_target`）：仅 `this`/自身文档名 → 自身帧（单段化）；直接子文档名/祖先/兄弟/孙文档一律越权 → `SchemaScopeError`。目标帧后仅允许单段变量名，多段（如 `登录/输入框/值`）→ 越权。跨帧传参经 ref `args`/`returns` 进行。
-- **配置继承**：`resolve_config` 沿 parent 链查找自身 `config` → 最近祖先 → 根级帧（`__init__` 注入 `global_config`）；业务变量走 `write`/`read` 严格作用域，天然不向上查找。
+- **配置继承**：`resolve_config` 沿 `config_parent` 查找自身 `config` → 调用链祖先 → 根级帧；Ref 变量 parent=root 但 config_parent=调用方，配置继承不因变量隔离丢失。
+- **帧挂载/调用栈**：Ref `enter_frame(..., mount=root)`；ForEach 子帧 `mount=当前行为树帧`；`_call_stack` 记录调用方，`exit_frame` 从栈恢复。
 - **类型校验双时机**：`write` 声明类型并即时校验；`read` 提取时二次强校验（防存储被上层绕开）。
 - **页面变量**：`PageRef` 为普通类型值；`current_page` 返回帧中最近写入的页面引用；`page_refs` 列出全部页面变量。
 - 测试总数：63 项（M3），`pytest` 全绿、`ruff check .` 无告警。

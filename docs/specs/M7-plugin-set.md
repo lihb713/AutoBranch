@@ -47,6 +47,7 @@
 - 转换：`to_string` / `to_int` / `to_number` / `to_bool` / `json_parse` / `json_dumps`。
 - 比较：`compare(a, b, op, ignore_case)`，支持 `eq/ne/gt/ge/lt/le/contains/startswith/endswith`。
 - 正则：`regex_match` / `regex_extract` / `regex_findall`。
+- 累积：`append` / `dict_set`（产出型 JSON 字符串，ForEach 跨轮收集结果）。
 
 ### vars 插件
 

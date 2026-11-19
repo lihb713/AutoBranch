@@ -8,6 +8,7 @@ export const TYPE_COLORS: Record<string, string> = {
   Branch: "#ea580c",
   Retry: "#dc2626",
   LoopUntil: "#0d9488",
+  ForEach: "#7c3aed",
   Action: "#64748b",
   ref: "#0891b2",
   FunctionCall: "#d97706",

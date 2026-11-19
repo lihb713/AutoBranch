@@ -12,7 +12,8 @@ export type NodeType =
   | "LoopUntil"
   | "ref"
   | "FunctionCall"
-  | "Define";
+  | "Define"
+  | "ForEach";
 
 /** Define 节点的一行变量声明：名 / 类型 token / 值（字面量或 `Param.x`）。 */
 export type DefineVar = {
@@ -52,6 +53,8 @@ export type TreeNode = {
   kwargs?: Record<string, unknown>;
   returns?: Record<string, string>;
   vars?: DefineVar[];
+  variables?: Record<string, string>;
+  onFailure?: string;
 };
 
 /** 一份行为树文档（自包含：tree/nodes/root + 文档级接口与配置）。 */
@@ -107,6 +110,10 @@ export function makeNode(
     node.returns = {};
   }
   if (type === "Define") node.vars = [];
+  if (type === "ForEach") {
+    node.variables = {};
+    node.onFailure = "continue";
+  }
   if (type === "Sequence") node.actions = [];
   if (type === "Branch") {
     node.branches = [];
@@ -149,6 +156,8 @@ export function slotFields(node: TreeNode): SlotMount[] {
       return [{ field: "body", label: "重试体", childId: node.body ?? null }];
     case "LoopUntil":
       return [{ field: "action", label: "循环体", childId: node.action ?? null }];
+    case "ForEach":
+      return [{ field: "body", label: "循环体", childId: node.body ?? null }];
     default:
       return [];
   }
@@ -174,7 +183,17 @@ export function freeRoots(doc: TreeDoc): string[] {
 const CONFIG_KEYS = ["timeout", "retry", "browser"];
 const SLOT_KEYS = ["body", "actions", "action", "then", "else", "branches"];
 const REF_KEYS = ["target", "args", "returns"];
-const SKIP_KEYS = new Set([...SLOT_KEYS, ...REF_KEYS, "function", "type", "name", "id", "vars"]);
+const SKIP_KEYS = new Set([
+  ...SLOT_KEYS,
+  ...REF_KEYS,
+  "function",
+  "type",
+  "name",
+  "id",
+  "vars",
+  "variables",
+  "on_failure",
+]);
 
 /** 从文档 dict 解析为 TreeDoc（统一槽位 DSL）。 */
 export function parseDoc(yamlText: string): TreeDoc {
@@ -229,6 +248,12 @@ export function parseDoc(yamlText: string): TreeDoc {
       node.returns = isRecord(body["returns"])
         ? Object.fromEntries(Object.entries(body["returns"]).map(([k, v]) => [k, String(v)]))
         : {};
+    }
+    if (type === "ForEach") {
+      node.variables = isRecord(body["variables"])
+        ? Object.fromEntries(Object.entries(body["variables"]).map(([k, v]) => [k, String(v)]))
+        : {};
+      node.onFailure = typeof body["on_failure"] === "string" ? body["on_failure"] : "continue";
     }
     if (type === "Define") {
       node.vars = isRecord(body["vars"])
@@ -287,6 +312,10 @@ export function serializeDoc(doc: TreeDoc): string {
       if (node.args && node.args.length > 0) body["args"] = node.args;
       if (node.kwargs && Object.keys(node.kwargs).length > 0) body["kwargs"] = node.kwargs;
       if (node.returns && Object.keys(node.returns).length > 0) body["returns"] = node.returns;
+    }
+    if (node.type === "ForEach") {
+      body["variables"] = node.variables ?? {};
+      body["on_failure"] = node.onFailure ?? "continue";
     }
     if (node.type === "Define") {
       const vars: Record<string, { type: string; value: string }> = {};

@@ -64,6 +64,8 @@ const DIRECT_KEYS = new Set([
   "kwargs",
   "returns",
   "vars",
+  "variables",
+  "onFailure",
 ]);
 
 function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>): TreeDoc {
@@ -526,6 +528,46 @@ describe("PropertyPanel", () => {
     expect(next.nodes.fc3.kwargs).toEqual({
       jump: { host: "jump.local", user: "ops" },
     });
+  });
+
+  it("ForEach：编辑临时变量与失败策略", () => {
+    const fc: TreeNode = {
+      id: "fe1",
+      type: "ForEach",
+      name: "遍历",
+      fields: {},
+      variables: { env_id: "Param.env_ids", label: "x" },
+      onFailure: "continue",
+      body: "a1",
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: {},
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "fe1" },
+        fe1: fc,
+        a1: { id: "a1", type: "Action", name: "处理", fields: { description: "处理" } },
+      },
+    };
+    const onUpdate = vi.fn();
+    renderPanel(doc, fc, { onUpdate });
+    expect(screen.getByTestId("foreach-name-0")).toHaveValue("env_id");
+    expect(screen.getByTestId("foreach-value-0")).toHaveValue("Param.env_ids");
+    fireEvent.change(screen.getByTestId("foreach-value-1"), {
+      target: { value: "fixed" },
+    });
+    fireEvent.change(screen.getByTestId("foreach-on-failure"), {
+      target: { value: "abort" },
+    });
+    const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.fe1.variables).toEqual({
+      env_id: "Param.env_ids",
+      label: "fixed",
+    });
+    expect(next.nodes.fe1.onFailure).toBe("abort");
   });
 
   it("Define：变量行展示与增删改", () => {

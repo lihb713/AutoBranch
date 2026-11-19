@@ -8,14 +8,16 @@
 
 ## 核心特性
 
-- **行为树文档驱动**：`tree / nodes / root` 三段式 YAML，支持 Sequence / Selector / Repeat / LoopUntil / Retry / Step / Branch / ref / **FunctionCall** / **Define** 等节点。
+- **行为树文档驱动**：`tree / nodes / root` 三段式 YAML，支持 Sequence / Selector / Repeat / LoopUntil / ForEach / Retry / Step / Branch / ref / **FunctionCall** / **Define** 等节点。
+- **ForEach 动态遍历**：按变量中的列表逐项在临时子帧执行子树，支持 `continue` / `abort` 失败策略；子帧可读当前行为树变量、循环结束销毁。
 - **LLM Agent 叶子执行**：Action / Condition 由 LLM 依据语义图决策，调用插件函数并**落笔写变量**（引擎回收返回值，按类型 coerce）。
 - **确定性 FunctionCall 节点**：行为树可直接调用插件函数（`compute.add` 等），不经 LLM，可精确写变量 / 多返回值。
 - **确定性 Define 节点**：在当前文档帧声明变量（字面量或 `Param.x` 拷贝重命名），不经 LLM。
-- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
+- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
-- **插件模块化**：插件可选提供 REST API、数据库模型、前端页面、存储目录与配置项；插件管理支持函数详情/源码双 Tab、配置弹窗与插件前端页面入口（如文件管理）。
-- **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、插件管理页、执行报告页。
+- **插件模块化**：插件可选提供 REST API、数据库模型、前端页面、存储目录与配置项；文件管理支持目录、路径、MD5，SSH/浏览器可与文件平台互通（含 SSH 递归目录传输）。
+- **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、调度管理页、插件管理页、执行报告页。
+- **M10 自动调度**：定时（interval/cron）/前置依赖 DAG/失败重试/重启补跑，执行列表标注手动/调度/依赖来源，可查看关联调度规则。
 - **草稿/正式版**：行为树单文档状态机；新建即草稿（临时名），保存校验后转正式；草稿不可执行、不可被 ref 引用；前端命令式编辑，后端权威生成默认接收名与类型。
 - **执行实例化**：每次执行保存**行为树快照 + 入参**（触发时刻冻结，执行/重试不随实时树变化）；支持根级入参注入与出参返回、执行列表页（进行中/历史回看）、FIFO 队列调度（全局并发上限可配置）、按快照重试；含不可序列化入参（如 page_ref）的树仅支持 ref 调用。
 - **经验回灌**：整树成功的历史经验（节点级成功调用路径，去 ref 化）存入经验库，同条件（同行为树快照 + 同入参 + 同节点）重跑时以"参考而非指令"注入叶子提示词（以当前语义图为准、与当前状态不符时忽略），降低 LLM 随机性导致的同树重跑失败；按匹配组自动老化。
@@ -31,14 +33,15 @@ autobranch/
   plugin_system/           M3 插件框架（注册表/懒装配/能力选择/分发/报告）
   leaf_agent/              M4 叶子 Agent（Action/Condition 执行）
   orchestrator/            M5 编排器（遍历/FunctionCall/超时/会话）
-  plugins/                 M7 插件集（browser/compute/ssh/file/http/vars + common）
+  plugins/                 M7 插件集（browser/compute/ssh/file/http/vars/transform + common）
   reporting/               报告 / 截图 / 回溯
-  server/                  M8 管理后端（FastAPI：trees/runs/reports/plugins/functions）
-  frontend/                M9 前端（React + Vite：编辑器/插件管理/报告）
+  scheduler/               M10 定时/依赖调度（规则/引擎/API）
+  server/                  M8 管理后端（FastAPI：trees/runs/schedules/reports/plugins/functions）
+  frontend/                M9 前端（React + Vite：编辑器/调度/插件管理/报告）
 tests/                     后端测试（含真实浏览器集成）
 docs/
   contract.md              行为树语言契约与模块说明
-  specs/                   M0–M9 模块规格
+  specs/                   M0–M10 模块规格
   tmp/                     设计草稿
 openspec/                  需求规格（spec-driven，含归档变更）
 scripts/                   一次性迁移脚本（函数全名迁移 / runs 执行实例快照迁移）
@@ -100,6 +103,8 @@ conda run -n autobranch python -m playwright install chromium
 > - `max_concurrent_runs`（顶层，默认 3）：服务端**执行并发上限**（同时最多运行 N 个执行实例，超出的进入 FIFO 排队）。
 > - `experience_feedback`（顶层，默认 true）：**经验回灌开关**（关闭时不采集也不注入）。
 > - `experience_retention`（顶层，默认 5）：**经验老化**——每个匹配组（同树同入参同节点）只保留最近 N 条经验。
+> - `scheduler_tick_seconds`（顶层，默认 10）：M10 调度线程检查间隔。
+> - `timezone`（顶层，默认 `Asia/Shanghai`）：项目时区，影响时间戳展示与 cron 解释。
 
 > **数据库连接说明**：`autobranch.config.json` 中**不需要**（也没有）数据库连接项——SQLite 为单文件库，路径由 `AUTOBRANCH_DB_PATH` 环境变量或默认值 `data/autobranch.db` 决定，无连接串/账号配置；后端启动时自动初始化建表。如需更换数据库位置，设置环境变量即可，无需改动配置文件或代码。
 
@@ -120,7 +125,9 @@ conda run -n autobranch python -m playwright install chromium
   },
   "max_concurrent_runs": 3,
   "experience_feedback": true,
-  "experience_retention": 5
+  "experience_retention": 5,
+  "scheduler_tick_seconds": 10,
+  "timezone": "Asia/Shanghai"
 }
 ```
 
@@ -217,7 +224,7 @@ root: n1
         执行报告 + 截图 + 回溯
 ```
 
-### 模块划分（M0–M9）
+### 模块划分（M0–M10）
 
 | 模块 | 职责 |
 |---|---|
@@ -228,9 +235,10 @@ root: n1
 | M4 叶子 Agent | Action / Condition 的 LLM agent 式执行 + 变量落笔 |
 | M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall·Define 确定性执行 |
 | M6 报告 | 执行报告 / 截图 / 回溯 / 可查询状态 |
-| M7 插件集 | browser / compute / ssh / file + 自定义插件 |
-| M8 管理后端 | FastAPI：trees / runs（执行实例：快照/入参/出参/列表/重试/队列）/ reports / plugins / functions / types |
-| M9 前端 | React + Vite：行为树编辑器 / 插件管理 / 执行报告 / 执行列表 |
+| M7 插件集 | browser / compute / ssh / file / http / vars / transform + 自定义插件 |
+| M8 管理后端 | FastAPI：trees / runs（执行实例：快照/入参/出参/列表/重试/队列）/ schedules / reports / plugins / functions / types |
+| M9 前端 | React + Vite：行为树编辑器 / 调度管理 / 插件管理 / 执行报告 / 执行列表 |
+| M10 定时调度 | interval/cron、依赖 DAG、失败重试、错过补跑；复用 M8 执行队列 |
 
 ## 测试
 
@@ -253,6 +261,6 @@ npm run test:e2e          # 端到端（需前后端已启动，部分用例需 
 ## 文档
 
 - `docs/contract.md`：行为树语言契约（节点/类型/校验/API 约定）与模块说明。
-- `docs/specs/`：M0–M9 各模块规格。
+- `docs/specs/`：M0–M10 各模块规格。
 - `openspec/specs/`：需求规格（spec-driven）；`openspec/changes/archive/` 为已归档变更。
 - `AGENTS.md`：面向 AI 助手的开发规范（测试/文档同步要求）。

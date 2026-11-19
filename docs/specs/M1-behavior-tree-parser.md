@@ -21,7 +21,7 @@
 | 配置参数识别 | 识别文档顶层保留键 `timeout`/`retry`/`browser` 覆盖（§5.7.5） | §5.3.4/§5.7.5 |
 | 清晰度校验 | 结构/展开/引用/循环上界/变量契约/可定位/验证条件校验 | §4.4 |
 
-**输出**：内部行为树对象——只含 `Action / Condition / Sequence / Selector / Repeat / Finish` 基础节点 + `RefNode`（文档引用调用节点，保留为运行期动态调用），复合节点对引擎不可见。
+**输出**：内部行为树对象——只含 `Action / Condition / Sequence / Selector / Repeat / Finish` 基础节点 + `RefNode`（文档引用调用节点）+ `ForEachNode`（动态列表遍历），复合节点对引擎不可见。
 
 ## 3. 数据依赖
 
@@ -116,7 +116,7 @@ class RefNode(Node):
 - `ConditionNode` 扩展可选字段（超出 §5.2 的 description-only，供谓词结构校验与 M6 执行）：`target`（谓词指向对象）、`predicate`（比较谓词）。
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：树名（=文档名） + 基础节点根。
-- 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ref/FunctionCall/Define`；`Action` 为真正叶子（`description` 操作描述），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段；`Define` 为变量声明叶子（`vars: {名: {type, value}}`）。
+- 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action` / `ForEach.body`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ForEach/ref/FunctionCall/Define`；`Action` 为真正叶子（`description` 操作描述），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段；`Define` 为变量声明叶子（`vars: {名: {type, value}}`）。
 
 ### 5.3 复合节点展开规则（§4.3）
 
@@ -126,6 +126,7 @@ class RefNode(Node):
 | Branch | `Sequence(action 槽位子树 + Selector(branches 各 action 子树))`（顺序检查 when，第一个命中生效，无匹配走 otherwise） |
 | LoopUntil | `Repeat(mode=loop_until, until=条件, max=上限, body=action 槽位子树)` |
 | Retry | `Repeat(mode=retry, max=上限, body=body 槽位子树)` |
+| ForEach | 保留为运行期 `ForEachNode`（variables / body / on_failure），由编排器动态建临时子帧执行 |
 | IfThenElse | `Selector(if→then 槽位子树, else→else 槽位子树)` |
 
 **实现说明（已落地）**：展开规则集中于单一映射表 `EXPANSION_RULES`（`autobranch/parser/expand.py`），表驱动测试直接覆盖五类复合节点多组样例；复合嵌套深度由计数器防护（`expand.depth_exceeded`）。ref 的跨文档环与参数对齐在 onedoc 解析期校验（`ref.cross_doc_cycle` / `ref.args_mismatch` / `ref.returns_mismatch` / `ref.name_conflict`）。

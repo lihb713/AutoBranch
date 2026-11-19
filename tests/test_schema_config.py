@@ -64,12 +64,16 @@ def test_override_only_affects_block_and_descendants(space):
     assert space.resolve_config(login, "timeout") == 90
 
 
-def test_business_variable_not_looked_up(space):
-    """3.3 业务变量不向上查找：读自身未定义返回空值，不取祖先同名值。"""
+def test_business_variable_lookup_upwards_within_mount_chain(space):
+    """ForEach 子帧向上查找；Ref 帧通过 mount=root 保持隔离。"""
     t = space.enter_frame("T")
     space.write(t, "$this/username", "alice", "str")
     login = space.enter_frame("登录")
-    assert space.read(login, "$this/username") is None
+    assert space.read(login, "$this/username") == "alice"
+    # Ref 帧挂载 root，不读取调用方树帧变量
+    space.exit_frame()
+    isolated = space.enter_frame("登录", mount=space.root)
+    assert space.read(isolated, "$this/username") is None
     # 而 T 自己读得到
     assert space.read(t, "$this/username") == "alice"
 

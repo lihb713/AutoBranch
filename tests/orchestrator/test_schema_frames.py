@@ -34,7 +34,7 @@ class TestFrameLifecycle:
 
         ctx.leaf_executor = probe
         assert Traverser(ctx).tick(main_tree) == SUCCESS
-        assert paths == ["主流程/", "主流程/登录/", "主流程/"]
+        assert paths == ["主流程/", "登录/", "主流程/"]
         assert ctx.space._current.path == "主流程/"  # 释放回根帧
 
     def test_frames_released_on_failure(self, config) -> None:
@@ -72,7 +72,7 @@ class TestFrameLifecycle:
 
         ctx.leaf_executor = probe
         assert Traverser(ctx).tick(main_tree) == SUCCESS
-        assert paths == ["主流程/导出/登录/", "主流程/"]
+        assert paths == ["登录/", "主流程/"]
         assert ctx.space._current.path == "主流程/"
 
     def test_same_name_variables_isolated(self, config) -> None:
@@ -93,7 +93,7 @@ class TestFrameLifecycle:
 
         ctx.leaf_executor = writer
         assert Traverser(ctx).tick(main_tree) == SUCCESS
-        root_frame = ctx.space._current
+        root_frame = ctx.space.root
         assert root_frame.children["登录"].storage["username"] == "u1"
         assert root_frame.children["导出"].storage["username"] == "u2"
         assert root_frame.children["登录"] is not root_frame.children["导出"]

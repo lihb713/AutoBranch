@@ -52,6 +52,61 @@ class TransformPlugin(PluginBase):
     description = "数据提取与变换：路径/索引/键读取、字符串处理、JSON、正则、比较"
 
     @engine_function(
+        name="append",
+        description="向列表追加元素，返回追加后的完整 JSON 数组字符串",
+        parameters=_params(
+            ("list_var", "value"),
+            list_var={
+                "type": "string",
+                "description": "原列表（JSON 数组字符串；空字符串视为空列表）",
+            },
+            value={"type": "object", "description": "要追加的值"},
+        ),
+        returns={"list": "str"},
+        output_param="save_to",
+    )
+    def append(self, list_var: object, value: object) -> FunctionResult:
+        if isinstance(list_var, list):
+            items = list(list_var)
+        else:
+            try:
+                items = json.loads(str(list_var)) if list_var else []
+            except (TypeError, ValueError):
+                items = []
+            if not isinstance(items, list):
+                items = []
+        items.append(value)
+        return FunctionResult.success(json.dumps(items, ensure_ascii=False))
+
+    @engine_function(
+        name="dict_set",
+        description="向字典设置 KV，返回设置后的完整 JSON 对象字符串",
+        parameters=_params(
+            ("dict_var", "key", "value"),
+            dict_var={
+                "type": "string",
+                "description": "原字典（JSON 对象字符串；空字符串视为空字典）",
+            },
+            key={"type": "string", "description": "键"},
+            value={"type": "object", "description": "值"},
+        ),
+        returns={"dict": "str"},
+        output_param="save_to",
+    )
+    def dict_set(self, dict_var: object, key: str, value: object) -> FunctionResult:
+        if isinstance(dict_var, dict):
+            data = dict(dict_var)
+        else:
+            try:
+                data = json.loads(str(dict_var)) if dict_var else {}
+            except (TypeError, ValueError):
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+        data[str(key)] = value
+        return FunctionResult.success(json.dumps(data, ensure_ascii=False))
+
+    @engine_function(
         name="get_path",
         description=(
             "按点路径从嵌套列表/字典中取值，如 path='0.a.b.1' 表示取第 0 个元素的 "

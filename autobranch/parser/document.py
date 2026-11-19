@@ -46,6 +46,7 @@ NODE_KEYS = frozenset(
         "IfThenElse",
         "ref",
         "FunctionCall",
+        "ForEach",
     }
 )
 #: 复合节点键（§4.3，展开为基础节点组合）
@@ -91,6 +92,8 @@ class IRNode:
     returns: tuple[tuple[str, str], ...] = ()
     function: str | None = None
     vars: tuple[tuple[str, str, str], ...] = ()
+    foreach_vars: tuple[tuple[str, object], ...] = ()
+    on_failure: str | None = None
     raw: object = None
 
 
@@ -127,6 +130,8 @@ def _parse_node(
     if key == "Finish":
         desc = value if isinstance(value, str) else None
         return IRNode(kind="Finish", description=desc, loc=loc)
+    if key == "ForEach":
+        return _empty_ir("ForEach", loc)
     if key in COMPOSITE_KEYS:
         return _parse_composite(doc_id, path, key, value, issues)
     issues.append(

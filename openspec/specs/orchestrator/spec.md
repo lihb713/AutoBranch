@@ -224,3 +224,12 @@
 #### Scenario: 运行结束释放资源
 - **WHEN** 行为树运行结束
 - **THEN** 已启动的重资源（浏览器等）统一释放
+
+
+### Requirement: ForEach 运行
+
+系统 SHALL 在遍历器中动态执行 ForEach：解析变量列表、临时子帧注入 item、执行 body、按失败策略聚合；成功轮把 body 写入的非 item 变量回写父帧。Ref 帧 SHALL 挂载 root，ForEach 子帧 SHALL 挂载当前行为树帧。
+
+#### Scenario: 收集结果
+- **WHEN** ForEach body 调用 `transform.append` 并将返回值写回父帧变量
+- **THEN** 各轮结果累积到父帧 JSON 列表

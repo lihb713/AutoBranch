@@ -146,7 +146,7 @@ class TestRefCallFromDsl:
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         root = space._current
         assert root.storage["result"] == "成功输出"
-        child = root.children["登录"]
+        child = space.root.children["登录"]
         assert child.storage["username"] == "admin"
         assert child.storage["result"] == "成功输出"
 
@@ -192,7 +192,7 @@ class TestRefCallFromDsl:
             space, extra={"读参数 Param.username": check_param}
         )
         assert Traverser(ctx).tick(main_tree) == SUCCESS
-        assert space._current.children["登录"].storage["username"] == "admin"
+        assert space.root.children["登录"].storage["username"] == "admin"
 
 
 class TestRefCall:
@@ -234,7 +234,7 @@ class TestRefCall:
         root = ctx.space._current
         assert root.storage["result"] == "成功输出"
         # 子帧：args 注入的形参与块内 set 的输出
-        child = root.children["登录"]
+        child = space.root.children["登录"]
         assert child.storage["username"] == "admin"
         assert child.storage["result"] == "成功输出"
         # 执行后激活帧回到父帧
@@ -343,7 +343,7 @@ class TestRefCall:
         ctx.leaf_executor = _space_leaf(space, extra={"激活 Param.page": activate})
         assert Traverser(ctx).tick(main_tree) == SUCCESS
         # 子帧注入的是 PageRef 值（页面变量走 args 传递）
-        child = ctx.space._current.children["登录"]
+        child = ctx.space.root.children["登录"]
         assert isinstance(child.storage["page"], PageRef)
         assert child.storage["page"].page_id == "p1"
 

@@ -19,6 +19,25 @@ def _compute():
     return reg
 
 
+def test_transform_append_and_dict_set():
+    reg = _transform()
+    appended = reg.call(
+        "transform.append", {"list_var": '["a"]', "value": {"id": 2}}
+    )
+    assert appended.ok
+    assert appended.value == '["a", {"id": 2}]'
+    appended2 = reg.call(
+        "transform.append",
+        {"list_var": appended.value, "value": "b"},
+    )
+    assert appended2.value == '["a", {"id": 2}, "b"]'
+    dict_result = reg.call(
+        "transform.dict_set",
+        {"dict_var": '{"a": 1}', "key": "b", "value": 2},
+    )
+    assert dict_result.value == '{"a": 1, "b": 2}'
+
+
 def test_transform_get_path_nested_list_dict():
     reg = _transform()
     data = {"a": [{"b": [10, 20, 30]}]}

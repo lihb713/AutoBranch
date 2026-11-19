@@ -154,6 +154,7 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | Branch | 先操作再按条件分流 | `action`、`branches[].action` | `branches`（[{when,action}\|{otherwise,action}]） |
 | Retry | 反复执行直到成功 | `body` | `max` |
 | LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
+| ForEach | 遍历列表/数组逐项执行 body | `body` | `variables`（名→值表达式）、`on_failure`（continue/abort） |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
 | FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`kwargs`、`returns` |
 | Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`） |
@@ -324,6 +325,25 @@ IfThenElse:
   else: n8                          ← else 槽位挂否则分支子树根 id
 ```
 
+#### 4.3.4b ForEach：动态遍历
+
+```yaml
+n_foreach:
+  type: ForEach
+  name: 遍历环境
+  variables:
+    env_id: Param.env_ids       # 列表：JSON 数组字符串或数组值
+    label: "固定值"              # 非列表：每轮同值
+  body: n_body
+  on_failure: continue          # continue | abort
+```
+
+- 列表变量长度必须一致；无列表变量则循环 1 次；空列表循环 0 次。
+- 每轮在**临时子帧**写入 item 变量，body 通过 `Param.变量名` 读取（可向上读取当前行为树帧）。
+- 子帧复用（保证 `transform.append` 等跨轮累积结果），循环结束移除；item 变量对外不可见。
+- `continue`：单轮失败跳过继续；`abort`：立即失败。
+- Ref 子树的 args 可引用当前 ForEach item；Ref 帧挂 root（变量隔离）。
+
 #### 4.3.5 Retry：失败重试
 
 ```
@@ -474,22 +494,27 @@ n9:
 #### 5.3.1 schema 的层级结构
 
 ```
-主流程(T)  schema: T/
-  ├── ref 登录(A)  schema: T/登录/        ← T 调用产生的子帧
-  │     └── ref 输入框(A')  schema: T/登录/输入框/   ← T 不可见
-  └── ref 导出(B)  schema: T/导出/        ← T 调用产生的子帧
+root
+├── 主流程(T)  schema: T/
+│     └── ForEach#1  schema: T/ForEach#1/   ← 临时子帧，可读 T 帧
+│           └── body 在当前 ForEach 子帧执行
+├── ref 登录(A)  schema: 登录/             ← ref 帧挂 root（变量隔离）
+└── ref 导出(B)  schema: 导出/             ← 与调用方平级，不嵌套
 
 T 可读/写:  xxx（仅自身帧，单段寻址）
-T 不可读写: T/登录/xxx、T/登录/输入框/xxx   ← 跨帧一律不可见（经 ref args/returns 传参）
+T 不可读写: 登录/xxx、导出/xxx             ← 跨帧经 ref args/returns 传参
+ForEach 子帧可向上读取 T 帧；Ref 帧不读取调用方树帧
 ```
 
-#### 5.3.2 可见性规则（严格、对称）
+#### 5.3.2 可见性规则
 
 ```
-每个文档执行帧只能:
+文档/Ref 帧:
   写入 → 自己的帧（裸变量名 单段）
-  读取 → 自己的帧（裸变量名 单段）
-  不可见 → 直接子文档 / 祖先 / 兄弟 / 孙文档 的帧
+  读取 → 自己的帧；未定义继续向 parent（Ref 的 parent=root，不读调用方）
+ForEach 子帧:
+  写入 → 子帧（body 产生的非 item 变量在成功轮后回写父帧）
+  读取 → 子帧；未定义继续向父帧向上查找
 ```
 
 **推论：传参是"逐层"的。** T 要给"输入框"文档传参，必须先传给登录文档，由登录文档内部转发：
@@ -523,9 +548,10 @@ root: n1
 
 ```
 业务变量 (用户定义, 命名不固定):
-  严格作用域 —— 只能读/写自己的帧（裸变量名 单段，跨帧经 ref args/returns）
-  不向上查找 —— 用户必须显式写明"存到哪个变量 / 从哪个变量取"
-  理由: 业务变量是用户定义的, 向上查找会破坏确定性
+  文档/Ref 帧 —— 读自己的帧；未定义向 parent 查找（Ref parent=root，不读调用方树帧）
+  ForEach 子帧 —— 可向上读取当前行为树帧；item 变量循环结束销毁
+  跨行为树传参一律经 ref args/returns
+  理由: 保持 Ref 树隔离，同时支持 ForEach 逐项读取外层变量
 
 配置参数 (工具定义, 名称语义固定: timeout/retry/browser):
   用户可在文档顶层写保留键覆盖（作用于本文档及 ref 子树）
@@ -776,16 +802,20 @@ nodes:
 
 ```
 每次文档引用产生一个独立的执行帧 (schema, 命名空间, 类似函数调用栈帧):
-  主流程 T:  schema T/
-    ├── ref 登录 → schema T/登录/
-    └── ref 导出 → schema T/导出/
+  root
+    ├── 主流程 T:  schema T/
+    │     └── ForEach#1: schema T/ForEach#1/  （临时子帧）
+    ├── ref 登录(A): schema 登录/             （parent=root）
+    └── ref 导出(B): schema 导出/             （parent=root）
 
-可见性 (严格, 用户层单段寻址):
-  每帧只读写: 自己的帧（裸变量名 单段）
-  不访问:     直接子文档 / 祖先 / 兄弟 / 孙文档 的帧（跨帧传参经 ref args/returns）
+可见性:
+  文档/Ref 帧读取自己的帧；未定义向 parent 找（Ref parent=root，不读调用方）
+  ForEach 子帧读取自己的帧；未定义向当前行为树帧向上找
+  跨行为树传参一律经 ref args/returns
 
-传参逐层传递:  T → 登录 → 登录的子文档 ... (每层只处理直接子, 经 ref args/returns)
-同名不冲突:    不同文档的 username 在不同帧, 互不干扰
+调用栈:  exit_frame 由 SchemaSpace._call_stack 恢复调用方帧（不依赖 parent）
+配置继承: Ref 帧 parent=root 但 config_parent=调用方帧，配置仍按调用链继承
+同名不冲突: 不同文档的 username 在不同帧, 互不干扰
 ```
 
 > **注（用户 DSL）**：用户层已废除"直接写/读子帧"的语法（`子文档/变量` 多段路径、`写入:` 绑定）。传参/取返回一律经 ref 的 `args`/`returns` 显式声明；ref 为**运行期动态调用**（M7 `_tick_ref`：经 resolver 按文档名加载被引文档 → 建子帧 → 注入实参 → 从其 Root 递归执行 → returns 回收 → 退出子帧），帧保留至行为树运行结束（供黑板上报），激活帧控制访问权限。
@@ -850,10 +880,10 @@ root: n1
 
 ```
 主流程 帧: T/
-  导出 帧: T/导出/        ← 主流程经 args 传 T/导出/username, T/导出/password
-    登录 帧: T/导出/登录/   ← 导出经 args 传 T/导出/登录/username (逐层转发)
-    登录输出: T/导出/登录/login_success
-    导出经 returns 收: T/导出/登录结果   ← 写入导出自己的帧
+  导出 帧: 导出/          ← 主流程经 args 传 导出/username, 导出/password
+    登录 帧: 登录/          ← 导出经 args 传 登录/username
+    登录输出: 登录/login_success
+    导出经 returns 收: 导出/登录结果   ← 写入导出自己的帧
 ```
 
 #### 5.7.7 行为树遍历器语义（tick）

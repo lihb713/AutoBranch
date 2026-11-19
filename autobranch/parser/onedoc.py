@@ -43,6 +43,7 @@ _NODE_TYPES = frozenset(
         "ref",
         "FunctionCall",
         "Define",
+        "ForEach",
     }
 )
 
@@ -56,6 +57,7 @@ _SLOT_DEFS: dict[str, list[tuple[str, str]]] = {
     "Branch": [("action", "single"), ("branches", "branch")],
     "Retry": [("body", "single")],
     "LoopUntil": [("action", "single")],
+    "ForEach": [("body", "single")],
 }
 
 
@@ -426,6 +428,9 @@ def _attach_children(
     if kind == "LoopUntil":
         kids = child_map.get("action", [])
         return _set(node, action=kids[0][0] if kids else None)
+    if kind == "ForEach":
+        kids = child_map.get("body", [])
+        return _set(node, body=kids[0][0] if kids else None)
     return node
 
 
@@ -452,6 +457,62 @@ def _build_ir_node(
         return _function_call_ir(doc_id, nid, body, loc, issues), []
     if ntype == "Define":
         return _define_ir(doc_id, nid, body, loc, issues), []
+    if ntype == "ForEach":
+        raw_vars = body.get("variables")
+        variables: list[tuple[str, object]] = []
+        if not isinstance(raw_vars, dict) or not raw_vars:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"ForEach 需要非空 variables 映射（位于 {_path(doc_id, path)}）",
+                )
+            )
+        else:
+            for name, value in raw_vars.items():
+                if not isinstance(name, str) or not _ASCII_NAME.fullmatch(name):
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "syntax",
+                            "invalid_name",
+                            f"ForEach 变量名 {name!r} 必须是 ASCII 标识符"
+                            f"（位于 {_path(doc_id, path)}）",
+                        )
+                    )
+                    continue
+                variables.append((name, value))
+        on_failure = str(body.get("on_failure") or "continue").strip()
+        if on_failure not in ("continue", "abort"):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"ForEach.on_failure 必须是 continue/abort（位于 {_path(doc_id, path)}）",
+                )
+            )
+            on_failure = "continue"
+        body_id = _str_or_none(body.get("body"))
+        if not body_id:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "missing_field",
+                    f"ForEach 缺少必需字段 'body'（位于 {_path(doc_id, path)}）",
+                )
+            )
+        return (
+            IRNode(
+                kind="ForEach",
+                foreach_vars=tuple(variables),
+                on_failure=on_failure,
+                loc=loc,
+            ),
+            [_slot("body", body_id)],
+        )
     if ntype == "Root":
         return IRNode(kind="Root", loc=loc), [_slot("body", _str_or_none(body.get("body")))]
     if ntype == "Sequence":
@@ -1022,6 +1083,8 @@ def _with_children(node: IRNode, children: list[IRNode]) -> IRNode:
         args=node.args,
         kwargs=node.kwargs,
         returns=node.returns,
+        foreach_vars=node.foreach_vars,
+        on_failure=node.on_failure,
     )
 
 
@@ -1046,6 +1109,8 @@ def _set(node: IRNode, **kwargs) -> IRNode:
         args=node.args,
         kwargs=node.kwargs,
         returns=node.returns,
+        foreach_vars=node.foreach_vars,
+        on_failure=node.on_failure,
     )
 
 

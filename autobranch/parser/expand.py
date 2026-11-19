@@ -26,6 +26,7 @@ from autobranch.parser.models import (
     ConditionNode,
     DefineNode,
     FinishNode,
+    ForEachNode,
     FunctionCallNode,
     Loc,
     Node,
@@ -197,6 +198,29 @@ def _check_get_defined(
             if node.until is not None:
                 walk(node.until)
             walk(node.body)
+        elif isinstance(node, ForEachNode):
+            local = set(defined)
+            for name, value in node.variables:
+                for ref, loc in _collect_value_get_refs(value, node.loc):
+                    if ref not in defined:
+                        ctx.add_issue(
+                            "scope",
+                            "get_undeclared",
+                            f"ForEach 变量 '{name}' 读取的变量 '{ref}' 未定义",
+                            loc,
+                        )
+                local.add(name)
+            if node.body is not None:
+                walk_with_defined(node.body, local)
+
+    def walk_with_defined(node: Node, defined_names: set[str]) -> None:
+        nonlocal defined
+        previous = defined
+        defined = set(defined_names)
+        try:
+            walk(node)
+        finally:
+            defined = previous
 
     walk(tree)
 
@@ -233,6 +257,9 @@ def _collect_output_assignment_names_ir(node: Node) -> set[str]:
         if node.until is not None:
             names |= _collect_output_assignment_names_ir(node.until)
         names |= _collect_output_assignment_names_ir(node.body)
+    elif isinstance(node, ForEachNode):
+        if node.body is not None:
+            names |= _collect_output_assignment_names_ir(node.body)
     return names
 
 
@@ -308,7 +335,26 @@ def _collect_get_refs(node: IRNode | None) -> list[tuple[str, Loc | None]]:
     for sub in (node.action, node.condition, node.until, node.body):
         if sub is not None:
             refs.extend(_collect_get_refs(sub))
+    if node.kind == "ForEach":
+        for _name, value in node.foreach_vars:
+            refs.extend(_collect_value_get_refs(value, node.loc))
     return refs
+
+
+def _collect_value_get_refs(value: object, loc: Loc | None) -> list[tuple[str, Loc | None]]:
+    if isinstance(value, str):
+        return [(name, loc) for name in _iter_get_paths(value)]
+    if isinstance(value, list):
+        refs: list[tuple[str, Loc | None]] = []
+        for item in value:
+            refs.extend(_collect_value_get_refs(item, loc))
+        return refs
+    if isinstance(value, dict):
+        refs = []
+        for item in value.values():
+            refs.extend(_collect_value_get_refs(item, loc))
+        return refs
+    return []
 
 
 def _check_schema_path(ctx: ExpandContext, path_str: str, loc: Loc | None) -> None:
@@ -465,6 +511,20 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
         )
     if kind == "Define":
         return DefineNode(vars=node.vars, loc=node.loc)
+    if kind == "ForEach":
+        body = _expand_ir(
+            node.body or _empty_ir("Sequence", node.loc), ctx, depth + 1
+        )
+        for _name, value in node.foreach_vars:
+            if isinstance(value, str):
+                _scope_check_texts(ctx, node.loc, value)
+                _check_param_syntax(ctx, value, node.loc)
+        return ForEachNode(
+            variables=node.foreach_vars,
+            body=body,
+            on_failure=node.on_failure or "continue",
+            loc=node.loc,
+        )
     return SequenceNode(loc=node.loc)
 
 

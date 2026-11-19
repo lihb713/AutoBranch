@@ -24,7 +24,7 @@ class PageRef:
     url: str = ""
 
 
-Value: TypeAlias = str | int | float | bool | PageRef | None
+Value: TypeAlias = str | int | float | bool | PageRef | list | dict | None
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,8 @@ class SchemaFrame:
 
     :param id: 帧唯一标识（SchemaSpace 分配）。
     :param name: 文档名（帧名）。
-    :param parent: 父帧指针（根帧为 None）。
+    :param parent: 变量隔离/展示父帧指针（根帧为 None）。
+    :param config_parent: 配置继承父帧（跨 ref 保留调用方配置继承）。
     :param path_segments: 层级路径段（如 ``("T", "登录")``）。
     :param storage: 业务变量平铺存储（变量名 -> 值）。
     :param declared: 业务变量声明类型（变量名 -> 类型）。
@@ -71,6 +72,7 @@ class SchemaFrame:
     name: str
     parent: SchemaFrame | None
     path_segments: tuple[str, ...]
+    config_parent: SchemaFrame | None = None
     storage: dict[str, Value] = field(default_factory=dict)
     declared: dict[str, str] = field(default_factory=dict)
     config: dict[str, Value] = field(default_factory=dict)

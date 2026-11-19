@@ -30,6 +30,7 @@ export const REQUIRED_SLOT_FIELDS: Record<string, string[]> = {
   IfThenElse: ["then", "else"],
   Retry: ["body"],
   LoopUntil: ["action"],
+  ForEach: ["body"],
   Branch: ["action"],
   Root: ["body"],
   Sequence: [],
@@ -45,6 +46,7 @@ export const REQUIRED_SCALAR_FIELDS: Record<string, string[]> = {
   IfThenElse: ["if"],
   LoopUntil: ["until", "max"],
   Retry: ["max"],
+  ForEach: [],
   Branch: [],
   Root: [],
   Sequence: [],
@@ -251,6 +253,9 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
       if (!(n.fields[f] ?? "").trim()) {
         issues.push({ code: "missing_field", message: `节点「${n.name}」缺少必填字段 ${f}`, nodeId: n.id, field: f });
       }
+    }
+    if (n.type === "ForEach" && Object.keys(n.variables ?? {}).length === 0) {
+      issues.push({ code: "missing_field", message: `节点「${n.name}」缺少 ForEach 变量`, nodeId: n.id });
     }
     if (n.type === "Branch") {
       const branches = n.branches ?? [];

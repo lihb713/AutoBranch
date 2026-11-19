@@ -288,11 +288,34 @@ root: n1              # 根节点引用（必须指向 type: Root）
 | `Branch` | 先做前置操作，再按条件分流 | `action`（1）、`branches[].action` | `branches`（见下） |
 | `Retry` | 失败则重试，直到成功或到上限 | `body`（1） | `max`（最多轮数） |
 | `LoopUntil` | 每轮先判条件，满足则退出，否则执行循环体 | `action`（1） | `until`（条件）、`max` |
+| `ForEach` | 遍历列表变量逐轮执行子树 | `body`（1） | `variables`（名→值/JSON 数组）、`on_failure`（continue/abort） |
 | `Action` | 叶子：LLM 执行一个自然语言操作 | — | `description` |
 | `ref` | 叶子：调用另一份行为树文档 | — | `target`/`args`/`returns` |
 | `FunctionCall` | 叶子：确定性调用插件函数（不经 LLM） | — | `function`/`args`/`kwargs`/`returns` |
 
 **条件（Condition）没有独立类型**，内嵌为字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。条件也是 LLM 叶子（判断真/假）。
+
+**ForEach 示例**：
+
+```yaml
+n_foreach:
+  type: ForEach
+  name: 遍历环境
+  variables:
+    env_id: Param.env_ids      # 列表变量（JSON 数组字符串或数组值）
+    label: "固定值"             # 非列表变量，每轮同值
+  body: n_body
+  on_failure: continue         # continue 跳过失败轮；abort 立即失败
+
+n_collect:
+  type: FunctionCall
+  function: transform.append
+  args: [Param.results, Param.env_id]
+  returns: {results: str}
+```
+
+- ForEach 子帧中的 item 变量可被 body 内的 `Param.env_id` 读取。
+- `transform.append` 返回追加后的 JSON 数组字符串，用 `returns: {results: str}` 写回 `results`，可在循环中累积结果。
 
 **Branch 的 `branches` 写法**：
 
@@ -677,6 +700,21 @@ n15:
 
 FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: object}`。接收名默认自动生成（如 `n3_total`），类型取函数声明、用户不可编辑。
 
+### 10.2b 数据变换插件 `transform`
+
+| 函数 | 说明 |
+|---|---|
+| `get_path` / `get_index` / `get_key` | 按路径/索引/键读取嵌套值 |
+| `split` / `join` / `contains` / `index_of` / `replace` / `strip` | 字符串处理 |
+| `length` / `slice` / `keys` / `values` | 容器处理 |
+| `to_string` / `to_int` / `to_number` / `to_bool` | 类型转换 |
+| `json_parse` / `json_dumps` | JSON 转换 |
+| `regex_match` / `regex_extract` / `regex_findall` | 正则 |
+| `compare` | 通用比较 |
+| `append` / `dict_set` | 向列表追加 / 向字典设置 KV（ForEach 收集结果用） |
+
+> **ForEach 累积结果**：`transform.append` / `dict_set` 是产出型函数，返回完整 JSON 字符串；ForEach 成功轮会把 body 写入的变量回写父帧，因此可跨轮累积。
+
 ### 10.3 SSH 插件 `ssh`
 
 | 函数 | 参数 | 说明 |
@@ -893,10 +931,10 @@ autobranch/plugins/browser/proxy.config.json
 
 ## 15. 附录：快速参考
 
-- **节点类型**：`Root` `Sequence` `Step` `IfThenElse` `Branch` `Retry` `LoopUntil` `Action` `ref` `FunctionCall` `Define`
+- **节点类型**：`Root` `Sequence` `Step` `IfThenElse` `Branch` `Retry` `LoopUntil` `ForEach` `Action` `ref` `FunctionCall` `Define`
 - **变量**：`Param.x`（读） / `NewParam.x[:type]`（写，仅 Action 描述） / `returns` 键为裸 ASCII 名 / `Define` 声明变量 / 变量名仅 ASCII
 - **类型 token**：`str` `int` `float` `bool` `page_ref` `object`
-- **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / experience_*）
+- **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / scheduler_tick_seconds / timezone / experience_*）
 - **代理配置**：`autobranch/plugins/browser/proxy.config.json`
 - **内置插件**：`browser` `compute` `ssh` `file` `http` `vars` `transform`；函数全名 `插件名.函数名`
 - **端口**：后端 8001，前端 5174

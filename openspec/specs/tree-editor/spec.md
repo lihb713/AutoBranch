@@ -45,3 +45,12 @@ ref 节点的「目标文档」下拉 SHALL 支持输入过滤（行为树文档
 #### Scenario: 导入行为树
 - **WHEN** 用户选择 YAML 文件导入
 - **THEN** 系统解析树名并创建行为树，随后刷新列表
+
+
+### Requirement: ForEach 节点编辑
+
+前端编辑器 SHALL 支持 ForEach 节点：临时变量名/值行增删改、`on_failure` 选择、`body` 槽位；保存时校验至少一个变量与 body。
+
+#### Scenario: 编辑 ForEach
+- **WHEN** 用户添加 ForEach 节点并填写变量/body
+- **THEN** 文档保存为 `type: ForEach`，variables/on_failure/body 序列化正确

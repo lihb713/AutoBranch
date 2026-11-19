@@ -196,3 +196,16 @@ FunctionCall SHALL 支持位置参数 `args` 与命名参数 `kwargs`。`args` �
 
 - **WHEN** `kwargs` 指定了函数不存在的参数，或与位置参数重复
 - **THEN** 保存校验返回 422
+
+
+### Requirement: ForEach 节点
+
+行为树 SHALL 支持 `ForEach` 节点：`variables` 定义临时变量（列表值逐项取元素，非列表值每轮同值）、`body` 槽位、`on_failure`（continue/abort）。系统 SHALL 校验变量名、body 存在与策略合法；列表变量长度不一致时运行期失败。
+
+#### Scenario: 遍历列表
+- **WHEN** `variables.env_id` 是 `["a","b"]` 的列表值
+- **THEN** body 依次在临时子帧中执行 2 次，每轮 `Param.env_id` 分别为 a/b
+
+#### Scenario: 失败策略
+- **WHEN** 单轮 body 失败且 `on_failure=continue`
+- **THEN** 跳过该轮继续；`abort` 时立即返回失败

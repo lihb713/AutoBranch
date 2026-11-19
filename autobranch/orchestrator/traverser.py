@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -25,6 +26,7 @@ from autobranch.parser.models import (
     ConditionNode,
     DefineNode,
     FinishNode,
+    ForEachNode,
     FunctionCallNode,
     Node,
     RefNode,
@@ -152,6 +154,7 @@ class Traverser:
     def __init__(self, ctx: RunContext) -> None:
         self.ctx = ctx
         self._depth = 0
+        self._foreach_seq = 0
 
     # ------------------------------------------------------------ tick 契约
 
@@ -195,6 +198,8 @@ class Traverser:
             return self._tick_selector(node)
         if isinstance(node, RepeatNode):
             return self._tick_repeat(node)
+        if isinstance(node, ForEachNode):
+            return self._tick_for_each(node)
         if isinstance(node, FinishNode):
             return self._tick_finish(node)
         self._note_failure(node, f"未知节点类型: {type(node).__name__}")
@@ -247,6 +252,95 @@ class Traverser:
             if self.tick(node.body) == SUCCESS:
                 return SUCCESS
         return FAILURE
+
+    def _tick_for_each(self, node: ForEachNode) -> NodeStatus:
+        """ForEach：解析变量列表，逐项在临时子帧执行 body。
+
+        子帧复用同一作用域，便于子树用 collect 类函数跨迭代累积结果；
+        item 变量在循环结束后随子帧移除，对外部不可见。
+        """
+        space = self.ctx.space
+        if node.body is None:
+            self._note_failure(node, "ForEach 缺少 body 子节点")
+            return FAILURE
+        values: dict[str, object] = {}
+        list_names: list[str] = []
+        lengths: set[int] = set()
+        for name, raw in node.variables:
+            value = raw
+            if isinstance(raw, str):
+                evaluated = self._eval_arg(self.ctx.current_frame, raw)
+                if evaluated is not _MISSING:
+                    value = evaluated
+                elif _PARAM_REF.match(raw.strip()):
+                    self._note_failure(node, f"ForEach 变量 '{name}' 引用的变量未定义")
+                    return FAILURE
+            parsed = self._as_foreach_list(value)
+            values[name] = parsed if parsed is not None else value
+            if parsed is not None:
+                list_names.append(name)
+                lengths.add(len(parsed))
+        if len(lengths) > 1:
+            self._note_failure(node, f"ForEach 列表变量长度不一致: {sorted(lengths)}")
+            return FAILURE
+        count = next(iter(lengths)) if lengths else 1
+        if count == 0:
+            return SUCCESS
+
+        frame = None
+        self._foreach_seq += 1
+        frame_name = f"ForEach#{self._foreach_seq}"
+        parent = self.ctx.current_frame
+        previous_failure = self.ctx.failure_reason
+        try:
+            frame = space.enter_frame(frame_name, mount=parent)
+            for index in range(count):
+                for name, value in values.items():
+                    item = value[index] if name in list_names else value
+                    value_type = (
+                        "object"
+                        if item is None or isinstance(item, (list, dict, tuple))
+                        else infer_type(item)
+                    )
+                    space.write(frame, f"this/{name}", item, value_type)
+                status = self.tick(node.body)
+                if status == FAILURE:
+                    if node.on_failure == "abort":
+                        return FAILURE
+                    self.ctx.failure_reason = previous_failure
+                    continue
+                # 把 body 写入的非 item 变量回写父帧（支持 transform.append 累积结果）。
+                for name in list(frame.storage):
+                    if name in values:
+                        continue
+                    value = frame.storage[name]
+                    space.write(
+                        parent,
+                        f"this/{name}",
+                        value,
+                        frame.declared.get(name) or infer_type(value),
+                    )
+        finally:
+            if frame is not None:
+                space.exit_frame(frame)
+                if parent is not None:
+                    parent.children.pop(frame_name, None)
+        return SUCCESS
+
+    @staticmethod
+    def _as_foreach_list(value: object) -> list | None:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text or not text.startswith("["):
+                return None
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError):
+                return None
+            return parsed if isinstance(parsed, list) else None
+        return None
 
     def _tick_finish(self, node: FinishNode) -> NodeStatus:
         """Finish：完成/终止（报告节点，纯程序），恒为 SUCCESS。"""
@@ -484,7 +578,7 @@ class Traverser:
         # 3) 建子帧（注入 inputs/config）
         frame = None
         try:
-            frame = space.enter_frame(target, decl)
+            frame = space.enter_frame(target, decl, mount=space.root)
             for name, val in typed.items():
                 space.write(
                     frame, f"this/{name}", val, input_types.get(name, "") or infer_type(val)
@@ -569,7 +663,7 @@ class Traverser:
         m = _PARAM_REF.match((expr or "").strip())
         if m:
             var = m.group(1)
-            if var not in frame.storage:
+            if not self.ctx.space.has_variable(frame, var):
                 return _MISSING
             return self.ctx.space.read(frame, var)
         return _parse_literal(expr)

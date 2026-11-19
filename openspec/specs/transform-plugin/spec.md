@@ -29,3 +29,12 @@
 #### Scenario: 正则提取
 - **WHEN** 调用 `regex_extract("id=42", r"id=(\d+)", group=1)`
 - **THEN** 返回 `"42"`
+
+
+### Requirement: 结果累积
+
+`transform` SHALL 提供 `append(list_var, value)` 与 `dict_set(dict_var, key, value)` 产出型函数，返回完整 JSON 数组/对象字符串，供 ForEach 跨轮累积结果。
+
+#### Scenario: append 累积
+- **WHEN** 在 ForEach 中调用 append 并把返回写回父帧列表变量
+- **THEN** 每轮结果追加到列表
