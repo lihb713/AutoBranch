@@ -261,6 +261,7 @@ npm run test:e2e          # 端到端（需前后端已启动，部分用例需 
 ## 文档
 
 - `docs/contract.md`：行为树语言契约（节点/类型/校验/API 约定）与模块说明。
+- `docs/design-system.md`：前端设计令牌与组件视觉规范（颜色/间距/排版/表格/表单/弹窗）。
 - `docs/specs/`：M0–M10 各模块规格。
 - `openspec/specs/`：需求规格（spec-driven）；`openspec/changes/archive/` 为已归档变更。
 - `AGENTS.md`：面向 AI 助手的开发规范（测试/文档同步要求）。

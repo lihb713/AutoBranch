@@ -1,22 +1,166 @@
-.plugin-cards { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-.plugin-card { border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; background: #fff; }
-.plugin-card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-.plugin-name { font-weight: 600; font-size: 15px; }
-.plugin-desc { color: #6b7280; font-size: 13px; }
-.plugin-card-actions { display: flex; gap: 12px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-.tabs { display: flex; border-bottom: 1px solid #d1d5db; margin-bottom: 16px; }
-.tab { padding: 8px 16px; cursor: pointer; border: none; background: none; font: inherit; color: #6b7280; border-bottom: 2px solid transparent; }
-.tab--active { color: #111827; border-bottom-color: #2563eb; font-weight: 600; }
-.plugin-functions { display: flex; flex-direction: column; gap: 12px; }
-.plugin-function-card { border: 1px solid #d1d5db; border-radius: 6px; padding: 12px 16px; }
-.plugin-function-section { margin-top: 8px; }
-.plugin-function-label { font-weight: 600; margin-right: 8px; }
-.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog { background: #fff; border-radius: 8px; padding: 20px 24px; min-width: 400px; max-width: 600px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
-.dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.dialog-body { display: flex; flex-direction: column; gap: 12px; }
-.dialog-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.form-field { display: flex; flex-direction: column; gap: 4px; }
-.form-field label { font-size: 14px; font-weight: 500; }
-.required { color: #dc2626; }
-.form-field input { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font: inherit; }
+/* 插件管理页样式 —— 使用全局 design tokens，不引入独立视觉语言。 */
+
+.plugin-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.plugin-card {
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.plugin-card-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.plugin-name {
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plugin-desc {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.plugin-card-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: var(--space-4);
+  border-bottom: var(--border-width) solid var(--color-border);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab--active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.plugin-functions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.plugin-function-card {
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.plugin-function-section {
+  margin-top: var(--space-2);
+}
+
+.plugin-function-label {
+  margin-right: var(--space-2);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.dialog {
+  min-width: 400px;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: auto;
+  padding: var(--space-5);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.form-field label {
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+}
+
+.required {
+  color: var(--color-danger);
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  min-height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}

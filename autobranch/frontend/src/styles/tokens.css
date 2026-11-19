@@ -1,25 +1,68 @@
+/* AutoBranch Design Tokens — 单一视觉来源（4px 间距体系 / 统一色彩与层级）。 */
 :root {
-  --color-success: #2e7d32;
-  --color-success-bg: #e8f5e9;
-  --color-failure: #c62828;
-  --color-failure-bg: #ffebee;
-  --color-running: #1565c0;
-  --color-running-bg: #e3f2fd;
-  --color-text: #1f2937;
-  --color-muted: #6b7280;
-  --color-border: #d1d5db;
-  --color-bg: #f9fafb;
-  --color-surface: #ffffff;
+  /* Color */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
+  --color-primary-active: #1e40af;
+  --color-primary-soft: #eff6ff;
+  --color-text: #1f2937;
+  --color-text-inverse: #ffffff;
+  --color-muted: #6b7280;
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-bg: #f9fafb;
+  --color-bg-muted: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-success: #15803d;
+  --color-success-bg: #f0fdf4;
+  --color-failure: #b91c1c;
+  --color-failure-bg: #fef2f2;
+  --color-running: #1d4ed8;
+  --color-running-bg: #eff6ff;
+  --color-warning: #92400e;
+  --color-warning-bg: #fffbeb;
   --color-danger: #dc2626;
-  --radius: 6px;
+
+  /* Spacing — 4px/8px 倍数 */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-0: 0;
+
+  /* Typography */
+  --font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-size-xs: 12px;
   --font-size-sm: 12px;
+  --font-size-base: 14px;
   --font-size-md: 14px;
+  --font-size-16: 16px;
   --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Radius / shadow */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.16);
+
+  /* Controls */
+  --control-height: 36px;
+  --control-height-lg: 40px;
+  --border-width: 1px;
 }

@@ -44,9 +44,14 @@ export function RunInputDialog({ treeName, inputs, onConfirm, onCancel }: RunInp
   };
 
   return (
-    <div className="run-dialog" data-testid="run-input-dialog">
-      <p className="run-dialog__title">执行「{treeName}」——提供入参</p>
-      <form
+    <div className="modal-overlay" onMouseDown={onCancel}>
+      <div
+        className="run-dialog modal-panel"
+        data-testid="run-input-dialog"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <p className="run-dialog__title">执行「{treeName}」——提供入参</p>
+        <form
         onSubmit={(e) => {
           e.preventDefault();
           handleSubmit();
@@ -87,6 +92,7 @@ export function RunInputDialog({ treeName, inputs, onConfirm, onCancel }: RunInp
           </Button>
         </div>
       </form>
+      </div>
     </div>
   );
 }

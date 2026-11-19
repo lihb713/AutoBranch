@@ -1,6 +1,7 @@
 # 前端组件与状态管理规范
 
 > 适用范围：M9a 前端（React 18 + TypeScript + Vite）。契约依据 `docs/specs/M9a-frontend-ui.md`（行为树编辑器、执行报告页轮询）。
+> 视觉规范统一遵循 [`docs/design-system.md`](../../docs/design-system.md)：颜色/间距/字号/圆角/阴影只能使用 `src/styles/tokens.css` 中的 token。
 
 ## 1. 技术栈与目录约定
 
@@ -24,6 +25,12 @@ autobranch/frontend/
 - 文件命名：组件 `PascalCase.tsx`，hook `useCamelCase.ts`，测试同目录 `*.test.tsx`。
 
 ## 2. 组件书写规则
+
+### 2.0 视觉样式使用设计系统
+
+- 页面、按钮、表单、表格、卡片、弹窗、导航统一样式位于 `src/styles/design-system.css`，不要另起一套视觉语言。
+- 业务组件不得硬编码颜色（语义化节点类型色除外）、间距、圆角、阴影；统一使用 `--space-*` / `--color-*` / `--radius-*` / `--shadow-*`。
+- 新增弹窗使用 `.modal-overlay` + `.modal-panel`；新增表格使用 `.tree-table`；新增操作按钮优先使用 `components/Button.tsx`。
 
 ### 2.1 函数组件 + TypeScript props
 
