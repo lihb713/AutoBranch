@@ -42,7 +42,7 @@ SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等�
 
 ### Requirement: SSH 文件平台互通与输出清洗
 
-SSH 插件 SHALL 提供 `upload_file` / `download_file` 单文件互通，以及 `upload_dir` / `download_dir` 递归目录互通。直连模式 SHALL 使用 SFTP；跳板 shell 模式 SHALL 使用 base64（目录下载用 `find` 枚举）。SSH 命令/交互输出 SHALL 过滤 ANSI 转义序列。
+SSH 插件 SHALL 提供 `upload_file` / `download_file` 单文件互通，以及 `upload_dir` / `download_dir` 递归目录互通。直连模式 SHALL 使用 SFTP；跳板 shell 模式 SHALL 使用 base64（目录下载用 `find` 枚举）。SSH 命令/交互输出 SHALL 过滤 ANSI 转义序列；jump shell 非交互命令输出 SHALL 剔除末尾命令提示符行。
 
 #### Scenario: 从平台上传
 - **WHEN** 调用 `upload_file` 指定平台路径与远程路径
