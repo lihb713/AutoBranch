@@ -64,6 +64,8 @@ def node_type_name(node: Node) -> str:
         return "Selector"
     if isinstance(node, RepeatNode):
         return "Repeat"
+    if isinstance(node, ForEachNode):
+        return "ForEach"
     if isinstance(node, FinishNode):
         return "Finish"
     return type(node).__name__
@@ -77,6 +79,8 @@ def node_desc(node: Node) -> str:
         return f"{node.function}({', '.join(node.args)})"
     if isinstance(node, DefineNode):
         return f"Define({', '.join(name for name, _t, _v in node.vars)})"
+    if isinstance(node, ForEachNode):
+        return "ForEach(" + ", ".join(f"{name}={value}" for name, value in node.variables) + ")"
     return node_type_name(node)
 
 
@@ -155,6 +159,7 @@ class Traverser:
         self.ctx = ctx
         self._depth = 0
         self._foreach_seq = 0
+        self._meta_stack: list[dict] = []
 
     # ------------------------------------------------------------ tick 契约
 
@@ -167,6 +172,8 @@ class Traverser:
         """
         self._check_depth()
         self._depth += 1
+        started = time.monotonic()
+        self._meta_stack.append({})
         self._start_node(node)
         status: NodeStatus = FAILURE
         try:
@@ -176,8 +183,9 @@ class Traverser:
                 self._note_failure(node, f"运行期 schema 错误: {exc}")
                 status = FAILURE
         finally:
+            meta = self._meta_stack.pop()
             if not isinstance(node, (ActionNode, ConditionNode)):
-                self._record_node(node, status)
+                self._record_node(node, status, meta, started)
             self._depth -= 1
         return status
 
@@ -292,6 +300,12 @@ class Traverser:
         frame_name = f"ForEach#{self._foreach_seq}"
         parent = self.ctx.current_frame
         previous_failure = self.ctx.failure_reason
+        failed_iterations = 0
+        meta = self._meta_stack[-1] if self._meta_stack else {}
+        meta["details"] = {
+            "变量": {name: self._value_summary(value) for name, value in values.items()},
+            "迭代次数": count,
+        }
         try:
             frame = space.enter_frame(frame_name, mount=parent)
             for index in range(count):
@@ -305,6 +319,8 @@ class Traverser:
                     space.write(frame, f"this/{name}", item, value_type)
                 status = self.tick(node.body)
                 if status == FAILURE:
+                    failed_iterations += 1
+                    meta["details"]["失败迭代数"] = failed_iterations
                     if node.on_failure == "abort":
                         return FAILURE
                     self.ctx.failure_reason = previous_failure
@@ -350,6 +366,8 @@ class Traverser:
 
     def _tick_function_call(self, node: FunctionCallNode) -> NodeStatus:
         """FunctionCall 节点：确定性调用插件函数（不经 LLM），回收返回值。"""
+        meta = self._meta_stack[-1] if self._meta_stack else {}
+        meta["function"] = node.function
         registry = self.ctx.registry
         if registry is None:
             return (
@@ -403,13 +421,35 @@ class Traverser:
                 self._note_failure(node, f"缺少必填参数: {', '.join(missing)}")
                 or FAILURE
             )
-        result = registry.call(node.function, args, runtime=self.ctx.runtime)
+        meta["arguments"] = dict(args)
+        meta["kwargs"] = {
+            name: args[name]
+            for name, _raw in (node.kwargs or ())
+            if name in args
+        }
+        try:
+            result = registry.call(node.function, args, runtime=self.ctx.runtime)
+        except Exception as exc:  # noqa: BLE001
+            import traceback
+
+            detail = traceback.format_exc()
+            meta["failure_reason"] = f"函数 {node.function} 执行异常: {exc}\n{detail}"
+            return self._note_failure(
+                node, f"函数 {node.function} 执行异常: {exc}"
+            ) or FAILURE
         if not result.ok:
-            return self._note_failure(node, f"函数 {node.function} 失败: {result.error}") or FAILURE
+            error = result.error or "函数执行失败"
+            traceback_text = (result.detail or {}).get("traceback")
+            meta["failure_reason"] = (
+                f"{error}\n{traceback_text}" if traceback_text else error
+            )
+            return self._note_failure(node, f"函数 {node.function} 失败: {error}") or FAILURE
+        outputs: dict[str, object] = {}
         for i, (recv, typ) in enumerate(node.returns):
             if i >= len(result.values):
                 break
             value = result.values[i]
+            outputs[recv] = value
             declared = (
                 frame.declared.get(recv) or frame.outputs.get(recv) or frame.inputs.get(recv)
             )
@@ -418,12 +458,16 @@ class Traverser:
                     frame, f"this/{recv}", value, declared or typ or infer_type(value)
                 )
             except SchemaError as exc:
+                meta["failure_reason"] = f"返回值写入变量 '{recv}' 失败: {exc}"
                 return self._note_failure(node, f"返回值写入变量 '{recv}' 失败: {exc}") or FAILURE
+        meta["returns"] = outputs
         return SUCCESS
 
     def _tick_define(self, node: DefineNode) -> NodeStatus:
         """Define 节点：确定性创建变量（值可 `Param.x` 读当前帧 / 字面量，coerce 后写帧）。"""
         frame = self.ctx.current_frame
+        meta = self._meta_stack[-1] if self._meta_stack else {}
+        defined: dict[str, object] = {}
         for name, type_name, expr in node.vars:
             value = self._eval_arg(frame, expr or "")
             if value is _MISSING:
@@ -444,8 +488,10 @@ class Traverser:
                 )
             try:
                 self.ctx.space.write(frame, f"this/{name}", value, type_name)
+                defined[name] = value
             except SchemaError as exc:
                 return self._note_failure(node, f"Define 变量 '{name}' 写入失败: {exc}") or FAILURE
+        meta["details"] = {"变量": defined}
         return SUCCESS
 
     def _tick_leaf(self, node: ActionNode | ConditionNode) -> NodeStatus:
@@ -480,9 +526,14 @@ class Traverser:
             if not screenshot_path and result.screenshots:
                 # 兜底：无当前页时用浏览器插件 semantic_graph 产出的截图
                 screenshot_path = self._report_rel_path(result.screenshots[0])
+        failure_reason = (
+            _leaf_failure_text(node_type, result, timed_out, timeout)
+            if status == FAILURE
+            else None
+        )
         report = NodeReport(
             node_type=node_type,
-            node_desc=node.description,
+            node_desc=self._describe_with_values(node, node.description),
             result="success" if status == SUCCESS else "failure",
             timestamp=_now_iso(),
             action_call=_primary_action_call(node, result),
@@ -490,6 +541,8 @@ class Traverser:
             page_url=page_url,
             screenshot_path=screenshot_path or None,
             llm_trace=result.trace,
+            duration=round(elapsed, 3),
+            failure_reason=failure_reason,
         )
         self.ctx.reporter.record_node(report)
         return status
@@ -548,6 +601,8 @@ class Traverser:
         child_tree, decl = loaded
         space = self.ctx.space
         parent = self.ctx.current_frame
+        meta = self._meta_stack[-1] if self._meta_stack else {}
+        meta["details"] = {"target": target}
         input_types = dict(decl.inputs) if decl else {}
         input_names = list(input_types)
         # 2) 求值 args（按序对应 inputs）：变量读父帧；非变量按字面量
@@ -570,6 +625,7 @@ class Traverser:
                     or FAILURE
                 )
             args_values[name] = val
+        meta["arguments"] = dict(args_values)
         # coerce 到输入类型
         typed: dict[str, object] = {}
         for name, val in args_values.items():
@@ -588,11 +644,13 @@ class Traverser:
             # 5) SUCCESS → returns 回收写父帧（按序对应 outputs）
             if status == SUCCESS:
                 out_names = list(decl.outputs) if decl else []
+                outputs: dict[str, object] = {}
                 for i, (recv_name, _typ) in enumerate(node.returns):
                     if i >= len(out_names):
                         continue
                     value = space.read(frame, f"this/{out_names[i]}")  # 子帧读输出
                     if value is not None:
+                        outputs[recv_name] = value
                         declared = (
                             parent.declared.get(recv_name)
                             or parent.outputs.get(recv_name)
@@ -604,6 +662,7 @@ class Traverser:
                             value,
                             declared or _typ or infer_type(value),
                         )
+                meta["returns"] = outputs
         finally:
             if frame is not None:
                 # 6) 退出子帧（数据保留至 run 结束）
@@ -660,13 +719,27 @@ class Traverser:
         """求值实参表达式：``Param.<名>`` → 读当前帧变量（未定义返回 ``_MISSING`` 哨兵）；
         其余一律按字面量解析（``_parse_literal``）。消除旧版"裸名命中变量否则字面量"的二义性。
         """
-        m = _PARAM_REF.match((expr or "").strip())
+        text = expr or ""
+        m = _PARAM_REF.fullmatch(text.strip())
         if m:
             var = m.group(1)
             if not self.ctx.space.has_variable(frame, var):
                 return _MISSING
             return self.ctx.space.read(frame, var)
-        return _parse_literal(expr)
+        if not _PARAM_REF.search(text):
+            return _parse_literal(text)
+        missing = False
+
+        def _replace(match: re.Match) -> str:
+            nonlocal missing
+            var = match.group(1)
+            if not self.ctx.space.has_variable(frame, var):
+                missing = True
+                return match.group(0)
+            return self._value_summary(self.ctx.space.read(frame, var))
+
+        replaced = _PARAM_REF.sub(_replace, text)
+        return _MISSING if missing else replaced
 
     # ------------------------------------------------------------ 报告与状态
 
@@ -675,15 +748,47 @@ class Traverser:
             NodeInfo(node_type=node_type_name(node), node_desc=node_desc(node))
         )
 
-    def _record_node(self, node: Node, status: NodeStatus) -> None:
+    def _record_node(
+        self, node: Node, status: NodeStatus, meta: dict, started: float
+    ) -> None:
+        failure_reason = meta.get("failure_reason")
+        if status == FAILURE and not failure_reason:
+            failure_reason = self.ctx.failure_reason
         self.ctx.reporter.record_node(
             NodeReport(
                 node_type=node_type_name(node),
-                node_desc=node_desc(node),
+                node_desc=self._describe_with_values(node, node_desc(node)),
                 result="success" if status == SUCCESS else "failure",
                 timestamp=_now_iso(),
+                duration=round(time.monotonic() - started, 3),
+                failure_reason=failure_reason,
+                function=meta.get("function"),
+                arguments=meta.get("arguments"),
+                kwargs=meta.get("kwargs"),
+                returns=meta.get("returns"),
+                details=meta.get("details"),
             )
         )
+
+    def _describe_with_values(self, node: Node, text: str) -> str:
+        if not isinstance(node, (ActionNode, ConditionNode)) or not text:
+            return text
+        frame = self.ctx.current_frame
+        if frame is None or self.ctx.space is None:
+            return text
+
+        def _replace(match: re.Match) -> str:
+            var = match.group(1)
+            if not self.ctx.space.has_variable(frame, var):
+                return match.group(0)
+            return f"Param.{var} ({self._value_summary(self.ctx.space.read(frame, var))})"
+
+        return _PARAM_REF.sub(_replace, text)
+
+    @staticmethod
+    def _value_summary(value: object, limit: int = 200) -> str:
+        text = str(value)
+        return text if len(text) <= limit else text[:limit] + "…"
 
     def _note_failure(self, node: Node, text: str) -> None:
         """记录首个失败节点描述（根统一终止时的失败原因，指向失败叶子）。"""

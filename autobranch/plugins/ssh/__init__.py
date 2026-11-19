@@ -28,11 +28,22 @@ from autobranch.plugin_system import FunctionResult, PluginBase, engine_function
 _ANSI_RE = re.compile(
     r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
 )
+_PROMPT_LINE_RE = re.compile(
+    r"^(?:\[[^\]]+\][#$>]|[^\s@]+@[^\s]+[:~][^\s]*[#$>])\s*$"
+)
 
 
 def strip_ansi(text: str) -> str:
     """移除常见 ANSI CSI/OSC 转义序列（终端颜色/控制码）。"""
     return _ANSI_RE.sub("", text)
+
+
+def strip_shell_prompt(text: str) -> str:
+    """移除 jump shell 输出末尾常见的交互提示符行。"""
+    lines = strip_ansi(text).splitlines()
+    while lines and _PROMPT_LINE_RE.match(lines[-1].strip()):
+        lines.pop()
+    return "\n".join(lines)
 
 
 def _params(required: tuple[str, ...], **props: dict) -> dict:
@@ -997,7 +1008,7 @@ class SSHPlugin(PluginBase):
                 if start_index < 0:
                     continue
                 output = buffer[start_index + len(start_marker) : match.start()]
-                output = strip_ansi(output.lstrip("\r\n").rstrip("\r\n"))
+                output = strip_shell_prompt(output.lstrip("\r\n").rstrip("\r\n"))
                 conn.jump_buffer = ""
                 code = int(match.group(1))
                 if code != 0:

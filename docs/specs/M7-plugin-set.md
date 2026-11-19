@@ -68,7 +68,7 @@
   - 跳板机模式：非交互命令通过唯一标记（start/exit）分割目标 PTY shell 输出并解析退出码；交互命令使用 `channel_id="jump-shell"`。
 - 交互：`ssh_send(session, channel_id, data, newline?)`、`ssh_read(session, channel_id, idle_timeout?)`、`ssh_close_channel`。
 - 文件平台联动：`upload_file` / `download_file` 单文件互通；`upload_dir` / `download_dir` 递归目录互通；直连用 SFTP，jump shell 用 base64（目录下载用 `find` 枚举）。
-- SSH stdout/stderr/交互输出 SHALL 过滤 ANSI 转义序列（颜色/控制码）。
+- SSH stdout/stderr/交互输出 SHALL 过滤 ANSI 转义序列（颜色/控制码）；jump shell 非交互命令输出 SHALL 剔除末尾命令提示符行。
 - `close_session` / `release` 关闭目标、跳板与全部通道。
 - 依赖 `paramiko` + `PySocks`（pyproject 依赖）。
 

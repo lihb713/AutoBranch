@@ -72,6 +72,14 @@ def serialize_outputs(outputs: dict[str, object]) -> dict[str, object]:
     return {name: _json_safe_output(value) for name, value in outputs.items()}
 
 
+def _json_safe_nested(value: object) -> object:
+    if isinstance(value, dict):
+        return {str(key): _json_safe_nested(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_nested(item) for item in value]
+    return _json_safe_output(value)
+
+
 #: 蒸馏时剔除的运行时标识参数（ref 编号、语义图坐标等，页面一变即失效）。
 _RUNTIME_REF_KEYS = frozenset({"ref"})
 _COORD_KEYS = frozenset({"scope", "dom_path"})
@@ -660,6 +668,13 @@ def _node_report_out(report: NodeReport) -> NodeReportOut:
         condition_result=report.condition_result,
         page_url=report.page_url,
         screenshot_path=report.screenshot_path,
+        duration=report.duration,
+        failure_reason=report.failure_reason,
+        function=report.function,
+        arguments=_json_safe_nested(report.arguments) if report.arguments else report.arguments,
+        kwargs=_json_safe_nested(report.kwargs) if report.kwargs else report.kwargs,
+        returns=_json_safe_nested(report.returns) if report.returns else report.returns,
+        details=_json_safe_nested(report.details) if report.details else report.details,
     )
 
 

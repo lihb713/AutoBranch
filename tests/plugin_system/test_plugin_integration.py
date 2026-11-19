@@ -56,6 +56,37 @@ def test_function_call_node_tick_compute():
     status = Traverser(ctx).tick(node)
     assert status == "success"
     assert space.read(frame, "结果") == 6
+    report = ctx.reporter.reports[-1]
+    assert report.function == "compute.multiply"
+    assert report.arguments == {"a": 2, "b": 3}
+    assert report.returns == {"结果": 6}
+    assert report.duration is not None
+
+
+def test_function_call_substitutes_embedded_param_text():
+    from autobranch.plugins.transform import TransformPlugin
+
+    reg = PluginRegistry()
+    reg.register(TransformPlugin())
+    space = SchemaSpace()
+    frame = space.enter_frame("t", None)
+    space.write(frame, "prefix", "x", "str")
+    ctx = RunContext(
+        config=RunConfig(),
+        space=space,
+        reporter=_FakeReporter(),
+        browser=None,
+        leaf_executor=lambda n, t: None,
+        registry=reg,
+        runtime=PluginRuntime(),
+    )
+    node = FunctionCallNode(
+        function="transform.split",
+        args=("Param.prefix,a", ","),
+        returns=(("parts", "object"),),
+    )
+    assert Traverser(ctx).tick(node) == "success"
+    assert space.read(frame, "parts") == ["x", "a"]
 
 
 def test_function_call_node_passes_optional_args():

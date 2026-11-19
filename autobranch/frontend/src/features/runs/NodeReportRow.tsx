@@ -26,14 +26,29 @@ export function NodeReportRow({ report }: { report: NodeReport }) {
       </div>
       <div className="report-node__meta">
         <span>{report.timestamp}</span>
+        {report.duration != null ? <span> · 耗时: {report.duration}s</span> : null}
         {report.condition_result !== null ? (
           <span> · 条件结果: {String(report.condition_result)}</span>
         ) : null}
         {report.action_call ? (
           <span> · 调用: {report.action_call.function}</span>
         ) : null}
+        {report.function ? <span> · 函数: {report.function}</span> : null}
         {report.page_url ? <span> · URL: {report.page_url}</span> : null}
       </div>
+      {report.arguments || report.kwargs || report.returns || report.details ? (
+        <div className="report-node__io">
+          {report.arguments ? <div>入参: {JSON.stringify(report.arguments)}</div> : null}
+          {report.kwargs ? <div>命名参数: {JSON.stringify(report.kwargs)}</div> : null}
+          {report.returns ? <div>出参: {JSON.stringify(report.returns)}</div> : null}
+          {report.details ? <div>详情: {JSON.stringify(report.details)}</div> : null}
+        </div>
+      ) : null}
+      {report.failure_reason ? (
+        <div className="report-node__failure" data-testid="node-failure-reason">
+          {report.failure_reason}
+        </div>
+      ) : null}
       {shotPath ? (
         <Screenshot src={runsApi.getReportFile(shotPath)} alt={`${report.node_type} 截图`} />
       ) : null}

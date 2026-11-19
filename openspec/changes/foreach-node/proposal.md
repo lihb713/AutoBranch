@@ -8,7 +8,10 @@
 - 新增运行时 `ForEachNode` 与 `_tick_for_each`：临时子帧执行、列表长度校验、失败策略、结果累积。
 - `SchemaSpace` 增加向上读取、`enter_frame(mount=...)`、调用栈恢复；Ref 帧挂 root，ForEach 子帧挂当前树帧。
 - `transform` 增加 `append` / `dict_set` 产出型函数（ForEach 累积结果）。
-- 前端新增 ForEach 节点编辑（变量行、失败策略、循环体槽位）。
+- 前端新增 ForEach 节点编辑（变量行、失败策略、循环体槽位），修复 on_failure 前端 camelCase/后端 snake_case 同步。
+- FunctionCall args 支持 `Param.x` 文本子串替换。
+- 报告增强：NodeReport 记录耗时/失败原因/FunctionCall 入出参/ForEach 详情，回溯报告增加 LLM 推理区块与变量值摘要。
+- SSH jump shell 输出过滤命令提示符。
 
 ## Impact
 

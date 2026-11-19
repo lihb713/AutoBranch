@@ -179,7 +179,11 @@ class _FakeShell:
                 self._chunks.append(
                     b"\n__AB_START_" + token.encode() + b"__\n"
                     + output
-                    + b"\n\n__AB_EXIT_" + token.encode() + b"__" + str(code).encode() + b"\n"
+                    + b"\n[opsadmin@host ~]$\n\n__AB_EXIT_"
+                    + token.encode()
+                    + b"__"
+                    + str(code).encode()
+                    + b"\n"
                 )
         elif "bash" in text:
             self._chunks.append(b"$ ")

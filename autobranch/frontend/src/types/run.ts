@@ -19,6 +19,13 @@ export type NodeReport = {
   condition_result: boolean | null;
   page_url: string | null;
   screenshot_path: string | null;
+  duration?: number | null;
+  failure_reason?: string | null;
+  function?: string | null;
+  arguments?: Record<string, unknown> | null;
+  kwargs?: Record<string, unknown> | null;
+  returns?: Record<string, unknown> | null;
+  details?: Record<string, unknown> | null;
 };
 
 export type BlackboardVar = {

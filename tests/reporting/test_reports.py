@@ -14,7 +14,7 @@ from reporting.factories import (
 )
 
 from autobranch.reporting import Reporter
-from autobranch.reporting.models import ActionCall
+from autobranch.reporting.models import ActionCall, NodeReport
 
 
 class TestExecReport:
@@ -63,6 +63,29 @@ class TestExecReport:
         assert "LLM 推理过程" not in text
         assert "LLM 决策结果" not in text
         assert "semantic_graph" not in text
+
+    def test_exec_report_function_call_io_and_failure(self, tmp_path):
+        reporter = Reporter("run-1", str(tmp_path))
+        reporter.record_node(
+            NodeReport(
+                node_type="FunctionCall",
+                node_desc="transform.append(Param.results, Param.item)",
+                result="failure",
+                timestamp=TIMESTAMP,
+                duration=0.123,
+                failure_reason="函数 transform.append 失败: boom",
+                function="transform.append",
+                arguments={"list_var": "[]", "value": "x"},
+                kwargs={"save_to": "results"},
+                returns=None,
+                details={"变量": {"item": "x"}},
+            )
+        )
+        text = reporter.finalize().exec_report.text
+        assert "函数: transform.append" in text
+        assert "入参:" in text and "命名参数:" in text and "出参:" in text
+        assert "耗时: 0.123s" in text
+        assert "失败原因:" in text and "boom" in text
 
     def test_exec_report_no_screenshot_line_for_composite(self, tmp_path):
         reporter = Reporter("run-1", str(tmp_path))

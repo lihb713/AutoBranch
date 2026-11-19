@@ -67,6 +67,7 @@ export function PropertyPanel({
 }: PropertyPanelProps) {
   const [cycleError, setCycleError] = useState("");
   const [functions, setFunctions] = useState<FunctionInfo[]>([]);
+  const [localOnFailure, setLocalOnFailure] = useState<string | null>(null);
 
   useEffect(() => {
     pluginsApi
@@ -74,6 +75,10 @@ export function PropertyPanel({
       .then(setFunctions)
       .catch(() => setFunctions([]));
   }, []);
+
+  useEffect(() => {
+    setLocalOnFailure(null);
+  }, [node?.id, node?.onFailure]);
 
   if (!node) {
     return (
@@ -535,10 +540,13 @@ export function PropertyPanel({
           <span className="text-field__label">on_failure</span>
           <select
             className="text-field__input"
-            value={node.onFailure ?? "continue"}
+            value={localOnFailure ?? node.onFailure ?? "continue"}
             disabled={readonly}
             data-testid="foreach-on-failure"
-            onChange={(e) => updateNode({ onFailure: e.target.value })}
+            onChange={(e) => {
+              setLocalOnFailure(e.target.value);
+              onPatchNode(node.id, { on_failure: e.target.value } as Partial<TreeNode>);
+            }}
           >
             <option value="continue">continue（跳过失败继续）</option>
             <option value="abort">abort（立即停止）</option>

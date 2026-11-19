@@ -66,6 +66,7 @@ const DIRECT_KEYS = new Set([
   "vars",
   "variables",
   "onFailure",
+  "on_failure",
 ]);
 
 function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>): TreeDoc {
@@ -74,7 +75,9 @@ function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>):
   const next: TreeNode = { ...node, fields: { ...node.fields } };
   const target = next as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
-    if (DIRECT_KEYS.has(key)) {
+    if (key === "on_failure") {
+      next.onFailure = String(value ?? "continue");
+    } else if (DIRECT_KEYS.has(key)) {
       target[key] = value;
     } else {
       next.fields[key] = String(value ?? "");

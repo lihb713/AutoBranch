@@ -73,6 +73,13 @@ class NodeReport:
     :param screenshot_path: Action/Condition 专有，引用截图文件路径而非内嵌数据
       （设计决策 4）；截图失败为空串。
     :param llm_trace: 回溯报告专用；未调用 LLM 的节点为 ``None``。
+    :param duration: 节点执行耗时（秒）。
+    :param failure_reason: 节点失败原因（成功为空）。
+    :param function: FunctionCall 函数名。
+    :param arguments: FunctionCall 位置入参实际值。
+    :param kwargs: FunctionCall 命名入参实际值。
+    :param returns: FunctionCall 实际出参。
+    :param details: 其他节点结构化详情（如 ForEach 变量/迭代次数）。
     """
 
     node_type: str
@@ -84,6 +91,13 @@ class NodeReport:
     page_url: str | None = None
     screenshot_path: str | None = None
     llm_trace: LeafTrace | None = None
+    duration: float | None = None
+    failure_reason: str | None = None
+    function: str | None = None
+    arguments: dict[str, Any] | None = None
+    kwargs: dict[str, Any] | None = None
+    returns: dict[str, Any] | None = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

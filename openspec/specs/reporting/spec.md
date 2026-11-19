@@ -159,3 +159,20 @@
 #### Scenario: 截图由浏览器插件产出
 - **WHEN** 调用 `semantic_graph`
 - **THEN** 浏览器插件截图并写入报告；非浏览器操作不产生截图
+
+
+### Requirement: 节点详情与回溯区块
+
+NodeReport SHALL 记录节点耗时、失败原因与结构化调用详情：FunctionCall 记录函数名/实际 args/kwargs/returns；ForEach 记录变量/迭代次数/失败迭代数；Action/Condition 的 `Param.x` 描述 SHALL 附实际值摘要。执行报告 SHALL 展示上述详情；回溯报告 SHALL = 执行报告内容 + 明显的 LLM 推理区块（输入/推理/工具调用/决策/终止条件），纯 FunctionCall 树回溯报告内容与执行报告一致（除标题/截图差异）。
+
+#### Scenario: FunctionCall 详情
+- **WHEN** FunctionCall 节点执行成功或失败
+- **THEN** 节点报告包含函数名、实际参数、出参与失败原因
+
+#### Scenario: 回溯推理区块
+- **WHEN** 叶子调用 LLM
+- **THEN** 回溯报告用分隔线与节点标题突出 LLM 推理区块
+
+#### Scenario: 变量值摘要
+- **WHEN** Action 描述包含 `Param.x`
+- **THEN** 报告中显示 `Param.x` 后附实际值摘要

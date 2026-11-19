@@ -7,4 +7,7 @@
 - [x] 1.5 transform.append / dict_set
 - [x] 2.1 前端 ForEach 节点编辑与校验
 - [x] 3.1 解析/编排/Schema/前端测试
-- [x] 3.2 docs/README/OpenSpec 同步
+- [x] 3.2 FunctionCall args 支持 Param.x 文本子串替换
+- [x] 3.3 NodeReport 详情/失败原因/变量值摘要与回溯 LLM 区块
+- [x] 3.4 SSH jump shell 提示符过滤
+- [x] 3.5 docs/README/OpenSpec 同步

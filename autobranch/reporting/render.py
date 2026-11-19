@@ -54,10 +54,31 @@ def _common_detail_lines(report: NodeReport) -> list[str]:
         f"    节点描述: {report.node_desc}",
         f"    结果: {_result_label(report.result)}",
     ]
+    if report.duration is not None:
+        lines.append(f"    耗时: {report.duration}s")
+    if report.function:
+        lines.append(f"    函数: {report.function}")
+        lines.append(f"    入参: {report.arguments if report.arguments is not None else '-'}")
+        if report.kwargs:
+            lines.append(f"    命名参数: {report.kwargs}")
+        lines.append(f"    出参: {report.returns if report.returns is not None else '-'}")
+    else:
+        if report.arguments is not None:
+            lines.append(f"    入参: {report.arguments}")
+        if report.kwargs:
+            lines.append(f"    命名参数: {report.kwargs}")
+        if report.returns is not None:
+            lines.append(f"    出参: {report.returns}")
+    if report.details:
+        lines.append(f"    详情: {report.details}")
     if report.action_call is not None:
         lines.append(f"    {_action_call_line(report.action_call)}")
     if report.condition_result is not None:
         lines.append(f"    {_condition_line(report.condition_result)}")
+    if report.failure_reason:
+        lines.append("    失败原因:")
+        for line in str(report.failure_reason).splitlines():
+            lines.append(f"      {line}")
     lines.append(f"    时间: {report.timestamp}")
     lines.append(f"    URL: {report.page_url or '-'}")
     return lines
@@ -82,24 +103,33 @@ def render_exec_report(run_id: str, reports: list[NodeReport]) -> str:
     return "\n".join(lines)
 
 
-def _trace_lines(trace: LeafTrace) -> list[str]:
-    lines = ["    LLM 输入:"]
+def _trace_lines(trace: LeafTrace, index: int, header: str) -> list[str]:
+    sep = "=" * 64
+    lines = [
+        f"    {sep}",
+        f"    LLM 推理过程 — 节点 [{index}] {header}",
+        f"    {sep}",
+        "    [输入] LLM 输入:",
+    ]
     for key, value in trace.llm_input.items():
         lines.append(f"      {key}: {value}")
+    lines.append("    LLM 推理过程:")
     if trace.llm_reasoning:
-        lines.append("    LLM 推理过程:")
         for step in trace.llm_reasoning:
             lines.append(f"      - {step}")
-    if trace.decision:
-        lines.append(f"    LLM 决策结果: {trace.decision}")
+    else:
+        lines.append("      （无）")
     if trace.calls:
-        lines.append("    工具调用序列:")
+        lines.append("    [工具调用] 工具调用序列:")
         for call in trace.calls:
             outcome = "" if call.success is None else ("成功" if call.success else "失败")
             tail = f" → {call.result}" if call.result else ""
             lines.append(f"      - {call.name}（{outcome}）{tail}")
+    if trace.decision:
+        lines.append(f"    [决策] LLM 决策结果: {trace.decision}")
     if trace.terminator:
         lines.append(f"    终止条件: {trace.terminator}")
+    lines.append(f"    {sep}")
     return lines
 
 
@@ -107,9 +137,10 @@ def render_trace_report(run_id: str, reports: list[NodeReport]) -> str:
     """报告②：执行详情 + LLM 推理，不含任何截图字段。"""
     lines = ["# 回溯报告", f"运行标识: {run_id}", f"节点数: {len(reports)}", _SEP]
     for index, report in enumerate(reports, start=1):
-        lines.append(_node_header(index, report))
+        header = _node_header(index, report)
+        lines.append(header)
         lines.extend(_common_detail_lines(report))
         if report.llm_trace is not None:
-            lines.extend(_trace_lines(report.llm_trace))
+            lines.extend(_trace_lines(report.llm_trace, index, header))
         lines.append(_SEP)
     return "\n".join(lines)

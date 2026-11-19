@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -285,7 +286,10 @@ class PluginBase:
         except TypeError as exc:
             return FunctionResult.failure(f"函数 {name} 参数错误: {exc}")
         except Exception as exc:  # noqa: BLE001 - agent 语义：异常转失败结果
-            return FunctionResult.failure(f"函数 {name} 执行异常: {exc}")
+            return FunctionResult.failure(
+                f"函数 {name} 执行异常: {exc}",
+                traceback=traceback.format_exc(),
+            )
         return _wrap_result(raw)
 
 

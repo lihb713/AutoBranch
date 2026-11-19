@@ -90,6 +90,13 @@ class NodeReportOut(BaseModel):
     condition_result: bool | None = None
     page_url: str | None = None
     screenshot_path: str | None = None
+    duration: float | None = None
+    failure_reason: str | None = None
+    function: str | None = None
+    arguments: dict | None = None
+    kwargs: dict | None = None
+    returns: dict | None = None
+    details: dict | None = None
 
 
 class ExecStateOut(BaseModel):

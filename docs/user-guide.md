@@ -618,8 +618,8 @@ n15:
 
 | 报告 | 内容 |
 |---|---|
-| **执行报告**（exec_report） | 每个节点的类型/描述/结果、函数调用、判断结果、时间、页面 URL、**浏览器节点的执行后页面截图**（纯计算节点无截图） |
-| **回溯报告**（trace_report） | 每个节点的 LLM 输入、**推理过程**、**工具调用序列**（函数/参数/结果）、最终决策、终止条件 |
+| **执行报告**（exec_report） | 每个节点的类型/描述/结果/失败原因/耗时/时间/URL；FunctionCall 打印函数名与实际 args/kwargs/returns；ForEach 打印变量/迭代次数/失败迭代数；**浏览器节点的执行后页面截图** |
+| **回溯报告**（trace_report） | 执行报告的全部内容 + 明显的 LLM 推理区块（输入/推理过程/工具调用序列/决策/终止条件）；纯 FunctionCall 树无 LLM 推理时与执行报告内容一致（除标题/截图差异） |
 
 看"为什么这么走"，看回溯报告；看"结果如何"，看执行报告。
 
@@ -732,7 +732,7 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 
 - **代理/跳板**：`proxy={host, port, user?, pwd?}` 为 SOCKS5；`jump={host, port?, user?, pwd?, key?, proxy?}`。有 jump 时 proxy 只用于连跳板机；跳板机到目标机改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁止 direct-tcpip 的环境），因此目标认证需提供 `pwd`。
 - **跳板交互**：非交互命令通过唯一标记分割输出并解析退出码；交互命令返回 `channel_id="jump-shell"`，`ssh_send`/`ssh_read` 直接操作目标 shell。
-- **ANSI 过滤**：SSH 输出会移除颜色/控制转义序列；文件传输使用平台路径（直连 SFTP，跳板模式 base64）。
+- **ANSI 过滤**：SSH 输出会移除颜色/控制转义序列；跳板 shell 非交互命令输出会剔除末尾命令提示符行；文件传输使用平台路径（直连 SFTP，跳板模式 base64）。
 - **非交互**：自动等待 exit-status，能判断命令结束与退出码；非零退出码为失败。
 - **交互**：`interactive=true` 使用 PTY，`ssh_exec` 在 idle_timeout 无输出后返回当前输出和 `channel_id`；随后用 `ssh_send`/`ssh_read` 像终端一样交互，由使用方判断何时结束。
 - 依赖 `paramiko` + `PySocks`（`pip install -e .` 会安装；未安装时调用返回明确错误）。

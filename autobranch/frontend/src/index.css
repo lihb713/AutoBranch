@@ -457,6 +457,24 @@ body {
   font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
+.report-node__io {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--color-bg-muted);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+.report-node__failure {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--color-failure-bg);
+  color: var(--color-failure);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
 
 .screenshot {
   max-width: 320px;

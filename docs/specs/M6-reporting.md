@@ -67,6 +67,13 @@ class NodeReport:
     page_url: str | None
     screenshot_path: str | None     # Action/Condition 专有
     llm_trace: LeafTrace | None     # 回溯报告专用
+    duration: float | None
+    failure_reason: str | None
+    function: str | None
+    arguments: dict | None
+    kwargs: dict | None
+    returns: dict | None
+    details: dict | None
 ```
 
 **实现细节（已落地）**：
@@ -87,13 +94,14 @@ class NodeReport:
 ### 5.2 两份报告（§5.8.3）
 
 ```
-报告① 执行情况报告 (每节点结果 + 截图):
-  每个节点: 节点类型/描述/结果/函数调用/判断结果/时间/URL/截图
-  用途: 概览流程执行结果
+报告① 执行情况报告 (每节点执行记录 + 截图):
+  每个节点: 类型/描述/结果/失败原因/耗时/时间/URL；
+  FunctionCall 额外打印函数名、实际 args/kwargs/returns；
+  ForEach 额外打印变量/迭代次数/失败迭代数；Action/Condition 的 Param.x 附值摘要。
 
-报告② 回溯报告 (执行详情 + LLM 推理, 不含截图):
-  每个节点: 执行情况 + LLM 输入/推理过程/决策结果
-  用途: 深挖问题回溯
+报告② 回溯报告 (= 执行报告内容 + LLM 推理, 不含截图):
+  每个节点: 执行情况 + 明显的 LLM 推理区块（输入/推理/工具调用/决策/终止条件）。
+  纯 FunctionCall 树无 LLM 推理时，内容与执行报告一致（除标题/截图差异）。
 ```
 
 ### 5.3 执行状态查询（§12.4）
