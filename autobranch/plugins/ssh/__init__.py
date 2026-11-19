@@ -17,6 +17,7 @@ import io
 import posixpath
 import re
 import shlex
+import stat
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -565,6 +566,234 @@ class SSHPlugin(PluginBase):
         except Exception as exc:  # noqa: BLE001
             return FunctionResult.failure(f"写入文件管理平台失败: {exc}", code="SSH_ERROR")
         return FunctionResult.success(len(content), record["path"])
+
+    @engine_function(
+        name="upload_dir",
+        description=(
+            "从文件管理平台递归上传目录到远程目录；直连使用 SFTP，"
+            "跳板 shell 使用 base64 逐文件写入"
+        ),
+        parameters=_params(
+            ("session", "dir_path", "remote_dir"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            dir_path={"type": "string", "description": "文件管理平台目录路径"},
+            remote_dir={"type": "string", "description": "远程目标目录"},
+            timeout={"type": "number", "description": "单文件传输超时秒数（默认 60）"},
+        ),
+        returns={"files": "int", "path": "str"},
+    )
+    def upload_dir(
+        self,
+        session: SSHConnection,
+        dir_path: str,
+        remote_dir: str,
+        timeout: float = 60.0,
+    ) -> FunctionResult:
+        conn = self._find(session)
+        if conn is None:
+            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        try:
+            from autobranch.plugins.file.service import normalize_path
+            from autobranch.plugins.file.store import (
+                get_platform_directory,
+                list_platform_files,
+                read_platform_file,
+            )
+
+            source = normalize_path(dir_path)
+            if source and get_platform_directory(source) is None:
+                return FunctionResult.failure(f"平台目录不存在: {source}", code="SSH_ERROR")
+            files = list_platform_files(source)
+            target_dir = str(remote_dir or "").strip()
+            if not target_dir:
+                return FunctionResult.failure("remote_dir 不能为空", code="SSH_ERROR")
+            if conn.jump_shell is not None:
+                if not files:
+                    result = self._exec_shell(
+                        conn, f"mkdir -p {shlex.quote(target_dir)}", timeout
+                    )
+                    if not result.ok:
+                        return FunctionResult.failure(
+                            result.error or "创建远程目录失败", code="SSH_ERROR"
+                        )
+                for item in files:
+                    _filename, content = read_platform_file(item["path"])
+                    remote_path = posixpath.join(target_dir, item["relative"])
+                    self._upload_jump_shell(conn, remote_path, content, timeout)
+            else:
+                self._upload_dir_sftp(
+                    conn,
+                    target_dir,
+                    [(item["relative"], item["path"]) for item in files],
+                    timeout,
+                )
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"上传目录失败: {exc}", code="SSH_ERROR")
+        return FunctionResult.success(len(files), target_dir)
+
+    @engine_function(
+        name="download_dir",
+        description=(
+            "从远程目录递归下载到文件管理平台；直连使用 SFTP，"
+            "跳板 shell 使用 find + base64"
+        ),
+        parameters=_params(
+            ("session", "remote_dir"),
+            session={"type": "string", "description": "SSH 会话对象"},
+            remote_dir={"type": "string", "description": "远程目录路径"},
+            dir_path={
+                "type": "string",
+                "description": "文件管理平台目标目录（空/以 / 结尾时使用远程目录名）",
+            },
+            timeout={"type": "number", "description": "单文件传输超时秒数（默认 60）"},
+        ),
+        returns={"files": "int", "path": "str"},
+    )
+    def download_dir(
+        self,
+        session: SSHConnection,
+        remote_dir: str,
+        dir_path: str = "",
+        timeout: float = 60.0,
+    ) -> FunctionResult:
+        conn = self._find(session)
+        if conn is None:
+            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        source = str(remote_dir or "").strip().rstrip("/")
+        if not source:
+            return FunctionResult.failure("remote_dir 不能为空", code="SSH_ERROR")
+        try:
+            from autobranch.plugins.file.service import path_join, path_name
+            from autobranch.plugins.file.store import (
+                ensure_platform_directory,
+                write_platform_file,
+            )
+
+            target_dir = str(dir_path or "").replace("\\", "/")
+            if not target_dir or target_dir.endswith("/"):
+                target_dir = path_join(target_dir, path_name(source))
+            ensure_platform_directory(target_dir)
+            if conn.jump_shell is not None:
+                count = self._download_dir_jump_shell(
+                    conn, source, target_dir, timeout, write_platform_file
+                )
+            else:
+                count = self._download_dir_sftp(
+                    conn, source, target_dir, write_platform_file
+                )
+        except Exception as exc:  # noqa: BLE001
+            return FunctionResult.failure(f"下载目录失败: {exc}", code="SSH_ERROR")
+        return FunctionResult.success(count, target_dir)
+
+    @staticmethod
+    def _upload_dir_sftp(
+        conn: SSHConnection,
+        remote_dir: str,
+        entries: list[tuple[str, str]],
+        timeout: float,
+    ) -> None:
+        if conn.client is None:
+            raise RuntimeError("目标 SSH 客户端不可用")
+        sftp = conn.client.open_sftp()
+        try:
+            SSHPlugin._sftp_ensure_dir(sftp, remote_dir)
+            for relative, platform_path in entries:
+                from autobranch.plugins.file.store import read_platform_file
+
+                _filename, content = read_platform_file(platform_path)
+                remote_path = posixpath.join(remote_dir, relative)
+                SSHPlugin._sftp_ensure_dir(sftp, posixpath.dirname(remote_path))
+                sftp.putfo(io.BytesIO(content), remote_path)
+        finally:
+            sftp.close()
+
+    @staticmethod
+    def _download_dir_sftp(
+        conn: SSHConnection,
+        remote_dir: str,
+        target_dir: str,
+        write_platform_file: Any,
+    ) -> int:
+        if conn.client is None:
+            raise RuntimeError("目标 SSH 客户端不可用")
+        from autobranch.plugins.file.service import path_join
+
+        sftp = conn.client.open_sftp()
+        count = 0
+        try:
+            def walk(remote: str, relative: str) -> None:
+                nonlocal count
+                for attr in sftp.listdir_attr(remote):
+                    child_remote = posixpath.join(remote, attr.filename)
+                    child_relative = (
+                        posixpath.join(relative, attr.filename)
+                        if relative
+                        else attr.filename
+                    )
+                    if stat.S_ISDIR(attr.st_mode):
+                        walk(child_remote, child_relative)
+                    else:
+                        buffer = io.BytesIO()
+                        sftp.getfo(child_remote, buffer)
+                        write_platform_file(
+                            path_join(target_dir, child_relative),
+                            buffer.getvalue(),
+                            filename=attr.filename,
+                        )
+                        count += 1
+
+            walk(remote_dir, "")
+        finally:
+            sftp.close()
+        return count
+
+    @classmethod
+    def _download_dir_jump_shell(
+        cls,
+        conn: SSHConnection,
+        remote_dir: str,
+        target_dir: str,
+        timeout: float,
+        write_platform_file: Any,
+    ) -> int:
+        from autobranch.plugins.file.service import path_join
+
+        listing = cls._exec_shell(
+            conn, f"find {shlex.quote(remote_dir)} -type f -print", timeout
+        )
+        if not listing.ok:
+            raise RuntimeError(listing.error or "远程目录遍历失败")
+        files = [line.strip() for line in listing.values[0].splitlines() if line.strip()]
+        base = remote_dir.rstrip("/")
+        count = 0
+        for remote_path in files:
+            relative = (
+                remote_path[len(base) :].lstrip("/")
+                if remote_path.startswith(base)
+                else posixpath.basename(remote_path)
+            )
+            content = cls._download_jump_shell(conn, remote_path, timeout)
+            write_platform_file(
+                path_join(target_dir, relative),
+                content,
+                filename=posixpath.basename(remote_path),
+            )
+            count += 1
+        return count
+
+    @staticmethod
+    def _sftp_ensure_dir(sftp: Any, path: str) -> None:
+        if not path or path in (".", "/"):
+            return
+        current = "/" if path.startswith("/") else ""
+        for part in path.strip("/").split("/"):
+            if not part:
+                continue
+            current = posixpath.join(current, part) if current else part
+            try:
+                sftp.stat(current)
+            except OSError:
+                sftp.mkdir(current)
 
     @classmethod
     def _upload_jump_shell(

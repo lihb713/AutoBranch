@@ -686,8 +686,10 @@ FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {tota
 | `ssh_send` | `session`、`channel_id`、`data`、`newline` | 向交互命令写入输入 |
 | `ssh_read` | `session`、`channel_id`、`idle_timeout` | 读取交互命令的新输出 |
 | `ssh_close_channel` | `session`、`channel_id` | 关闭交互通道 |
-| `upload_file` | `session`、`file_path`、`remote_path` | 从文件管理平台上传文件到远程 |
-| `download_file` | `session`、`remote_path`、`file_path` | 从远程下载文件到文件管理平台 |
+| `upload_file` | `session`、`file_path`、`remote_path` | 从文件管理平台上传单文件到远程 |
+| `download_file` | `session`、`remote_path`、`file_path` | 从远程下载单文件到文件管理平台 |
+| `upload_dir` | `session`、`dir_path`、`remote_dir` | 递归上传平台目录到远程目录 |
+| `download_dir` | `session`、`remote_dir`、`dir_path` | 递归下载远程目录到平台目录 |
 | `close_session` | `session` | 关闭会话（含跳板机与所有通道） |
 
 - **代理/跳板**：`proxy={host, port, user?, pwd?}` 为 SOCKS5；`jump={host, port?, user?, pwd?, key?, proxy?}`。有 jump 时 proxy 只用于连跳板机；跳板机到目标机改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁止 direct-tcpip 的环境），因此目标认证需提供 `pwd`。

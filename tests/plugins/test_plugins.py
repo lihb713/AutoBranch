@@ -170,7 +170,12 @@ class _FakeShell:
             if match:
                 token = match.group(1)
                 code = 2 if "false" in text else 0
-                output = b"YWJj" if "base64 <" in text else b"hi"
+                if "find " in text:
+                    output = b"/tmp/dir/a.txt\n/tmp/dir/sub/b.txt"
+                elif "base64 <" in text:
+                    output = b"YWJj"
+                else:
+                    output = b"hi"
                 self._chunks.append(
                     b"\n__AB_START_" + token.encode() + b"__\n"
                     + output
@@ -486,6 +491,54 @@ def test_ssh_jump_file_upload_download_with_file_platform(monkeypatch):
     assert downloaded.ok
     assert written["path"] == "b.txt"
     assert written["content"] == b"abc"
+
+
+def test_ssh_jump_directory_upload_download(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call(
+        "ssh.create_session",
+        {"host": "target", "pwd": "target-pwd", "jump": {"host": "jump"}},
+    )
+    assert session.ok
+    from autobranch.plugins.file import store
+
+    monkeypatch.setattr(store, "get_platform_directory", lambda path: {"path": path})
+    monkeypatch.setattr(store, "ensure_platform_directory", lambda path: {"path": path})
+    monkeypatch.setattr(
+        store,
+        "list_platform_files",
+        lambda path: [
+            {"path": f"{path}/a.txt", "relative": "a.txt"},
+            {"path": f"{path}/sub/b.txt", "relative": "sub/b.txt"},
+        ],
+    )
+    monkeypatch.setattr(store, "read_platform_file", lambda path: ("x.txt", b"abc"))
+    written: list[tuple[str, bytes]] = []
+
+    def fake_write(path, content, content_type="application/octet-stream", **kwargs):
+        written.append((path, content))
+        return {"path": path}
+
+    monkeypatch.setattr(store, "write_platform_file", fake_write)
+    up = reg.call(
+        "ssh.upload_dir",
+        {"session": session.value, "dir_path": "src", "remote_dir": "/tmp/dir"},
+    )
+    assert up.ok
+    assert up.values == (2, "/tmp/dir")
+
+    down = reg.call(
+        "ssh.download_dir",
+        {"session": session.value, "remote_dir": "/tmp/dir", "dir_path": "backup/"},
+    )
+    assert down.ok
+    assert down.values[0] == 2
+    assert [path for path, _content in written] == [
+        "backup/dir/a.txt",
+        "backup/dir/sub/b.txt",
+    ]
 
 
 def test_ssh_functions_declare_save_to():

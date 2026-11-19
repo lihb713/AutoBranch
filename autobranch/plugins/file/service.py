@@ -195,6 +195,17 @@ class FileService:
         rows = db.scalars(select(FileRecord).order_by(FileRecord.created_at.desc())).all()
         return [self._to_dict(r) for r in rows]
 
+    def list_files_under(self, db: Session, path: str = "") -> list[dict]:
+        """递归列出目录下文件（不读取内容），返回 path/relative。"""
+        directory = normalize_path(path)
+        prefix = f"{directory}/" if directory else ""
+        rows = db.scalars(select(FileRecord).order_by(FileRecord.path)).all()
+        return [
+            {"path": record.path, "relative": record.path[len(prefix) :]}
+            for record in rows
+            if record.path.startswith(prefix)
+        ]
+
     def upload_file(
         self,
         db: Session,

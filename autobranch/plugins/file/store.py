@@ -47,6 +47,26 @@ def session_scope():
         db.close()
 
 
+def ensure_platform_directory(path: str) -> dict:
+    """确保平台目录存在（自动创建父目录）。"""
+    service = get_service()
+    with session_scope() as db:
+        return service.create_directory(db, path)
+
+
+def get_platform_directory(path: str) -> dict | None:
+    service = get_service()
+    with session_scope() as db:
+        return service.get_directory_by_path(db, path)
+
+
+def list_platform_files(path: str = "") -> list[dict]:
+    """递归列出平台目录下文件（返回 path + relative）。"""
+    service = get_service()
+    with session_scope() as db:
+        return service.list_files_under(db, path)
+
+
 def read_platform_file(path: str) -> tuple[str, bytes]:
     """按平台路径读取文件，返回 ``(filename, bytes)``。"""
     service = get_service()
@@ -91,6 +111,9 @@ __all__ = [
     "FilePlatformError",
     "get_service",
     "session_scope",
+    "ensure_platform_directory",
+    "get_platform_directory",
+    "list_platform_files",
     "read_platform_file",
     "write_platform_file",
     "resolve_download_path",

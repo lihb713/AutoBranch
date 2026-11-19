@@ -42,7 +42,7 @@ SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等�
 
 ### Requirement: SSH 文件平台互通与输出清洗
 
-SSH 插件 SHALL 提供 `upload_file(session, file_path, remote_path)` 与 `download_file(session, remote_path, file_path?)`，在文件管理平台与远程主机之间传输文件。直连模式 SHALL 使用 SFTP；跳板 shell 模式 SHALL 使用 base64。SSH 命令/交互输出 SHALL 过滤 ANSI 转义序列。
+SSH 插件 SHALL 提供 `upload_file` / `download_file` 单文件互通，以及 `upload_dir` / `download_dir` 递归目录互通。直连模式 SHALL 使用 SFTP；跳板 shell 模式 SHALL 使用 base64（目录下载用 `find` 枚举）。SSH 命令/交互输出 SHALL 过滤 ANSI 转义序列。
 
 #### Scenario: 从平台上传
 - **WHEN** 调用 `upload_file` 指定平台路径与远程路径
@@ -51,6 +51,10 @@ SSH 插件 SHALL 提供 `upload_file(session, file_path, remote_path)` 与 `down
 #### Scenario: 下载到平台
 - **WHEN** 调用 `download_file` 指定远程路径与平台路径
 - **THEN** 远程文件写入文件管理平台
+
+#### Scenario: 递归目录传输
+- **WHEN** 调用 `upload_dir` / `download_dir`
+- **THEN** 平台目录与远程目录递归同步，返回传输文件数
 
 #### Scenario: ANSI 输出
 - **WHEN** 远程命令输出包含颜色转义序列
