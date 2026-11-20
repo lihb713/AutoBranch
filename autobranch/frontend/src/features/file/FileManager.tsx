@@ -249,7 +249,7 @@ export function FileManager() {
                     </button>
                     <button
                       type="button"
-                      className="link"
+                      className="link link-danger"
                       onClick={() => void deleteDirectory(directory)}
                     >
                       删除
@@ -272,7 +272,7 @@ export function FileManager() {
                     <a href={fileApi.downloadPathUrl(file.path)}>下载</a>
                     <button
                       type="button"
-                      className="link"
+                      className="link link-danger"
                       onClick={() => void removeFile(file)}
                     >
                       删除
