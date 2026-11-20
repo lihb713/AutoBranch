@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Button } from "../../components/Button";
+import { CheckboxField } from "../../components/CheckboxField";
+import { TextField } from "../../components/TextField";
 
 type RunInputDialogProps = {
   treeName: string;
@@ -57,32 +59,29 @@ export function RunInputDialog({ treeName, inputs, onConfirm, onCancel }: RunInp
           handleSubmit();
         }}
       >
-        {entries.map(([name, type]) => (
-          <label key={name} className="run-dialog__field" data-testid={`input-field-${name}`}>
-            <span className="run-dialog__label">
-              {name} <span className="muted">({type})</span>
-            </span>
-            {type === "bool" ? (
-              <input
-                type="checkbox"
-                className="run-dialog__input"
-                data-testid={`input-value-${name}`}
-                checked={bools[name] ?? false}
-                onChange={(e) => setBools((prev) => ({ ...prev, [name]: e.target.checked }))}
-              />
-            ) : (
-              <input
-                type="text"
-                className="run-dialog__input"
-                data-testid={`input-value-${name}`}
-                value={values[name] ?? ""}
-                onChange={(e) =>
-                  setValues((prev) => ({ ...prev, [name]: e.target.value }))
-                }
-              />
-            )}
-          </label>
-        ))}
+        <div className="dialog-body">
+          {entries.map(([name, type]) => (
+            <div key={name} data-testid={`input-field-${name}`}>
+              {type === "bool" ? (
+                <CheckboxField
+                  label={`${name} (${type})`}
+                  data-testid={`input-value-${name}`}
+                  checked={bools[name] ?? false}
+                  onChange={(e) => setBools((prev) => ({ ...prev, [name]: e.target.checked }))}
+                />
+              ) : (
+                <TextField
+                  label={`${name} (${type})`}
+                  data-testid={`input-value-${name}`}
+                  value={values[name] ?? ""}
+                  onChange={(e) =>
+                    setValues((prev) => ({ ...prev, [name]: e.target.value }))
+                  }
+                />
+              )}
+            </div>
+          ))}
+        </div>
         <div className="run-dialog__actions">
           <Button type="button" variant="ghost" onClick={onCancel} data-testid="run-dialog-cancel">
             取消

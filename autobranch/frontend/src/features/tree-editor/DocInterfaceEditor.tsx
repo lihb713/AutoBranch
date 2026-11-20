@@ -1,3 +1,6 @@
+import { Button } from "../../components/Button";
+import { SelectField } from "../../components/SelectField";
+import { TextField } from "../../components/TextField";
 import type { TreeDoc } from "./treeModel";
 import { TYPE_TOKENS } from "./tokens";
 
@@ -74,15 +77,13 @@ export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterf
         <p className="slot-row__label">入参 inputs（名：类型，ref 按此填 args）</p>
         {Object.entries(doc.inputs).map(([name, type]) => (
           <div key={name} className="slot-row" data-testid={`doc-input-${name}`}>
-            <input
-              className="text-field__input"
+            <TextField
               value={name}
               disabled={readonly}
               data-testid={`doc-input-name-${name}`}
               onChange={(e) => setInputName(name, e.target.value)}
             />
-            <select
-              className="text-field__input"
+            <SelectField
               value={type}
               disabled={readonly}
               data-testid={`doc-input-type-${name}`}
@@ -93,28 +94,23 @@ export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterf
                   {t}
                 </option>
               ))}
-            </select>
+            </SelectField>
             {!readonly ? (
-              <button
-                type="button"
-                className="slot-row__add slot-row__add--danger"
+              <Button
+                variant="danger"
+                size="sm"
                 data-testid={`doc-input-remove-${name}`}
                 onClick={() => removeInput(name)}
               >
                 删除
-              </button>
+              </Button>
             ) : null}
           </div>
         ))}
         {!readonly ? (
-          <button
-            type="button"
-            className="slot-row__add"
-            data-testid="doc-input-add"
-            onClick={addInput}
-          >
+          <Button variant="ghost" size="sm" data-testid="doc-input-add" onClick={addInput}>
             + 添加入参
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -122,15 +118,13 @@ export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterf
         <p className="slot-row__label">出参 outputs（名：类型，ref 按此接收）</p>
         {Object.entries(doc.outputs).map(([name, type]) => (
           <div key={name} className="slot-row" data-testid={`doc-output-${name}`}>
-            <input
-              className="text-field__input"
+            <TextField
               value={name}
               disabled={readonly}
               data-testid={`doc-output-name-${name}`}
               onChange={(e) => setOutputName(name, e.target.value)}
             />
-            <select
-              className="text-field__input"
+            <SelectField
               value={type}
               disabled={readonly}
               data-testid={`doc-output-type-${name}`}
@@ -141,28 +135,23 @@ export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterf
                   {t}
                 </option>
               ))}
-            </select>
+            </SelectField>
             {!readonly ? (
-              <button
-                type="button"
-                className="slot-row__add slot-row__add--danger"
+              <Button
+                variant="danger"
+                size="sm"
                 data-testid={`doc-output-remove-${name}`}
                 onClick={() => removeOutput(name)}
               >
                 删除
-              </button>
+              </Button>
             ) : null}
           </div>
         ))}
         {!readonly ? (
-          <button
-            type="button"
-            className="slot-row__add"
-            data-testid="doc-output-add"
-            onClick={addOutput}
-          >
+          <Button variant="ghost" size="sm" data-testid="doc-output-add" onClick={addOutput}>
             + 添加出参
-          </button>
+          </Button>
         ) : null}
       </div>
     </div>

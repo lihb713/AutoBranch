@@ -348,14 +348,14 @@ export function ScheduleListPage() {
                     >
                       立即执行
                     </Button>
-                    <button
-                      className="link"
-                      type="button"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => void showRecords(rule)}
                       data-testid={`schedule-runs-${rule.id}`}
                     >
                       执行记录
-                    </button>
+                    </Button>
                     <Button
                       variant="ghost"
                       onClick={() => openEdit(rule)}
