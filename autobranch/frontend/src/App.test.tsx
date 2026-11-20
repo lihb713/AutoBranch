@@ -58,6 +58,7 @@ beforeEach(() => {
   });
   vi.mocked(runsApi.getRunState).mockResolvedValue({
     run_id: "5",
+    status: "success",
     progress: 1,
     current_node: null,
     completed: [],

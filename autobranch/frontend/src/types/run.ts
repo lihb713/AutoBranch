@@ -36,6 +36,7 @@ export type BlackboardVar = {
 
 export type RunState = {
   run_id: string;
+  status: "pending" | "running" | "success" | "failure";
   progress: number;
   current_node: NodeInfo | null;
   completed: NodeReport[];

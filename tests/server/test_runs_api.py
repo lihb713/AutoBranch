@@ -329,6 +329,29 @@ def test_state_polling_advances(client, mock_engine, session):
     assert {nr["node_type"] for nr in third["completed"]} == {"Action", "Condition"}
 
 
+def test_openapi_report_and_trace_declare_json_and_markdown(client):
+    schema = client.get("/openapi.json").json()
+    for path in ("/api/runs/{run_id}/report", "/api/runs/{run_id}/trace"):
+        content = schema["paths"][path]["get"]["responses"]["200"]["content"]
+        assert "application/json" in content
+        assert "text/markdown" in content
+        assert "text/plain" not in content
+
+
+def test_report_and_trace_actual_content_types(client, settings):
+    tree = create_tree(client)
+    run_id = client.post(f"/api/trees/{tree['id']}/run").json()["run_id"]
+    wait_finished(client, run_id)
+    run_dir = settings.report_root / str(run_id)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "exec_report.md").write_text("# 执行报告", encoding="utf-8")
+    (run_dir / "trace_report.md").write_text("# 回溯报告", encoding="utf-8")
+    for path in (f"/api/runs/{run_id}/report", f"/api/runs/{run_id}/trace"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/markdown")
+
+
 def test_state_missing_404(client):
     resp = client.get("/api/runs/999/state")
     assert resp.status_code == 404
@@ -340,10 +363,11 @@ def test_state_contract_fields(client):
     run_id = resp.json()["run_id"]
     state = wait_finished(client, run_id)
     expected = {
-        "run_id", "progress", "current_node", "completed",
+        "run_id", "status", "progress", "current_node", "completed",
         "finished", "failure_reason", "variables",
     }
     assert set(state) == expected
+    assert state["status"] in ("success", "failure")
     assert isinstance(state["progress"], float)
     assert 0.0 <= state["progress"] <= 1.0
     assert isinstance(state["variables"], list)

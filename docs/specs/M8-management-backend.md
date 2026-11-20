@@ -73,8 +73,8 @@ GET    /api/runs/{run_id}             # 实例详情（含 content_snapshot + �
 POST   /api/runs/{run_id}/retry       # 按快照重试（复制原实例快照+入参新建 Run，202 → run_id）
 DELETE /api/runs/{run_id}             # 删除执行实例（204，清理报告目录）
 GET    /api/runs/{run_id}/state       # 轮询执行状态（ExecStateOut）
-GET    /api/runs/{run_id}/report      # 执行报告（进行中 200 {"status":"running"}，结束 text/markdown）
-GET    /api/runs/{run_id}/trace       # 回溯报告（同上）
+GET    /api/runs/{run_id}/report      # 执行报告（进行中 200 JSON {"status":"running"}，结束 text/markdown）
+GET    /api/runs/{run_id}/trace       # 回溯报告（同上；OpenAPI 同时声明 application/json 与 text/markdown）
 GET    /api/reports/{path}            # 截图/报告文件（白名单防目录穿越）
 GET    /api/types                     # 类型可构造性（TypeInfoOut：token + constructible = cast is not None）
 ```
@@ -113,6 +113,7 @@ GET    /api/types                     # 类型可构造性（TypeInfoOut：token
 @dataclass
 class ExecStateOut:
     run_id: str
+    status: Literal["pending", "running", "success", "failure"]  # 与 RunOut.status 对齐
     progress: float          # 0.0~1.0
     current_node: NodeInfo | None
     completed: list[NodeReportOut]

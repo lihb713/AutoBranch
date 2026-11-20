@@ -8,7 +8,7 @@ current_node / completed / finished，另附 failure_reason（执行失败时非
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -99,8 +99,17 @@ class NodeReportOut(BaseModel):
     details: dict | None = None
 
 
+class ReportPendingOut(BaseModel):
+    """报告尚未生成时的 JSON 响应（与最终 text/markdown 共用 200）。"""
+
+    run_id: int
+    status: str
+    message: str
+
+
 class ExecStateOut(BaseModel):
     run_id: str
+    status: Literal["pending", "running", "success", "failure"]
     progress: float
     current_node: NodeInfoOut | None = None
     completed: list[NodeReportOut] = []
@@ -116,6 +125,7 @@ __all__ = [
     "RunDetailOut",
     "RunScheduleBriefOut",
     "TypeInfoOut",
+    "ReportPendingOut",
     "ExecStateOut",
     "NodeReportOut",
     "NodeInfoOut",

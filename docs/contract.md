@@ -1131,7 +1131,8 @@ Reporter 接口 (供 M7 调用):
 
 ExecState:
   progress 为派生属性 (已完成节点数 / 总节点数), 非存储字段; finished 后恒为 1.0
-  ExecState 含 run_id / progress / current_node / completed / finished / total_nodes
+  ExecState 含 run_id / status / progress / current_node / completed / finished / total_nodes
+  （status 与 RunOut.status 对齐：pending/running/success/failure）
 
 LeafTrace (LLM 推理数据契约, 定义于 M8, M6 实现时对齐):
   llm_input / llm_reasoning / decision / calls / terminator

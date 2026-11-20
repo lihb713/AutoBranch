@@ -189,3 +189,12 @@
 
 - **WHEN** 旧库首次以新版本启动
 - **THEN** UTC 审计列被转换为本地时间并写入迁移标记，后续启动不再重复转换
+
+
+### Requirement: 状态轮询字段一致
+
+`GET /api/runs/{id}/state` SHALL 返回与执行列表一致的 `status` 字段（`pending/running/success/failure`），并保留 `finished`/`failure_reason` 兼容字段。
+
+#### Scenario: 轮询直接读取状态
+- **WHEN** 客户端轮询执行状态
+- **THEN** 响应包含 `status`，无需仅靠 `finished + failure_reason` 推断

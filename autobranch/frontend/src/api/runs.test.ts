@@ -30,7 +30,7 @@ describe("runsApi 请求方法与路径", () => {
   });
 
   it("getRunState → GET /api/runs/5/state", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ run_id: "5", progress: 0.5, finished: false }));
+    fetchMock.mockResolvedValue(jsonResponse({ run_id: "5", status: "running", progress: 0.5, finished: false }));
     vi.stubGlobal("fetch", fetchMock);
     await runsApi.getRunState("5");
     const [url, init] = fetchMock.mock.calls[0];

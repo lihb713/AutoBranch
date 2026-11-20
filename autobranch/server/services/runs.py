@@ -583,20 +583,29 @@ class RunService:
         state = self._engine.get_exec_state(run_id)
         if state is not None:
             failure_reason = run.failure_reason if run.status == "failure" else None
-            return self._state_out(state, failure_reason)
+            return self._state_out(state, failure_reason, run.status)
         if run.status in _ACTIVE_STATUSES:
-            return ExecStateOut(run_id=str(run_id), progress=0.0, finished=False)
+            return ExecStateOut(
+                run_id=str(run_id),
+                status=run.status,
+                progress=0.0,
+                finished=False,
+            )
         return ExecStateOut(
             run_id=str(run_id),
+            status=run.status,
             progress=1.0,
             finished=True,
             failure_reason=run.failure_reason,
         )
 
     @staticmethod
-    def _state_out(state: ExecState, failure_reason: str | None) -> ExecStateOut:
+    def _state_out(
+        state: ExecState, failure_reason: str | None, status: str
+    ) -> ExecStateOut:
         return ExecStateOut(
             run_id=state.run_id or "run",
+            status=status,
             progress=round(state.progress, 6),
             current_node=_node_info_out(state.current_node),
             completed=[_node_report_out(nr) for nr in state.completed],

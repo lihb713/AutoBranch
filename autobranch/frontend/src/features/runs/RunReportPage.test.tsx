@@ -25,6 +25,7 @@ vi.mock("../../api/runs", () => ({
 
 const RUNNING: RunState = {
   run_id: "5",
+  status: "running",
   progress: 0.33,
   current_node: { node_type: "Step", node_desc: "点\"登录\"" },
   completed: [{ node_type: "Step", node_desc: "打开页面", result: "success", timestamp: "t1", action_call: null, condition_result: null, page_url: null, screenshot_path: null }],

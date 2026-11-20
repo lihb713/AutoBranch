@@ -176,3 +176,12 @@ NodeReport SHALL 记录节点耗时、失败原因与结构化调用详情：Fun
 #### Scenario: 变量值摘要
 - **WHEN** Action 描述包含 `Param.x`
 - **THEN** 报告中显示 `Param.x` 后附实际值摘要
+
+
+### Requirement: 报告接口媒体类型
+
+`GET /api/runs/{id}/report` 与 `/trace` SHALL 在 OpenAPI 中同时声明 `application/json`（未完成状态）与 `text/markdown`（报告正文）两种 200 响应，运行时按实际结果返回对应 Content-Type。
+
+#### Scenario: OpenAPI 与运行时一致
+- **WHEN** 客户端读取 OpenAPI 或实际调用报告接口
+- **THEN** 未完成返回 JSON，已完成返回 text/markdown

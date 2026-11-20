@@ -12,6 +12,7 @@ from autobranch.server.db import get_db
 from autobranch.server.deps import get_run_service
 from autobranch.server.schemas.run import (
     ExecStateOut,
+    ReportPendingOut,
     RunDetailOut,
     RunOut,
     RunStartOut,
@@ -22,6 +23,15 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 RunServiceDep = Annotated[RunService, Depends(get_run_service)]
 DbSession = Annotated[Session, Depends(get_db)]
+
+_REPORT_RESPONSES = {
+    200: {
+        "content": {
+            "application/json": {"schema": ReportPendingOut.model_json_schema()},
+            "text/markdown": {"schema": {"type": "string"}},
+        }
+    }
+}
 
 
 @router.get("", response_model=list[RunOut])
@@ -63,7 +73,7 @@ def get_run_state(run_id: int, run_service: RunServiceDep, db: DbSession):
     return run_service.get_state(db, run_id)
 
 
-@router.get("/{run_id}/report")
+@router.get("/{run_id}/report", responses=_REPORT_RESPONSES)
 def get_run_report(run_id: int, run_service: RunServiceDep, db: DbSession):
     """执行报告：进行中返回状态标识，结束返回报告文本（text/markdown）。"""
     result = run_service.get_report(db, run_id)
@@ -72,7 +82,7 @@ def get_run_report(run_id: int, run_service: RunServiceDep, db: DbSession):
     return PlainTextResponse(result, media_type="text/markdown; charset=utf-8")
 
 
-@router.get("/{run_id}/trace")
+@router.get("/{run_id}/trace", responses=_REPORT_RESPONSES)
 def get_run_trace(run_id: int, run_service: RunServiceDep, db: DbSession):
     """回溯报告：进行中返回状态标识，结束返回报告文本（text/markdown）。"""
     result = run_service.get_trace(db, run_id)
