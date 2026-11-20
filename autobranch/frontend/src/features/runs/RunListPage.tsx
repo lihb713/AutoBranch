@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { runsApi } from "../../api/runs";
+import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
@@ -28,6 +29,12 @@ function sourceLabel(source: string): string {
   if (source === "schedule") return "调度";
   if (source === "dependency") return "依赖";
   return "手动";
+}
+
+function sourceTone(source: string): "primary" | "warning" | "neutral" {
+  if (source === "schedule") return "primary";
+  if (source === "dependency") return "warning";
+  return "neutral";
 }
 
 const POLL_MS = 2000;
@@ -141,12 +148,13 @@ export function RunListPage() {
                   <StatusBadge kind={statusKind(run.status)} />
                 </td>
                 <td>
-                  <span
-                    className={`source-badge source-${run.source || "manual"}`}
+                  <Badge
+                    tone={sourceTone(run.source || "manual")}
+                    className={`source-${run.source || "manual"}`}
                     data-testid={`run-source-${run.id}`}
                   >
                     {sourceLabel(run.source || "manual")}
-                  </span>
+                  </Badge>
                 </td>
                 <td className="run-cell-json">{JSON.stringify(run.inputs ?? {})}</td>
                 <td>{run.duration != null ? `${run.duration}s` : "—"}</td>

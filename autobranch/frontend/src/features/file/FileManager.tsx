@@ -239,21 +239,15 @@ export function FileManager() {
                 <td>{directory.updated_at}</td>
                 <td>
                   <div className="tree-table__actions">
-                    <a href={fileApi.downloadPathUrl(directory.path)}>下载目录</a>
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() => void renameDirectory(directory)}
-                    >
+                    <a className="btn btn-ghost btn-sm" href={fileApi.downloadPathUrl(directory.path)}>
+                      下载目录
+                    </a>
+                    <Button variant="ghost" size="sm" onClick={() => void renameDirectory(directory)}>
                       重命名
-                    </button>
-                    <button
-                      type="button"
-                      className="link link-danger"
-                      onClick={() => void deleteDirectory(directory)}
-                    >
+                    </Button>
+                    <Button variant="danger" size="sm" onClick={() => void deleteDirectory(directory)}>
                       删除
-                    </button>
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -269,14 +263,12 @@ export function FileManager() {
                 <td>{file.updated_at}</td>
                 <td>
                   <div className="tree-table__actions">
-                    <a href={fileApi.downloadPathUrl(file.path)}>下载</a>
-                    <button
-                      type="button"
-                      className="link link-danger"
-                      onClick={() => void removeFile(file)}
-                    >
+                    <a className="btn btn-ghost btn-sm" href={fileApi.downloadPathUrl(file.path)}>
+                      下载
+                    </a>
+                    <Button variant="danger" size="sm" onClick={() => void removeFile(file)}>
                       删除
-                    </button>
+                    </Button>
                   </div>
                 </td>
               </tr>

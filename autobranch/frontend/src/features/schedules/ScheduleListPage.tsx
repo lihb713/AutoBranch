@@ -4,8 +4,10 @@ import { schedulesApi } from "../../api/schedules";
 import { treesApi } from "../../api/trees";
 import { typesApi } from "../../api/types";
 import { Button } from "../../components/Button";
+import { CheckboxField } from "../../components/CheckboxField";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
+import { SelectField } from "../../components/SelectField";
 import type { RunOut } from "../../types/run";
 import type {
   CronPeriod,
@@ -394,38 +396,34 @@ export function ScheduleListPage() {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </label>
-          <label className="schedule-field">
-            <span>目标行为树</span>
-            <select
-              data-testid="schedule-tree"
-              value={String(form.target_tree_id)}
-              onChange={(e) => {
-                const nextId = Number(e.target.value);
-                const nextTree = availableTrees.find((tree) => tree.id === nextId);
-                setForm({ ...form, target_tree_id: nextId, dependencies: [] });
-                setInputValues(inputValuesFor(nextTree));
-              }}
-            >
-              {availableTrees.map((tree) => (
-                <option key={tree.id} value={String(tree.id)}>
-                  {tree.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="schedule-field">
-            <span>调度方式</span>
-            <select
-              data-testid="schedule-mode"
-              value={form.schedule_mode}
-              onChange={(e) =>
-                setForm({ ...form, schedule_mode: e.target.value as ScheduleMode })
-              }
-            >
-              <option value="interval">间隔触发</option>
-              <option value="cron">定时触发</option>
-            </select>
-          </label>
+          <SelectField
+            label="目标行为树"
+            data-testid="schedule-tree"
+            value={String(form.target_tree_id)}
+            onChange={(e) => {
+              const nextId = Number(e.target.value);
+              const nextTree = availableTrees.find((tree) => tree.id === nextId);
+              setForm({ ...form, target_tree_id: nextId, dependencies: [] });
+              setInputValues(inputValuesFor(nextTree));
+            }}
+          >
+            {availableTrees.map((tree) => (
+              <option key={tree.id} value={String(tree.id)}>
+                {tree.name}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="调度方式"
+            data-testid="schedule-mode"
+            value={form.schedule_mode}
+            onChange={(e) =>
+              setForm({ ...form, schedule_mode: e.target.value as ScheduleMode })
+            }
+          >
+            <option value="interval">间隔触发</option>
+            <option value="cron">定时触发</option>
+          </SelectField>
           {form.schedule_mode === "interval" ? (
             <div className="schedule-inline">
               <label className="schedule-field">
@@ -440,45 +438,41 @@ export function ScheduleListPage() {
                   }
                 />
               </label>
-              <label className="schedule-field">
-                <span>单位</span>
-                <select
-                  data-testid="schedule-interval-unit"
-                  value={form.interval_unit ?? "minutes"}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      interval_unit: e.target.value as IntervalUnit,
-                    })
-                  }
-                >
-                  {INTERVAL_UNITS.map((unit) => (
-                    <option key={unit} value={unit}>
-                      {UNIT_LABELS[unit]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SelectField
+                label="单位"
+                data-testid="schedule-interval-unit"
+                value={form.interval_unit ?? "minutes"}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    interval_unit: e.target.value as IntervalUnit,
+                  })
+                }
+              >
+                {INTERVAL_UNITS.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {UNIT_LABELS[unit]}
+                  </option>
+                ))}
+              </SelectField>
             </div>
           ) : (
             <div className="schedule-inline">
-              <label className="schedule-field">
-                <span>周期</span>
-                <select
-                  data-testid="schedule-cron-period"
-                  value={form.cron_period ?? "day"}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      cron_period: e.target.value as CronPeriod,
-                    })
-                  }
-                >
-                  <option value="hour">每小时</option>
-                  <option value="day">每天</option>
-                  <option value="week">每周</option>
-                </select>
-              </label>
+              <SelectField
+                label="周期"
+                data-testid="schedule-cron-period"
+                value={form.cron_period ?? "day"}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    cron_period: e.target.value as CronPeriod,
+                  })
+                }
+              >
+                <option value="hour">每小时</option>
+                <option value="day">每天</option>
+                <option value="week">每周</option>
+              </SelectField>
               <label className="schedule-field">
                 <span>时间</span>
                 <input
@@ -489,22 +483,20 @@ export function ScheduleListPage() {
                 />
               </label>
               {form.cron_period === "week" ? (
-                <label className="schedule-field">
-                  <span>星期</span>
-                  <select
-                    data-testid="schedule-cron-weekday"
-                    value={String(form.cron_weekday ?? 1)}
-                    onChange={(e) =>
-                      setForm({ ...form, cron_weekday: Number(e.target.value) })
-                    }
-                  >
-                    {WEEKDAYS.map((label, index) => (
-                      <option key={label} value={String(index)}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <SelectField
+                  label="星期"
+                  data-testid="schedule-cron-weekday"
+                  value={String(form.cron_weekday ?? 1)}
+                  onChange={(e) =>
+                    setForm({ ...form, cron_weekday: Number(e.target.value) })
+                  }
+                >
+                  {WEEKDAYS.map((label, index) => (
+                    <option key={label} value={String(index)}>
+                      {label}
+                    </option>
+                  ))}
+                </SelectField>
               ) : null}
             </div>
           )}
@@ -515,43 +507,39 @@ export function ScheduleListPage() {
                 <span className="muted">无可选依赖</span>
               ) : (
                 dependencyOptions.map((tree) => (
-                  <label key={tree.id} className="schedule-check">
-                    <input
-                      type="checkbox"
-                      data-testid={`schedule-dep-${tree.id}`}
-                      checked={form.dependencies.includes(tree.id)}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          dependencies: e.target.checked
-                            ? [...form.dependencies, tree.id]
-                            : form.dependencies.filter((id) => id !== tree.id),
-                        })
-                      }
-                    />
-                    {tree.name}
-                  </label>
+                  <CheckboxField
+                    key={tree.id}
+                    label={tree.name}
+                    data-testid={`schedule-dep-${tree.id}`}
+                    checked={form.dependencies.includes(tree.id)}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        dependencies: e.target.checked
+                          ? [...form.dependencies, tree.id]
+                          : form.dependencies.filter((id) => id !== tree.id),
+                      })
+                    }
+                  />
                 ))
               )}
             </div>
           </div>
           <div className="schedule-inline">
-            <label className="schedule-field">
-              <span>失败处理</span>
-              <select
-                data-testid="schedule-on-failure"
-                value={form.on_failure}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    on_failure: e.target.value as ScheduleRuleInput["on_failure"],
-                  })
-                }
-              >
-                <option value="immediate">立即重试</option>
-                <option value="next_schedule">等下次调度</option>
-              </select>
-            </label>
+            <SelectField
+              label="失败处理"
+              data-testid="schedule-on-failure"
+              value={form.on_failure}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  on_failure: e.target.value as ScheduleRuleInput["on_failure"],
+                })
+              }
+            >
+              <option value="immediate">立即重试</option>
+              <option value="next_schedule">等下次调度</option>
+            </SelectField>
             <label className="schedule-field">
               <span>最大重试次数</span>
               <input
@@ -577,22 +565,20 @@ export function ScheduleListPage() {
               />
             </label>
           </div>
-          <label className="schedule-field">
-            <span>错过调度处理</span>
-            <select
-              data-testid="schedule-on-missed"
-              value={form.on_missed}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  on_missed: e.target.value as ScheduleRuleInput["on_missed"],
-                })
-              }
-            >
-              <option value="run">补跑一次</option>
-              <option value="skip">跳过</option>
-            </select>
-          </label>
+          <SelectField
+            label="错过调度处理"
+            data-testid="schedule-on-missed"
+            value={form.on_missed}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                on_missed: e.target.value as ScheduleRuleInput["on_missed"],
+              })
+            }
+          >
+            <option value="run">补跑一次</option>
+            <option value="skip">跳过</option>
+          </SelectField>
           <div className="schedule-field">
             <span>数据入参</span>
             {targetTree && Object.keys(targetTree.inputs ?? {}).length > 0 ? (
@@ -631,15 +617,12 @@ export function ScheduleListPage() {
               <span className="muted">该行为树无入参</span>
             )}
           </div>
-          <label className="schedule-check">
-            <input
-              type="checkbox"
-              data-testid="schedule-enabled"
-              checked={form.enabled}
-              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-            />
-            启用
-          </label>
+          <CheckboxField
+            label="启用"
+            data-testid="schedule-enabled"
+            checked={form.enabled}
+            onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+          />
             <div className="run-dialog__actions">
               <Button variant="ghost" onClick={closeForm} data-testid="schedule-cancel">
                 取消

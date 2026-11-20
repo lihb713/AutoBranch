@@ -285,8 +285,9 @@ export type CompositeNodeType =
 统一样式位置：`src/styles/design-system.css`（在 `index.css` 之后加载，作为最终视觉覆盖）。
 
 - **页面**：`.page` + `.page-header` + `.page-title`；标题 24px，页头底部 16px 间距与 1px 分隔线。
-- **按钮**：统一使用 `components/Button.tsx` 的 `.btn`；变体 `primary` / `ghost` / `danger`。高度 36px、圆角 8px、hover/active/focus-visible 状态统一。
-- **表单**：`.text-field` / `.text-field__input`；输入框高度 36px、圆角 8px，focus 使用主色边框 + 3px 浅色焦点环。弹窗内表单使用同一 token。
+- **按钮**：统一使用 `components/Button.tsx` 的 `.btn`；变体 `primary` / `ghost` / `danger`，尺寸 `sm/md/lg`。高度 32/36/40px、圆角 8px，hover/active/focus-visible/disabled 状态统一。
+- **表单**：`TextField` / `TextAreaField` / `SelectField` / `CheckboxField`；统一高度 36px、圆角 8px、focus 主色边框 + 3px 浅色焦点环。原生 textarea 使用同一 `--control-height` 与 padding 规则。
+- **徽标**：`StatusBadge` / `Badge`（neutral/primary/success/failure/warning）统一 pill 圆角、12px 字号、语义色。
 - **表格**：`.tree-table`；表头 `--color-bg-muted`、12px 次要文本、行高由 `--space-3` 控制、行 hover 弱背景、最后一行无底边框。
 - **卡片/面板**：`.run-meta` / `.report-node` / `.plugin-card` / `.outputs-section` 等统一 surface + border + radius-md + shadow-sm。
 - **弹窗**：`.modal-overlay` + `.modal-panel`；居中、遮罩、圆角 12px、shadow-lg。调度编辑/执行记录、执行入参对话框均使用该组合。
@@ -314,6 +315,7 @@ export type CompositeNodeType =
 | 类型与后端 schema 对齐 | 前后端字段各命名一套 |
 | 编辑器产出复合节点 yaml | 前端自行展开基础节点 |
 | 视觉使用 `src/styles/tokens.css` 的 token | 硬编码颜色/间距/px 魔法数字 |
+| 表单优先使用 TextField/TextAreaField/SelectField/CheckboxField | 每个页面各写一套 input/select 样式 |
 | 页面/表格/弹窗复用设计系统 class | 同一页面混用多套按钮/表格/弹窗风格 |
 | 同类操作使用同一 Button variant/size | 表格操作区混用超链接与边框按钮 |
 | 表单统一 `.text-field` + 焦点环 | 输入框各自设置高度/边框/对齐 |

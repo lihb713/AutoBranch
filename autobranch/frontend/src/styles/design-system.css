@@ -558,6 +558,40 @@ input[type="radio"] {
   vertical-align: middle;
 }
 
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+}
+
+.badge-neutral {
+  background: var(--color-bg-muted);
+  color: var(--color-muted);
+}
+
+.badge-primary {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badge-failure {
+  background: var(--color-failure-bg);
+  color: var(--color-failure);
+}
+
+.badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -809,7 +843,8 @@ input[type="radio"] {
   flex-wrap: wrap;
 }
 
-.schedule-inline .schedule-field {
+.schedule-inline .schedule-field,
+.schedule-inline .text-field {
   flex: 1;
   min-width: 160px;
 }

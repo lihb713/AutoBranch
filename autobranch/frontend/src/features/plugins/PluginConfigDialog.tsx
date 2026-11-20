@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { pluginsApi } from "../../api/plugins";
 import { Button } from "../../components/Button";
+import { CheckboxField } from "../../components/CheckboxField";
 import { ErrorMessage } from "../../components/ErrorMessage";
+import { TextField } from "../../components/TextField";
 import type { ConfigSchemaItem } from "../../types/plugin";
 
 type Props = {
@@ -69,17 +71,18 @@ export function PluginConfigDialog({ pluginName, schema, onClose, onSaved }: Pro
                 {item.required ? <span className="required"> *</span> : null}
               </label>
               {item.type === "boolean" ? (
-                <input
+                <CheckboxField
                   id={`cfg-${item.key}`}
-                  type="checkbox"
+                  label={item.label}
                   checked={Boolean(values[item.key])}
                   onChange={(e) =>
                     setValues((prev) => ({ ...prev, [item.key]: e.target.checked }))
                   }
                 />
               ) : (
-                <input
+                <TextField
                   id={`cfg-${item.key}`}
+                  label={`${item.label}${item.required ? " *" : ""}`}
                   type={item.type === "number" ? "number" : "text"}
                   value={String(values[item.key] ?? "")}
                   onChange={(e) =>

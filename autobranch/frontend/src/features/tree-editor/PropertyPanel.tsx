@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { pluginsApi } from "../../api/plugins";
 import { Combobox, type ComboboxOption } from "../../components/Combobox";
 import { HighlightedField } from "../../components/HighlightedField";
+import { TextAreaField } from "../../components/TextAreaField";
 import { TextField } from "../../components/TextField";
 import type { FunctionInfo } from "../../types/plugin";
 import { schemaTypeToToken, TYPE_TOKENS } from "./tokens";
@@ -597,22 +598,18 @@ export function PropertyPanel({
             const value = optionalValue(p);
             if (type === "object" || type === "array") {
               return (
-                <label key={`fc-kw-${p}`} className="text-field">
-                  <span className="text-field__label">
-                    可选参数 {p}（{schemaTypeToToken(type)}，JSON）
-                  </span>
-                  <textarea
-                    className="text-field__input"
-                    rows={2}
-                    disabled={readonly}
-                    data-testid={`fc-kwarg-${node.id}-${p}`}
-                    value={
-                      typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2)
-                    }
-                    placeholder={'JSON，如 {"host": "10.0.0.1"}'}
-                    onChange={(e) => setOptionalText(p, type, e.target.value)}
-                  />
-                </label>
+                <TextAreaField
+                  key={`fc-kw-${p}`}
+                  label={`可选参数 ${p}（${schemaTypeToToken(type)}，JSON）`}
+                  rows={2}
+                  disabled={readonly}
+                  data-testid={`fc-kwarg-${node.id}-${p}`}
+                  value={
+                    typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2)
+                  }
+                  placeholder={'JSON，如 {"host": "10.0.0.1"}'}
+                  onChange={(e) => setOptionalText(p, type, e.target.value)}
+                />
               );
             }
             return (
