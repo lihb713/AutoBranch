@@ -126,3 +126,14 @@ def test_foreach_mismatched_list_lengths_fails():
     )
     assert Traverser(ctx).tick(node) == FAILURE
     assert "长度不一致" in (ctx.failure_reason or "")
+
+
+def test_foreach_continue_all_fail_returns_failure():
+    ctx, _ = _context(lambda _n, _t: LeafResult(status="failure"))
+    node = ForEachNode(
+        variables=(("env_id", "Param.env_ids"),),
+        body=ActionNode(description="处理"),
+        on_failure="continue",
+    )
+    assert Traverser(ctx).tick(node) == FAILURE
+    assert ctx.failure_reason is not None

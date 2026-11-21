@@ -255,6 +255,10 @@ ForEach SHALL 支持 `break_on_success`：body 成功后终止循环。参数/�
 - **WHEN** ForEach.break_on_success=true 且第一个 body 成功
 - **THEN** 循环立即结束
 
+#### Scenario: 全部迭代失败
+- **WHEN** ForEach.on_failure=continue 且每一轮 body 都失败
+- **THEN** ForEach 整体返回 FAILURE 并保留失败原因
+
 #### Scenario: 读取嵌套字段
 - **WHEN** FunctionCall 参数为 Param.obj.name
 - **THEN** 读取 obj 的 name 字段并传给函数

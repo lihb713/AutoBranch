@@ -80,14 +80,14 @@ class RefNode(Node):
     """文档引用调用节点：运行期经 resolver 加载被引文档并从其 Root 执行。
 
     :param ref_target: 被引文档名（单段，一文档一树）。
-    :param args: 实参表达式列表（按序对应被引文档 inputs）；元素为本文档
-        变量名（``this/<名>`` 或裸名）或字面量。
+    :param args: 实参表达式列表（按序对应被引文档 inputs）；元素为表达式字符串
+        或 YAML 原生 dict/list/int/float/bool 字面量。
     :param returns: ``(本树接收名, 类型)`` 列表（按序对应被引文档 outputs）；
         被引文档 SUCCESS 后回收写入父帧。
     """
 
     ref_target: str = ""
-    args: tuple[str, ...] = ()
+    args: tuple[object, ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
 
 
@@ -96,8 +96,8 @@ class FunctionCallNode(Node):
     """函数调用叶子：确定性调用注册的插件函数（不经 LLM）。
 
     :param function: 注册函数名。
-    :param args: 位置实参表达式列表（按序对应函数参数）；元素为本树裸变量名
-      或字面量。
+    :param args: 位置实参表达式列表（按序对应函数参数）；元素为表达式字符串
+      或 YAML 原生 dict/list/int/float/bool 字面量（dict/list 会递归求值）。
     :param kwargs: 命名实参 ``(参数名, 值)`` 列表；值可为字面量、dict/list，
       其中字符串叶子可按 ``Param.x`` 求值。用于跳过中间可选参数。
     :param returns: ``(本树接收名, 类型)`` 列表（按序对应函数多返回值）；
@@ -105,7 +105,7 @@ class FunctionCallNode(Node):
     """
 
     function: str = ""
-    args: tuple[str, ...] = ()
+    args: tuple[object, ...] = ()
     kwargs: tuple[tuple[str, object], ...] = ()
     returns: tuple[tuple[str, str], ...] = ()
 

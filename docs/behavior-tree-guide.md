@@ -258,8 +258,8 @@ n2:
 - 每一轮把当前项写入同名临时变量；
 - 循环体内用 `Param.order_id` 读取；
 - `on_failure`：
-  - `continue`：跳过失败项继续；
-  - `abort`：立即失败退出；
+  - `continue`：跳过失败项继续；如果所有迭代都失败，整体返回 FAILURE 并保留失败原因；
+  - `abort`：任一失败立即退出并返回 FAILURE；
 - `break_on_success: true`：body 成功后提前终止循环，适合“找到第一个满足条件的元素就停止”；
 - 不写 `break_on_success` 时默认遍历全部项。
 
@@ -647,6 +647,8 @@ n2:
 - `args` 按函数参数顺序传位置参数；
 - `kwargs` 按参数名传命名参数；
 - 必填参数可由 args 或 kwargs 提供；
+- 字符串字面量保留原始前后空白（只有 bool/数值识别会先 trim）；
+- YAML 原生 dict/list 可直接作为位置参数，内部字符串叶子仍会递归求值 `Param.x`；
 - `kwargs` 适合跳过中间可选参数：
 
 ```yaml
@@ -666,6 +668,13 @@ args: ["[1,2,3]", ","]
 ```
 
 如果函数参数类型是 `array`，字符串 `"[1,2,3]"` 会在执行时构造成 list；`object` 同理。
+也可以直接写 YAML 原生容器，避免再手写 JSON：
+
+```yaml
+args:
+  - "python3 get_vms.py --region={region}"
+  - region: Param.env_id
+```
 
 更推荐直接使用变量：
 

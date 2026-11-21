@@ -941,6 +941,13 @@ def _append_returns(
     return pairs
 
 
+def _arg_item(item: object) -> object:
+    """位置实参：保留 YAML 原生容器/标量，其余转表达式字符串。"""
+    if isinstance(item, (dict, list, int, float, bool)):
+        return item
+    return str(item)
+
+
 def _ref_ir(
     doc_id: str,
     nid: str,
@@ -954,9 +961,9 @@ def _ref_ir(
         issues.append(_issue(doc_id, "ref", "bad_syntax", f"ref 节点 '{nid}' 缺少 target 文档名"))
         return _empty_ir("ref", loc)
     args = body.get("args", [])
-    args_tuple: tuple[str, ...] = ()
+    args_tuple: tuple[object, ...] = ()
     if isinstance(args, list):
-        args_tuple = tuple(str(item) for item in args)
+        args_tuple = tuple(_arg_item(item) for item in args)
     returns = body.get("returns", {})
     returns_pairs: list[tuple[str, str]] = []
     if isinstance(returns, dict):
@@ -990,9 +997,9 @@ def _function_call_ir(
             )
         )
     args = body.get("args", [])
-    args_tuple: tuple[str, ...] = ()
+    args_tuple: tuple[object, ...] = ()
     if isinstance(args, list):
-        args_tuple = tuple(str(item) for item in args)
+        args_tuple = tuple(_arg_item(item) for item in args)
     else:
         issues.append(
             _issue(

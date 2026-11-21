@@ -29,6 +29,13 @@ class FakeRegistry:
             return types.SimpleNamespace(
                 parameters={"required": ["scope", "lod"]}, user_visible=False
             )
+        if name == "transform.format":
+            return types.SimpleNamespace(
+                parameters={
+                    "required": ["template", "values"],
+                    "properties": {"template": {}, "values": {"type": "object"}},
+                }
+            )
         return None
 
 
@@ -236,3 +243,19 @@ def test_generics_type_accepts_any_value():
     assert coerce("generics", page) is page
     check_type("generics", page)
     check_type("generics", "任何值")
+
+
+def test_object_positional_arg_keeps_native_dict():
+    result = parse(
+        _doc(
+            function="transform.format",
+            args=["--region={region}", {"region": "Param.env"}],
+            returns={"text": "str"},
+        ),
+        None,
+        function_registry=FakeRegistry(),
+    )
+    assert result.checks.ok, result.checks.issues
+    call = result.tree.root.children[0]
+    assert isinstance(call, FunctionCallNode)
+    assert call.args[1] == {"region": "Param.env"}

@@ -174,8 +174,8 @@ returns:
 - 函数不存在 / 实参求值失败（变量未定义）/ 执行失败 → 该节点 FAILURE，失败原因含函数全名与错误。
 - 实参从当前帧求值；返回值按 `returns` 回收写父帧（按声明类型 coerce）。
 - `function` 指向的能力来自插件集（M7）；引擎核心不感知具体能力（能力经插件框架 M3 分发）。
-- FunctionCall `args` 按函数参数声明顺序填写；`kwargs` 按参数名传命名参数；`args` 与 `kwargs` 合并后校验必填参数，必填参数也可由 `kwargs` 提供，前端属性面板会从 `kwargs` 回显；可选命名参数可省略；`kwargs` 值可为字面量、`Param.x` 或嵌套 dict/list。
-- `args`/`kwargs` 的字符串值若完整匹配 `Param.x`，传入变量原值；若为嵌入文本（如 `stat /tmp/Param.filename`），则把 `Param.x` 替换为变量值的文本摘要。
+- FunctionCall `args` 按函数参数声明顺序填写；`kwargs` 按参数名传命名参数；`args` 与 `kwargs` 合并后校验必填参数，必填参数也可由 `kwargs` 提供，前端属性面板会从 `kwargs` 回显；可选命名参数可省略；`args`/`kwargs` 值可为字面量、`Param.x` 或嵌套 dict/list（YAML 原生容器保留，不转 Python repr 字符串）。
+- `args`/`kwargs` 的字符串值若完整匹配 `Param.x`，传入变量原值；若为嵌入文本（如 `stat /tmp/Param.filename`），则把 `Param.x` 替换为变量值的文本摘要。普通字符串字面量保留前后空白，仅 bool/数值识别使用 trim。
 - **函数标识 = 全名 `插件名.函数名`**（如 `compute.add`）：同一插件内函数名唯一，**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）。
 - **LLM 工具名转义**：对 LLM 暴露的工具名为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），叶子分发时按转义名反查回全名。
 - **保存/执行前校验**：服务端保存（`/api/trees`）与执行前，经共享插件注册表校验 FunctionCall 的 `function` 存在性与 `args` 参数对齐；函数不存在 / 参数不匹配时保存被 422 拒绝。
@@ -343,6 +343,7 @@ n_foreach:
 
 - 列表变量长度必须一致；无列表变量则循环 1 次；空列表循环 0 次。
 - `break_on_success`（默认 false）在 body 成功后提前结束循环；失败仍按 `on_failure` 处理。
+- `on_failure=continue` 容忍部分迭代失败；若**全部迭代失败**，整体返回 FAILURE 并保留首个失败原因。
 - 每轮在**临时子帧**写入 item 变量，body 通过 `Param.变量名` 读取（可向上读取当前行为树帧）。
 - 子帧复用（保证 `transform.append` 等跨轮累积结果），循环结束移除；item 变量对外不可见。
 - `continue`：单轮失败跳过继续；`abort`：立即失败。
@@ -810,7 +811,7 @@ nodes:
 ```
 
 **参数绑定**（沿用 §5.3 schema 机制）：
-- `args` 按序对应被引文档 `inputs`；每个元素为 `Param.x`（读本树变量）或字面量（str/int/float/bool）。
+- `args` 按序对应被引文档 `inputs`；每个元素为 `Param.x`（读本树变量）或字面量（str/int/float/bool/array/object）。
 - `returns` 按序对应被引文档 `outputs`；键为**本树新建的接收变量**（裸 ASCII 名，隐式创建），值为类型（由目标文档 outputs 决定，用户不可编辑）；被引文档 SUCCESS 后其输出写入本树这些变量，后续节点可 `Param.<接收名>` 引用。
 - **默认接收名**：未填写时自动生成 `<节点id>_<返回参数名>`（如 `n3_urlText`）；冲突只对自动名追加 `_1/_2`；名称变更不自动改写其他位置引用。
 

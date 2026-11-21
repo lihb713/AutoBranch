@@ -212,3 +212,8 @@ class RefNode(Node):
 ### Param 点路径
 
 `Param.变量.字段.子字段` 支持读取 dict/list 嵌套值（列表用数字段）；作用域校验只针对根变量，路径存在性在运行时校验。
+
+
+### FunctionCall/ref 位置参数
+
+`args` 元素为表达式字符串，或 YAML 原生 dict/list/int/float/bool；解析期保留原生容器，不转 Python repr 字符串，交由运行时递归求值。

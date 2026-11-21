@@ -95,7 +95,7 @@ def node_desc(node: Node) -> str:
     if isinstance(node, (ActionNode, ConditionNode)):
         return node.description
     if isinstance(node, FunctionCallNode):
-        return f"{node.function}({', '.join(node.args)})"
+        return f"{node.function}({', '.join(str(arg) for arg in node.args)})"
     if isinstance(node, DefineNode):
         return f"Define({', '.join(name for name, _t, _v in node.vars)})"
     if isinstance(node, ForEachNode):
@@ -331,6 +331,7 @@ class Traverser:
         frame_name = f"ForEach#{self._foreach_seq}"
         parent = self.ctx.current_frame
         previous_failure = self.ctx.failure_reason
+        first_failure: str | None = None
         failed_iterations = 0
         meta = self._meta_stack[-1] if self._meta_stack else {}
         meta["details"] = {
@@ -356,6 +357,8 @@ class Traverser:
                 if status == FAILURE:
                     failed_iterations += 1
                     meta["details"]["失败迭代数"] = failed_iterations
+                    if first_failure is None:
+                        first_failure = self.ctx.failure_reason
                     if node.on_failure == "abort":
                         return FAILURE
                     self.ctx.failure_reason = previous_failure
@@ -379,6 +382,13 @@ class Traverser:
                 space.exit_frame(frame)
                 if parent is not None:
                     parent.children.pop(frame_name, None)
+        if failed_iterations == count:
+            meta["details"]["全部失败"] = True
+            if first_failure is not None:
+                self.ctx.failure_reason = first_failure
+            else:
+                self._note_failure(node, f"全部 {count} 轮执行失败")
+            return FAILURE
         return SUCCESS
 
     @staticmethod
@@ -452,7 +462,7 @@ class Traverser:
             )
         args: dict[str, object] = {}
         for name, expr in zip(param_names, node.args, strict=False):
-            val = self._eval_arg(frame, expr)
+            val = self._eval_value(frame, expr)
             if val is _MISSING:
                 return self._note_failure(node, f"实参 '{expr}' 求值失败（变量未定义）") or FAILURE
             try:
@@ -798,7 +808,7 @@ class Traverser:
             )
         for i, expr in enumerate(node.args):
             name = input_names[i]
-            val = self._eval_arg(parent, expr)
+            val = self._eval_value(parent, expr)
             if val is _MISSING:
                 return (
                     self._note_failure(node, f"实参 '{expr!r}' 求值失败（变量未定义）")
@@ -1014,7 +1024,11 @@ _PARAM_REF = re.compile(
 
 
 def _parse_literal(expr: str):
-    """把字面量表达式转成基础值（str/int/float/bool），无法转换按原字符串。"""
+    """把字面量表达式转成基础值（str/int/float/bool）。
+
+    ``strip()`` 仅用于 bool/数值识别；字符串回退保留原始前后空白，避免破坏
+    命令拼接、分隔符等对空格敏感的字面量。
+    """
     s = (expr or "").strip()
     lowered = s.lower()
     if lowered in ("true", "false"):
@@ -1027,7 +1041,7 @@ def _parse_literal(expr: str):
         return float(s)
     except ValueError:
         pass
-    return s
+    return expr or ""
 
 
 def _leaf_failure_text(
