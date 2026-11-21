@@ -19,14 +19,15 @@ afterEach(() => {
 });
 
 describe("runsApi 请求方法与路径", () => {
-  it("runTree → POST /api/trees/3/run", async () => {
+  it("runTree → POST /api/runs", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ run_id: 5 }, 202));
     vi.stubGlobal("fetch", fetchMock);
     const result = await runsApi.runTree(3);
     expect(result.run_id).toBe(5);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/trees/3/run");
+    expect(url).toBe("/api/runs");
     expect((init as RequestInit).method).toBe("POST");
+    expect((init as RequestInit).body).toBe('{"tree_id":3}');
   });
 
   it("getRunState → GET /api/runs/5/state", async () => {

@@ -19,9 +19,9 @@ async function requestReport(path: string): Promise<ReportResponse> {
 
 export const runsApi = {
   runTree: (id: number, inputs?: Record<string, unknown>) =>
-    request<RunStart>(`/trees/${id}/run`, {
+    request<RunStart>("/runs", {
       method: "POST",
-      body: JSON.stringify({ inputs }),
+      body: JSON.stringify({ tree_id: id, inputs }),
     }),
 
   listRuns: () => request<RunOut[]>("/runs"),

@@ -206,6 +206,55 @@ class TransformPlugin(PluginBase):
         return FunctionResult.success(str(separator).join(_as_text(v) for v in values))
 
     @engine_function(
+        name="concat",
+        description="顺序拼接文本片段（按 a→e，忽略空值，可指定 separator）",
+        parameters=_params(
+            ("a", "b"),
+            a={"type": "object", "description": "第 1 段"},
+            b={"type": "object", "description": "第 2 段"},
+            c={"type": "object", "description": "第 3 段（可选）"},
+            d={"type": "object", "description": "第 4 段（可选）"},
+            e={"type": "object", "description": "第 5 段（可选）"},
+            separator={"type": "string", "description": "片段间分隔符（默认空）"},
+        ),
+        returns={"text": "str"},
+    )
+    def concat(
+        self,
+        a: Any,
+        b: Any,
+        c: Any = "",
+        d: Any = "",
+        e: Any = "",
+        separator: str = "",
+    ) -> str:
+        parts = [a, b, c, d, e]
+        return str(separator).join(
+            _as_text(part) for part in parts if part is not None and part != ""
+        )
+
+    @engine_function(
+        name="format",
+        description="用 values 字典替换模板中的 {name} 占位符",
+        parameters=_params(
+            ("template", "values"),
+            template={"type": "string", "description": "模板，如 http://{host}:{port}/api"},
+            values={"type": "object", "description": "占位符取值字典"},
+        ),
+        returns={"text": "str"},
+    )
+    def format(self, template: str, values: dict) -> FunctionResult:
+        if not isinstance(values, dict):
+            return _failure("values 必须是字典")
+        pattern = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+        def replace(match: re.Match[str]) -> str:
+            key = match.group(1)
+            return _as_text(values[key]) if key in values else match.group(0)
+
+        return FunctionResult.success(pattern.sub(replace, str(template)))
+
+    @engine_function(
         name="contains",
         description="判断字符串是否包含子串（ignore_case 可忽略大小写）",
         parameters=_params(

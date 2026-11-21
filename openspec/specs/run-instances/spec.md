@@ -198,3 +198,15 @@
 #### Scenario: 轮询直接读取状态
 - **WHEN** 客户端轮询执行状态
 - **THEN** 响应包含 `status`，无需仅靠 `finished + failure_reason` 推断
+
+### Requirement: 统一创建执行端点
+
+系统 SHALL 提供 `POST /api/runs`（body `{tree_id, inputs?}`）作为统一执行创建入口，并与 `POST /api/trees/{id}/run` 共用归一化、文档校验、入参校验与快照创建逻辑；缺少树声明的必填入参 SHALL 在创建前返回 422。
+
+#### Scenario: 统一入口触发
+- **WHEN** 客户端 POST /api/runs 传入已发布树 ID 与完整入参
+- **THEN** 返回 202 与 run_id
+
+#### Scenario: 缺少必填入参
+- **WHEN** 树声明两个入参但只提供一个
+- **THEN** 返回 422 且不创建执行实例

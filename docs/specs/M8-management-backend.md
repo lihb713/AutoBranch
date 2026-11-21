@@ -67,7 +67,8 @@ POST   /api/trees/{id}/check   # 清晰度校验（200，CheckReport：ok + issu
 ### 5.2 执行 API（执行实例化，Change A）
 
 ```
-POST   /api/trees/{id}/run            # 触发执行（仅 published；异步 202 → {"run_id": n}；可选 body {"inputs": {...}}）
+POST   /api/runs                      # 统一创建执行（body {tree_id, inputs?}；仅 published；202 → {"run_id": n}）
+POST   /api/trees/{id}/run            # 触发执行（等价入口；仅 published；异步 202 → {"run_id": n}；可选 body {"inputs": {...}}）
 GET    /api/runs                      # 执行实例列表（RunOut：快照树名/状态/来源/入参/耗时/指纹/进度；?schedule_id= 过滤）
 GET    /api/runs/{run_id}             # 实例详情（含 content_snapshot + 关联调度摘要，供查看快照/来源）
 POST   /api/runs/{run_id}/retry       # 按快照重试（复制原实例快照+入参新建 Run，202 → run_id）
@@ -76,10 +77,10 @@ GET    /api/runs/{run_id}/state       # 轮询执行状态（ExecStateOut）
 GET    /api/runs/{run_id}/report      # 执行报告（进行中 200 JSON {"status":"running"}，结束 text/markdown）
 GET    /api/runs/{run_id}/trace       # 回溯报告（同上；OpenAPI 同时声明 application/json 与 text/markdown）
 GET    /api/reports/{path}            # 截图/报告文件（白名单防目录穿越）
-GET    /api/types                     # 类型可构造性（TypeInfoOut：token + constructible = cast is not None）
+GET    /api/types                     # 类型可构造性（TypeInfoOut：token + constructible = cast is not None；page_ref 不可构造）
 ```
 
-- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（如 `page_ref`/`object`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 → 422。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
+- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（仅 `page_ref`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 / 缺少声明的必填入参 → 422。`object`/`array` 入参可由 JSON 文本构造。统一入口 `POST /api/runs` 与树入口共用 `RunService.start_tree` 的归一化/校验/快照逻辑。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
 - **执行实例快照**：触发时刻冻结 `content_snapshot`（行为树 yaml 全文）/ `tree_name_snapshot` / `tree_content_hash`（执行结构指纹）/ `inputs`（原始入参）。执行与重试一律基于快照，不读实时树内容；树被删除后历史实例仍可回看/重试（自包含）。
 - **执行来源（M10）**：`RunService.start(..., source="manual"|"schedule"|"dependency", schedule_id=...)`；`runs` 保存来源，`GET /api/runs?schedule_id=&source=` 过滤；详情返回 `schedule` 摘要（规则名/调度方式）；`RunService.set_on_run_complete(callback)` 在执行终态通知 M10 调度引擎。
 - **队列调度**：去掉 D8 同树并发 409 去重，改为**全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列**——`pending` 即排队中（列表显示序号）；`start` 与每次执行结束触发 `_drain()`，先置 running 占位再提交到 `ThreadPoolExecutor(max_workers=N)`；重启恢复沿用 `mark_interrupted`（pending/running → interrupted）。

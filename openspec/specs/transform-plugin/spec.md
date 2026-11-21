@@ -38,3 +38,11 @@
 #### Scenario: append 累积
 - **WHEN** 在 ForEach 中调用 append 并把返回写回父帧列表变量
 - **THEN** 每轮结果追加到列表
+
+### Requirement: 字符串拼接与模板
+
+transform 插件 SHALL 提供 `concat`（顺序拼接 a~e，可指定 separator）与 `format`（`{name}` 模板 + values 字典），用于构建动态 URL/命令/JSON 文本。
+
+#### Scenario: 拼接 URL
+- **WHEN** 调用 `transform.concat` 传入协议/主机/端口/路径
+- **THEN** 返回完整拼接字符串

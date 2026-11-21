@@ -13,6 +13,7 @@ from autobranch.server.deps import get_run_service
 from autobranch.server.schemas.run import (
     ExecStateOut,
     ReportPendingOut,
+    RunCreateIn,
     RunDetailOut,
     RunOut,
     RunStartOut,
@@ -46,6 +47,13 @@ def list_runs(
         RunOut.model_validate(item)
         for item in run_service.list_runs(db, schedule_id=schedule_id, source=source)
     ]
+
+
+@router.post("", response_model=RunStartOut, status_code=status.HTTP_202_ACCEPTED)
+def create_run(payload: RunCreateIn, run_service: RunServiceDep, db: DbSession):
+    """统一创建执行实例（等价于 POST /api/trees/{tree_id}/run）。"""
+    run = run_service.start_tree(db, payload.tree_id, inputs=payload.inputs)
+    return {"run_id": run.id}
 
 
 @router.get("/{run_id}", response_model=RunDetailOut)

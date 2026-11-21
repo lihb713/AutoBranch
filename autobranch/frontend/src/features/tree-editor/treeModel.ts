@@ -260,7 +260,12 @@ export function parseDoc(yamlText: string): TreeDoc {
         ? Object.entries(body["vars"]).map(([k, v]) => ({
             name: k,
             type: isRecord(v) && typeof v["type"] === "string" ? (v["type"] as string) : "str",
-            value: isRecord(v) && v["value"] !== undefined ? String(v["value"]) : "",
+            value:
+              isRecord(v) && v["value"] !== undefined
+                ? typeof v["value"] === "string"
+                  ? v["value"]
+                  : JSON.stringify(v["value"])
+                : "",
           }))
         : [];
     }
@@ -318,9 +323,18 @@ export function serializeDoc(doc: TreeDoc): string {
       body["on_failure"] = node.onFailure ?? "continue";
     }
     if (node.type === "Define") {
-      const vars: Record<string, { type: string; value: string }> = {};
+      const vars: Record<string, { type: string; value: unknown }> = {};
       for (const v of node.vars ?? []) {
-        if (v.name.trim()) vars[v.name.trim()] = { type: v.type || "str", value: v.value };
+        if (!v.name.trim()) continue;
+        let value: unknown = v.value;
+        if (v.type === "object" || v.type === "array") {
+          try {
+            value = JSON.parse(v.value);
+          } catch {
+            value = v.value;
+          }
+        }
+        vars[v.name.trim()] = { type: v.type || "str", value };
       }
       body["vars"] = vars;
     }

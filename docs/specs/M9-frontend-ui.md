@@ -92,7 +92,7 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - **节点对象池 + 统一槽位**：全部节点独立定义在 `nodes` 下，节点间一切动作关联经**语义命名字段**引用子树根 id：`Root.body`、`Sequence.actions`（有序列表）、`Step.action`、`IfThenElse.then`/`else`、`Branch.action` + `branches[].action`（每分支一行）、`Retry.body`、`LoopUntil.action`、`ForEach.body`；槽位下拉只展示各棵游离树的根（已挂载节点/树内非根节点不展示）。`Sequence.actions` 可增删；`IfThenElse` 的 `then`/`else` 各 1 个槽；`Branch` 可增删分支行。条件（`expect`/`if`/`when`/`until`）与 `description`/`max` 等为标量字段（存于 `fields`），不占槽位。
 - **根节点**：每文档恰一个 `type: Root`（固定 1 槽 `body`），不可删除/替换；`root` 顶层键引用它。
 - **Action 叶子**：真正叶子节点，无槽位，仅 `fields.description`（自然语言操作描述），可被任意槽位挂载；创建 Step 时自动附带一个 Action 子节点挂入其 `action` 槽位（`createStepWithAction`）。
-- **文档接口编辑**：**行为树级属性**，位于右侧侧栏「树信息」Tab（与行为树名称输入框同区，`DocInterfaceEditor`，不在节点属性面板内）——编辑树 `inputs`（名→类型，类型 str/int/float/bool/page_ref/object）与 `outputs`（名列表），可增删改；ref 参数对齐依据该声明。只读模式（ref 预览）下禁用。
+- **文档接口编辑**：**行为树级属性**，位于右侧侧栏「树信息」Tab（与行为树名称输入框同区，`DocInterfaceEditor`，不在节点属性面板内）——编辑树 `inputs`（名→类型，类型 str/int/float/bool/page_ref/object/array）与 `outputs`（名列表），可增删改；ref 参数对齐依据该声明。只读模式（ref 预览）下禁用。
 - **ref 参数编辑**：仅加载 **published** 目标文档的 `inputs`/`outputs`；ref 节点下拉选目标文档后，后端按目标 `outputs` 自动生成接收名与类型（`<节点id>_<输出名>`）。入参 `args` 为列表（按序对应 inputs）；出参 `returns` 为字典（键=接收名，值=目标输出类型，**类型只读**）。编辑时即时校验对齐/命名冲突，并即时检测跨文档引用环。目标未选/加载中给出提示。
 - **FunctionCall 签名驱动**：选中函数后按函数 `parameters` 自动罗列入参输入框；后端按函数 `returns`（`{返回参数名: 类型}`）自动生成接收名与类型，前端展示名称输入框 + 只读类型；未选函数给出提示；**不提供**手动「添加实参/添加返回值」，也不提供类型编辑。
 - **ref 展开/收缩**：收缩态为单节点占位（显示目标文档名）；展开态将**被引文档整树并入主树布局**（`layoutDocument` 的 `refExpansions`，节点以 `<refId>:` 前缀隔离，向下生长不遮挡主树），与主树以连线相连、预览内部父子连线一并渲染；逐层懒加载，收缩连同已展开子引用一并收起。展开/收缩按钮位于 ref 节点卡片右上角。**预览节点可点击查看只读属性面板**（展示节点字段/槽位/ref 参数，禁止编辑）。

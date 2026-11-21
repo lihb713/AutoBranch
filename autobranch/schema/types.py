@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -62,13 +63,36 @@ def _to_bool(value: Value) -> bool:
     raise SchemaTypeError(f"无法转成 bool: {value!r}")
 
 
+def _to_object(value: Value) -> Value:
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _to_array(value: Value) -> list:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError) as exc:
+            raise SchemaTypeError(f"无法转成 array（需要 JSON 数组）: {value!r}") from exc
+        if isinstance(parsed, list):
+            return parsed
+    raise SchemaTypeError(f"无法转成 array（需要 JSON 数组）: {value!r}")
+
+
 TYPE_REGISTRY: dict[str, TypeSpec] = {
     "str": TypeSpec("str", str, lambda v: str(v)),
     "int": TypeSpec("int", int, _to_int),
     "float": TypeSpec("float", float, _to_float),
     "bool": TypeSpec("bool", bool, _to_bool),
     "page_ref": TypeSpec("page_ref", PageRef, None),
-    "object": TypeSpec("object", object, None),
+    "object": TypeSpec("object", object, _to_object),
+    "array": TypeSpec("array", list, _to_array),
 }
 
 
@@ -89,6 +113,8 @@ def check_type(token: str, value: Value) -> None:
         raise SchemaTypeError(f"不支持的变量类型: {token!r}")
     if token == "object":
         return
+    if token == "array" and not isinstance(value, list):
+        raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 'array'")
     if token == "int" and isinstance(value, bool):
         raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 'int'（排除布尔）")
     if not isinstance(value, spec.py_type):
@@ -102,7 +128,7 @@ def coerce(token: str, raw: Value) -> Value:
     ``cast is None``（如 page_ref）拒绝文本转换——只能由引擎函数产生。
     """
     if token == "object":
-        return raw
+        return _to_object(raw)
     spec = TYPE_REGISTRY.get(token)
     if spec is None:
         raise SchemaTypeError(f"不支持的变量类型: {token!r}")
@@ -127,4 +153,8 @@ def infer_type(value: Value) -> str:
         return "float"
     if isinstance(value, PageRef):
         return "page_ref"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
     return "str"

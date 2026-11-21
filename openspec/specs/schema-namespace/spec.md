@@ -150,3 +150,11 @@
 #### Scenario: Ref 隔离
 - **WHEN** Ref 帧挂载 root
 - **THEN** 不能读取调用方行为树帧的局部变量
+
+### Requirement: 对象与数组文本构造
+
+类型系统 SHALL 支持 `object` 与 `array` 作为树入参/变量/返回值类型；`object` 文本按 JSON 解析（失败保留原字符串），`array` 文本必须是 JSON 数组；只有 `page_ref` 不可由文本构造。
+
+#### Scenario: JSON 文本入参
+- **WHEN** 树声明 `payload: object` 或 `items: array` 并传入 JSON 文本
+- **THEN** 运行时构造为 dict / list，而不是 422 拒绝

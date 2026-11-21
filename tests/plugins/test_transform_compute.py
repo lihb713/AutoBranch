@@ -66,6 +66,20 @@ def test_transform_index_key_split_join():
         == ["a", "b,c"]
     )
     assert reg.call("transform.join", {"values": [1, 2, 3], "separator": "-"}).value == "1-2-3"
+    assert (
+        reg.call(
+            "transform.concat",
+            {"a": "http://", "b": "host", "c": ":", "d": 8080, "e": "/api"},
+        ).value
+        == "http://host:8080/api"
+    )
+    assert (
+        reg.call(
+            "transform.format",
+            {"template": "http://{host}:{port}/api", "values": {"host": "a", "port": 81}},
+        ).value
+        == "http://a:81/api"
+    )
 
 
 def test_transform_string_search_replace_compare():

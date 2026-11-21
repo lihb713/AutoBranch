@@ -257,6 +257,30 @@ root: n1
     expect(again.nodes.n2.vars).toEqual(doc.nodes.n2.vars);
   });
 
+  it("Define 复杂类型解析与序列化往返", () => {
+    const yaml = `tree: 变量
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Define
+    name: 声明
+    vars:
+      payload: {type: object, value: {host: x}}
+      items: {type: array, value: [1, 2]}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    expect(doc.nodes.n2.vars).toEqual([
+      { name: "payload", type: "object", value: '{"host":"x"}' },
+      { name: "items", type: "array", value: "[1,2]" },
+    ]);
+    const again = parseDoc(serializeDoc(doc));
+    expect(again.nodes.n2.vars).toEqual(doc.nodes.n2.vars);
+  });
+
   it("makeNode(Define) 初始化空 vars 且无槽位", () => {
     const node = makeNode("Define", "n9", {}, "声明");
     expect(node.vars).toEqual([]);

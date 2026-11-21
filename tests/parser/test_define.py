@@ -39,6 +39,25 @@ def test_parse_define_ok() -> None:
     assert node.vars == (("a", "str", "x"), ("b", "int", "2"))
 
 
+def test_parse_define_complex_values() -> None:
+    result = parse(
+        _doc(
+            {
+                "payload": {"type": "object", "value": {"host": "x"}},
+                "items": {"type": "array", "value": [1, 2]},
+            }
+        ),
+        None,
+    )
+    assert result.checks.ok, result.checks.issues
+    node = _find(result.tree.root, "DefineNode")
+    assert node is not None
+    assert node.vars == (
+        ("payload", "object", '{"host": "x"}'),
+        ("items", "array", "[1, 2]"),
+    )
+
+
 def test_define_arbitrary_var_count() -> None:
     vars_ = {f"v{i}": {"type": "int", "value": str(i)} for i in range(5)}
     result = parse(_doc(vars_), None)

@@ -33,6 +33,16 @@ class TestTickDefine:
         assert traverser.tick(define(("alias", "str", "Param.orig"))) == SUCCESS
         assert ctx.space.read(ctx.current_frame, "alias") == "hello"
 
+    def test_creates_object_and_array_from_json(self, config) -> None:
+        ctx = make_run_context(config)
+        node = define(
+            ("payload", "object", '{"host": "x"}'),
+            ("items", "array", "[1, 2]"),
+        )
+        assert Traverser(ctx).tick(node) == SUCCESS
+        assert ctx.space.read(ctx.current_frame, "payload") == {"host": "x"}
+        assert ctx.space.read(ctx.current_frame, "items") == [1, 2]
+
     def test_undefined_param_fails(self, config) -> None:
         ctx = make_run_context(config)
         assert Traverser(ctx).tick(define(("x", "str", "Param.nope"))) == FAILURE

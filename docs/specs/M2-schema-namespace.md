@@ -102,10 +102,14 @@ TYPE_REGISTRY = {
     "float":    TypeSpec("float", float,   _to_float),          # 数字/金额
     "bool":     TypeSpec("bool", bool,     _to_bool),           # 布尔
     "page_ref": TypeSpec("page_ref", PageRef, None),            # 页签引用，仅引擎 open() 产生
+    "object":   TypeSpec("object", object, _to_object),         # 泛型对象；JSON 文本可解析
+    "array":    TypeSpec("array", list,    _to_array),          # 列表；JSON 数组文本可解析
 }
 ```
 
-- **类型即真实存储类型**：`set` 标注驱动的 `coerce(token, raw)` 把网页 str 转成声明的 Python 类型后存储；`cast is None`（如 page_ref）拒绝文本转换，只能由引擎函数产生。
+- **类型即真实存储类型**：`set` 标注驱动的 `coerce(token, raw)` 把网页 str 转成声明的 Python 类型后存储；`cast is None`（仅 page_ref）拒绝文本转换，只能由引擎函数产生。
+- `object` 的文本入参按 JSON 解析（失败则保留原字符串）；`array` 的文本入参必须解析为 JSON 数组。
+- `infer_type`：list → `array`，dict → `object`，其余按标量推断。
 - 校验统一 `isinstance`（`autobranch/schema/types.py` 的 `check_type`），`bool` 是 `int` 子类须排除。
 - 类型不匹配 / 转换失败 → `SchemaTypeError` 断言失败并终止（§5.3.5），M7 捕获基类 `SchemaError` 沿树传播。
 - `validate_type_name`：未登记类型 token → 断言失败；`infer_type`：按值推断英文 token（无声明时的后备，配置参数用）。
@@ -161,6 +165,6 @@ TYPE_REGISTRY = {
 
 ## 8. 泛型对象类型 object（能力插件化新增，已实现）
 
-`TYPE_REGISTRY` 新增 `object` token：**泛型对象类型**——接受任意对象值（不校验），呈现用 `str(value)`（由对象的 `__str__` 定义），用于承载插件对象（页面对象 / 会话 / 文件句柄…）；`coerce("object", v)` 原样返回，`check_type("object", v)` 恒通过。
+`TYPE_REGISTRY` 新增 `object` token：**泛型对象类型**——接受任意对象值（不校验），呈现用 `str(value)`（由对象的 `__str__` 定义），用于承载插件对象（页面对象 / 会话 / 文件句柄…）；`coerce("object", "{\"a\":1}")` 解析为 dict，非 JSON 文本原样返回；`check_type("object", v)` 恒通过。另新增 `array` token（Python `list`），文本入参必须为 JSON 数组。
 
 `page_ref` 泛型化为浏览器插件的对象（`PageObject`）；引擎核心不再有 `page_ref` / 页面变量概念（页面对象作为 `object` 值在变量中存储与传递）。

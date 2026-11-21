@@ -31,7 +31,7 @@ def test_set_decl_no_type():
 
 
 def test_set_all_types():
-    for t in ("str", "int", "float", "bool", "page_ref", "object"):
+    for t in ("str", "int", "float", "bool", "page_ref", "object", "array"):
         assert _iter_set_decls(f"NewParam.v:{t}") == [("v", t)]
 
 

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -904,7 +905,12 @@ def _define_ir(
             )
             continue
         value = spec.get("value")
-        value_expr = "" if value is None else str(value)
+        if value is None:
+            value_expr = ""
+        elif isinstance(value, str):
+            value_expr = value
+        else:
+            value_expr = json.dumps(value, ensure_ascii=False)
         pairs.append((var, type_name, value_expr))
     return IRNode(kind="Define", vars=tuple(pairs), loc=loc)
 

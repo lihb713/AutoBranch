@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from autobranch.server.db import get_db
 from autobranch.server.deps import get_run_service
-from autobranch.server.errors import AppError
 from autobranch.server.schemas.check import CheckReportOut
 from autobranch.server.schemas.run import RunStartIn, RunStartOut
 from autobranch.server.schemas.tree import (
@@ -24,11 +23,9 @@ from autobranch.server.schemas.tree import (
     TreeSaveIn,
     TreeUpdate,
 )
-from autobranch.server.services.doclib import DbResolver
-from autobranch.server.services.normalize import normalize_tree_content
-from autobranch.server.services.runs import RunService, validate_run_inputs
+from autobranch.server.services.runs import RunService
 from autobranch.server.services.trees import TreeService
-from autobranch.server.services.validation import CheckReportBuilder, validate_document
+from autobranch.server.services.validation import CheckReportBuilder
 
 router = APIRouter(prefix="/api/trees", tags=["trees"])
 
@@ -98,25 +95,14 @@ def check_tree(tree_id: int, service: TreeServiceDep):
 @router.post("/{tree_id}/run", response_model=RunStartOut, status_code=status.HTTP_202_ACCEPTED)
 def run_tree(
     tree_id: int,
-    service: TreeServiceDep,
     run_service: RunServiceDep,
     db: DbSession,
     payload: RunStartIn | None = None,
 ):
     """异步触发执行：执行前校验（422）→ 冻结快照+入参 → 建 Run → 队列调度。"""
-    tree = service.get(tree_id)
-    if tree.status != "published":
-        raise AppError(409, "行为树处于草稿状态，请先保存为正式版后再执行")
-    # 运行前兜底归一化（历史/外部改库仍不丢返回值）
-    normalized = normalize_tree_content(
-        tree.content, registry=service.registry, resolver=DbResolver(db)
+    run = run_service.start_tree(
+        db, tree_id, inputs=payload.inputs if payload else None
     )
-    if normalized != tree.content:
-        tree.content = normalized
-        db.commit()
-    validate_document(tree.content, tree.name, registry=service.registry)
-    validate_run_inputs(tree.content, payload.inputs if payload else None)
-    run = run_service.start(db, tree_id, inputs=payload.inputs if payload else None)
     return {"run_id": run.id}
 
 

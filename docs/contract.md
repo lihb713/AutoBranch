@@ -174,7 +174,7 @@ returns:
 - 函数不存在 / 实参求值失败（变量未定义）/ 执行失败 → 该节点 FAILURE，失败原因含函数全名与错误。
 - 实参从当前帧求值；返回值按 `returns` 回收写父帧（按声明类型 coerce）。
 - `function` 指向的能力来自插件集（M7）；引擎核心不感知具体能力（能力经插件框架 M3 分发）。
-- FunctionCall `args` 按函数参数声明顺序填写；`kwargs` 按参数名传命名参数（优先用于可选参数）；必填参数不能省略，可选命名参数可省略；`kwargs` 值可为字面量、`Param.x` 或嵌套 dict/list。
+- FunctionCall `args` 按函数参数声明顺序填写；`kwargs` 按参数名传命名参数；`args` 与 `kwargs` 合并后校验必填参数，必填参数也可由 `kwargs` 提供，前端属性面板会从 `kwargs` 回显；可选命名参数可省略；`kwargs` 值可为字面量、`Param.x` 或嵌套 dict/list。
 - `args`/`kwargs` 的字符串值若完整匹配 `Param.x`，传入变量原值；若为嵌入文本（如 `stat /tmp/Param.filename`），则把 `Param.x` 替换为变量值的文本摘要。
 - **函数标识 = 全名 `插件名.函数名`**（如 `compute.add`）：同一插件内函数名唯一，**跨插件允许同名**（如 `compute.sort` 与 `mylib.sort` 共存）。
 - **LLM 工具名转义**：对 LLM 暴露的工具名为转义全名（`.` → `__`，如 `compute__add`；多数 OpenAI 兼容 API 拒绝含点号工具名），叶子分发时按转义名反查回全名。
@@ -190,7 +190,8 @@ vars:
   alias:   {type: str, value: "Param.baseUrl"}   # 从本帧拷贝/重命名
 ```
 
-- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（str/int/float/bool/page_ref/object）。
+- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（str/int/float/bool/page_ref/object/array）。
+- `value` 可为标量字面量 / `Param.x`；`object`/`array` 也可直接写 YAML dict/list（解析后以 JSON 文本保存并由运行时构造）。
 - `value` 为字面量，或 `Param.<名>`（读取本帧变量做拷贝）；按 `type` coerce 后写入本帧 `this/<名>`。
 - 声明变量计入"已定义"，供后续 `Param` 读取；`Define` 不经 LLM、无截图。
 
@@ -568,12 +569,14 @@ root: n1
 **支持的类型集合**（M3 已落地，token 与 Python 类型映射）：
 
 ```
-TYPE_REGISTRY = { str: str, int: int, float: float, bool: bool, page_ref: PageRef }
-- str   任意字符串（文本 / URL / 订单号……一切字符串）
-- int   真整数（校验排除布尔）
-- float 数字 / 金额
-- bool  布尔
-- page_ref = PageRef 类型变量（页签引用，只能由 open() 产生，不能从文本转换；§5.10）
+TYPE_REGISTRY = { str, int, float, bool, page_ref, object, array }
+- str      任意字符串（文本 / URL / 订单号……一切字符串）
+- int      真整数（校验排除布尔）
+- float    数字 / 金额
+- bool     布尔
+- page_ref PageRef 类型变量（页签引用，只能由 open() 产生，不能从文本转换；§5.10）
+- object   泛型对象；文本入参按 JSON 解析，失败保留原字符串
+- array    列表；文本入参必须是 JSON 数组
 ```
 
 语义类型（金额 / 订单号 / URL / 日期 等）**不占类型位**——本质为 str/float 等基础类型；确有格式校验需求时注册为自定义类型（token + Python 类 + cast）。
@@ -2248,7 +2251,7 @@ M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理�
 #### M2 变量空间
 ```
 功能: 帧模型/严格作用域（裸变量名单段，跨帧经 ref args/returns）;
-     配置参数继承（向上查找）; 变量类型 TYPE_REGISTRY (str/int/float/bool/page_ref/object)
+     配置参数继承（向上查找）; 变量类型 TYPE_REGISTRY (str/int/float/bool/page_ref/object/array)
 依赖: 无（纯逻辑）
 ```
 
@@ -2411,9 +2414,10 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   快照，不读实时树内容；树被删除后历史实例仍可回看/重试（`runs.tree_id` ON DELETE SET NULL）。
 - **执行结构指纹**：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys`
   规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
-- **根级入参/出参**：`POST /run` 可选 `inputs`（按声明类型 coerce 注入根帧，叶子 `Param.` 读取）；
-  结束读根帧 `outputs` 落库并在报告页/列表展示。声明含不可由文本构造类型（`page_ref`/`object`）的树
-  禁止直接执行（422，仅支持 ref 调用）；可构造性经 `GET /api/types`（`cast is not None`）单点派生。
+- **根级入参/出参**：`POST /run` 或 `POST /api/runs`（`{tree_id, inputs?}`）可选 `inputs`（按声明类型 coerce 注入根帧，叶子 `Param.` 读取）；
+  结束读根帧 `outputs` 落库并在报告页/列表展示。声明含不可由文本构造类型（仅 `page_ref`）的树禁止直接执行
+  （422，仅支持 ref 调用）；缺少所声明必填入参也 422；`object`/`array` 支持 JSON 文本。可构造性经
+  `GET /api/types`（`cast is not None`）单点派生。
 - **队列调度**：全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列；`pending` 即排队中（列表显示
   序号）；并发满的新触发进排队（不再有同树 409 去重），执行结束自动调度下一个。
 - **执行列表**：`GET /api/runs` + 前端 `/runs` 页（状态/来源/快照树名/入参/耗时/指纹短显/进行中轮询）；

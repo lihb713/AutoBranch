@@ -165,6 +165,62 @@ def test_run_with_inputs_stores_snapshot(client, mock_engine, session):
     assert mock_engine.run_inputs_log[-1] == {"user": "admin", "n": 7}
 
 
+def test_create_run_unified_endpoint(client, mock_engine, session):
+    tree_id = _create(client, "带参流程", _INPUTS_YAML)
+    resp = client.post(
+        "/api/runs", json={"tree_id": tree_id, "inputs": {"user": "admin", "n": 1}}
+    )
+    assert resp.status_code == 202, resp.text
+    run_id = resp.json()["run_id"]
+    run = session.get(Run, run_id)
+    assert run is not None
+    assert run.tree_id == tree_id
+    assert mock_engine.run_inputs_log[-1] == {"user": "admin", "n": 1}
+
+
+def test_create_run_unified_endpoint_rejects_draft(client):
+    draft = client.post("/api/trees/drafts").json()
+    resp = client.post("/api/runs", json={"tree_id": draft["id"]})
+    assert resp.status_code == 409
+
+
+def test_run_missing_input_422(client, session):
+    tree_id = _create(client, "带参流程", _INPUTS_YAML)
+    resp = client.post(f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin"}})
+    assert resp.status_code == 422
+    assert "缺少必填入参" in resp.json()["detail"]
+    assert session.query(Run).count() == 0
+
+
+def test_run_object_and_array_inputs_constructible(client, mock_engine, session):
+    yaml = """
+tree: 复杂入参
+inputs:
+  payload: object
+  items: array
+nodes:
+  n1:
+    type: Root
+    body: n2
+  n2:
+    type: Action
+    description: 读取 Param.payload 和 Param.items
+root: n1
+""".strip()
+    tree_id = _create(client, "复杂入参", yaml)
+    resp = client.post(
+        f"/api/trees/{tree_id}/run",
+        json={"inputs": {"payload": '{"a":1}', "items": "[1,2]"}},
+    )
+    assert resp.status_code == 202, resp.text
+    run_id = resp.json()["run_id"]
+    assert mock_engine.run_inputs_log[-1] == {
+        "payload": '{"a":1}',
+        "items": "[1,2]",
+    }
+    assert session.get(Run, run_id).status in ("pending", "running", "success")
+
+
 def test_run_undeclared_input_422(client, session):
     tree_id = _create(client, "带参流程", _INPUTS_YAML)
     resp = client.post(f"/api/trees/{tree_id}/run", json={"inputs": {"x": "1"}})
@@ -184,17 +240,17 @@ def test_run_non_constructible_input_422(client, session):
 def test_list_runs_fields_and_order(client, mock_engine, session):
     tree_id = _create(client, "带参流程", _INPUTS_YAML)
     first = client.post(
-        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "a"}}
+        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "a", "n": 1}}
     ).json()["run_id"]
     second = client.post(
-        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "b"}}
+        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "b", "n": 2}}
     ).json()["run_id"]
     items = client.get("/api/runs").json()
     assert [it["id"] for it in items][:2] == [second, first]  # created_at 倒序
     item = items[0]
     assert item["tree_name"] == "带参流程"
     assert item["status"] in ("success", "failure", "running", "pending")
-    assert item["inputs"] == {"user": "b"}
+    assert item["inputs"] == {"user": "b", "n": 2}
     assert item["tree_content_hash"]
     assert "duration" in item and "progress" in item
 
@@ -202,7 +258,7 @@ def test_list_runs_fields_and_order(client, mock_engine, session):
 def test_retry_copies_snapshot_and_inputs(client, mock_engine, session):
     tree_id = _create(client, "带参流程", _INPUTS_YAML)
     original = client.post(
-        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin"}}
+        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin", "n": 1}}
     ).json()["run_id"]
     resp = client.post(f"/api/runs/{original}/retry")
     assert resp.status_code == 202
@@ -211,12 +267,14 @@ def test_retry_copies_snapshot_and_inputs(client, mock_engine, session):
     new = session.get(Run, new_id)
     assert new.content_snapshot == src.content_snapshot
     assert new.tree_content_hash == src.tree_content_hash
-    assert new.inputs == src.inputs == {"user": "admin"}
+    assert new.inputs == src.inputs == {"user": "admin", "n": 1}
 
 
 def test_delete_run_removes_record_and_report(client, mock_engine, session, settings):
     tree_id = _create(client, "带参流程", _INPUTS_YAML)
-    run_id = client.post(f"/api/trees/{tree_id}/run").json()["run_id"]
+    run_id = client.post(
+        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin", "n": 1}}
+    ).json()["run_id"]
     report_dir = settings.report_root / str(run_id)
     report_dir.mkdir(parents=True)
     (report_dir / "exec_report.md").write_text("报告", encoding="utf-8")
@@ -232,7 +290,8 @@ def test_types_api(client):
     assert types["str"]["constructible"] is True
     assert types["int"]["constructible"] is True
     assert types["page_ref"]["constructible"] is False
-    assert types["object"]["constructible"] is False
+    assert types["object"]["constructible"] is True
+    assert types["array"]["constructible"] is True
 
 
 # ------------------------------------------------------------- 经验回灌采集（任务 4.1）
@@ -259,7 +318,9 @@ def test_api_run_success_collects_experience(client, mock_engine, session):
             )
         ],
     )
-    resp = client.post(f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin"}})
+    resp = client.post(
+        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin", "n": 1}}
+    )
     run_id = resp.json()["run_id"]
     wait_finished(client, run_id)
     rows = session.query(Experience).all()
@@ -272,7 +333,9 @@ def test_api_run_failure_no_experience(client, mock_engine, session):
 
     mock_engine.default_result = RunResult(status="failure", failure_reason="x")
     tree_id = _create(client, "带参流程", _INPUTS_YAML)
-    resp = client.post(f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin"}})
+    resp = client.post(
+        f"/api/trees/{tree_id}/run", json={"inputs": {"user": "admin", "n": 1}}
+    )
     run_id = resp.json()["run_id"]
     wait_finished(client, run_id)
     assert session.query(Experience).count() == 0

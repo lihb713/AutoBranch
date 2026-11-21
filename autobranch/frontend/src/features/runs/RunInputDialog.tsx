@@ -22,6 +22,13 @@ function coerceForType(type: string, raw: string): unknown {
   if (type === "bool") {
     return raw === "true";
   }
+  if (type === "object" || type === "array") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
+  }
   return raw;
 }
 

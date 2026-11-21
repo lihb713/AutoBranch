@@ -200,6 +200,39 @@ export function PropertyPanel({
     updateNode({ args });
   };
 
+  const setRequiredParam = (
+    name: string,
+    i: number,
+    value: string,
+    type: string | undefined,
+  ) => {
+    if (!(node.kwargs && name in node.kwargs)) {
+      setArg(i, value);
+      return;
+    }
+    const next: Record<string, unknown> = { ...(node.kwargs ?? {}) };
+    if (value === "") {
+      delete next[name];
+    } else if (type === "object" || type === "array") {
+      try {
+        next[name] = JSON.parse(value);
+      } catch {
+        next[name] = value;
+      }
+    } else {
+      next[name] = value;
+    }
+    updateNode({ kwargs: next });
+  };
+
+  const requiredValue = (name: string, i: number): string => {
+    if (node.kwargs && name in node.kwargs) {
+      const value = node.kwargs[name];
+      return typeof value === "string" ? value : JSON.stringify(value);
+    }
+    return (node.args ?? [])[i] ?? "";
+  };
+
   const setReturnName = (i: number, name: string) => {
     const returns = { ...(node.returns ?? {}) };
     const keys = Object.keys(returns);
@@ -575,17 +608,29 @@ export function PropertyPanel({
         {!selectedFunc ? (
           <p className="property-panel__hint">选择函数后自动列出参数</p>
         ) : (
-          requiredParams.map((p) => (
-            <HighlightedField
-              key={`fc-in-${p}`}
-              label={`入参 ${p}（${schemaTypeToToken(schema.properties?.[p]?.type)}）`}
-              value={(node.args ?? [])[paramIndex(p)] ?? ""}
-              placeholder="变量名或字面量"
-              disabled={readonly}
-              data-testid={`fc-arg-${node.id}-${paramIndex(p)}`}
-              onChange={(e) => setArg(paramIndex(p), e.target.value)}
-            />
-          ))
+          requiredParams.map((p) => {
+            const named = Boolean(node.kwargs && p in node.kwargs);
+            return (
+              <HighlightedField
+                key={`fc-in-${p}`}
+                label={`入参 ${p}（${schemaTypeToToken(schema.properties?.[p]?.type)}${
+                  named ? "，命名参数" : ""
+                }）`}
+                value={requiredValue(p, paramIndex(p))}
+                placeholder="变量名或字面量"
+                disabled={readonly}
+                data-testid={`fc-arg-${node.id}-${paramIndex(p)}`}
+                onChange={(e) =>
+                  setRequiredParam(
+                    p,
+                    paramIndex(p),
+                    e.target.value,
+                    schema.properties?.[p]?.type,
+                  )
+                }
+              />
+            );
+          })
         )}
       </section>
       <section className="prop-group" data-testid="prop-group-fc-kwargs">

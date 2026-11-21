@@ -420,7 +420,7 @@ n15:
 ```yaml
 tree: 订单
 inputs:
-  user: str          # 入参：名 → 类型（str/int/float/bool/page_ref/object）
+  user: str          # 入参：名 → 类型（str/int/float/bool/page_ref/object/array）
   amount: int
 outputs:
   result: str        # 出参：名称 → 类型（执行后对外返回）
@@ -814,7 +814,7 @@ plugin = Demo()
 ```
 
 - **只有 `@engine_function` / `@llm_function` 标注的函数才注册**，键 = 全名 `demo.double`。
-- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/page_ref/object`）。
+- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/page_ref/object/array`）。
   `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
 - 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
 - 产出型函数：`output_param` 声明变量目标参数（如 `extract` 的 `target`、SSH 的 `save_to`），引擎落笔写变量；`save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值）。

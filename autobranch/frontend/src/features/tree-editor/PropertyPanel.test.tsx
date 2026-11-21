@@ -533,6 +533,54 @@ describe("PropertyPanel", () => {
     });
   });
 
+  it("FunctionCall：必填参数来自 kwargs 时正确回显并回写 kwargs", async () => {
+    functionMocks.listFunctions.mockResolvedValue([
+      {
+        full_name: "ssh.create_session",
+        plugin: "ssh",
+        name: "create_session",
+        description: "建会话",
+        returns: { session: "object" },
+        parameters: {
+          type: "object",
+          properties: { host: { type: "string" } },
+          required: ["host"],
+        },
+      },
+    ]);
+    const fc: TreeNode = {
+      id: "fc4",
+      type: "FunctionCall",
+      name: "建会话",
+      fields: {},
+      function: "ssh.create_session",
+      args: [],
+      kwargs: { host: "Param.hostname" },
+      returns: {},
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: {},
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "fc4" },
+        fc4: fc,
+      },
+    };
+    const onUpdate = vi.fn();
+    renderPanel(doc, fc, { onUpdate });
+    const input = (await screen.findByTestId("fc-arg-fc4-0")) as HTMLInputElement;
+    expect(input.value).toBe("Param.hostname");
+    expect(screen.getByText("入参 host（str，命名参数）")).toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "Param.new_host" } });
+    const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.fc4.args).toEqual([]);
+    expect(next.nodes.fc4.kwargs).toEqual({ host: "Param.new_host" });
+  });
+
   it("ForEach：编辑临时变量与失败策略", () => {
     const fc: TreeNode = {
       id: "fe1",

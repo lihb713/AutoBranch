@@ -54,3 +54,11 @@ ref 节点的「目标文档」下拉 SHALL 支持输入过滤（行为树文档
 #### Scenario: 编辑 ForEach
 - **WHEN** 用户添加 ForEach 节点并填写变量/body
 - **THEN** 文档保存为 `type: ForEach`，variables/on_failure/body 序列化正确
+
+### Requirement: 复杂值编辑
+
+树编辑器 SHALL 支持 `array` 类型 token；FunctionCall 必填参数若由 `kwargs` 提供，属性面板入参区 SHALL 回显其值并标注命名参数；Define 的 object/array 值 SHALL 以 JSON 文本编辑并与 YAML dict/list 无损往返。
+
+#### Scenario: 必填 kwargs 回显
+- **WHEN** 节点 args 为空、kwargs 含必填参数
+- **THEN** 属性面板显示该值，编辑后回写 kwargs

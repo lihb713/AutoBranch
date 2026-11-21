@@ -13,7 +13,9 @@ from autobranch.schema.types import (
 
 
 def test_registry_has_english_tokens():
-    assert set(TYPE_REGISTRY) == {"str", "int", "float", "bool", "page_ref", "object"}
+    assert set(TYPE_REGISTRY) == {
+        "str", "int", "float", "bool", "page_ref", "object", "array"
+    }
 
 
 def test_py_types_mapped():
@@ -22,6 +24,8 @@ def test_py_types_mapped():
     assert TYPE_REGISTRY["float"].py_type is float
     assert TYPE_REGISTRY["bool"].py_type is bool
     assert TYPE_REGISTRY["page_ref"].py_type is PageRef
+    assert TYPE_REGISTRY["object"].cast is not None
+    assert TYPE_REGISTRY["array"].py_type is list
 
 
 def test_validate_unknown_token_raises():
@@ -61,6 +65,14 @@ def test_coerce_basic():
     assert coerce("float", "1.5") == 1.5
     assert coerce("bool", "true") is True
     assert coerce("str", 123) == "123"
+    assert coerce("object", '{"host": "x"}') == {"host": "x"}
+    assert coerce("object", "plain") == "plain"
+    assert coerce("array", "[1, 2]") == [1, 2]
+
+
+def test_coerce_array_rejects_non_array():
+    with pytest.raises(SchemaTypeError):
+        coerce("array", '{"a": 1}')
 
 
 @pytest.mark.parametrize("raw", ["abc", "", "1.5x"])
@@ -80,3 +92,5 @@ def test_infer_type_english():
     assert infer_type(1.5) == "float"
     assert infer_type(PageRef(page_id="1")) == "page_ref"
     assert infer_type("abc") == "str"
+    assert infer_type([1, 2]) == "array"
+    assert infer_type({"a": 1}) == "object"

@@ -42,7 +42,7 @@
 `transform` 提供无副作用的数据提取/变换：
 
 - 路径/索引/键：`get_path(data, path)`（如 `0.a.b.1` / `a[0].b[-1]`）、`get_index`、`get_key`；可选 `required=false` + `default`。
-- 字符串：`split` / `join` / `contains` / `index_of` / `replace` / `strip`。
+- 字符串：`split` / `join` / `contains` / `index_of` / `replace` / `strip` / `concat`（a~e 顺序拼接）/ `format`（`{name}` 模板 + values 字典）。
 - 容器：`length` / `slice` / `keys` / `values`。
 - 转换：`to_string` / `to_int` / `to_number` / `to_bool` / `json_parse` / `json_dumps`。
 - 比较：`compare(a, b, op, ignore_case)`，支持 `eq/ne/gt/ge/lt/le/contains/startswith/endswith`。

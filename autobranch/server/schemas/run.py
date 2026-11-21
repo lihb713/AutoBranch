@@ -19,6 +19,12 @@ class RunStartIn(BaseModel):
     inputs: dict[str, Any] | None = None
 
 
+class RunCreateIn(RunStartIn):
+    """统一创建执行请求体：树 ID + 可选入参。"""
+
+    tree_id: int
+
+
 class RunStartOut(BaseModel):
     run_id: int
 

@@ -151,9 +151,10 @@ def _issues_summary(detail: list) -> str:
 def validate_run_inputs(content: str, inputs: dict | None) -> None:
     """校验执行入参（Change A 任务 4.1）。
 
-    - 声明含不可由文本构造的类型（``TypeSpec.cast is None``，如 page_ref/object）
+    - 声明含不可由文本构造的类型（``TypeSpec.cast is None``，目前仅 page_ref）
       → 422（仅支持 ref 调用）。
     - 提供的入参必须是声明内的，且可按声明类型 ``coerce``。
+    - 声明内的必填入参缺失 → 422。
     """
     from autobranch.parser.yamlio import normalize_document
     from autobranch.schema import TYPE_REGISTRY, coerce
@@ -168,7 +169,8 @@ def validate_run_inputs(content: str, inputs: dict | None) -> None:
         spec = TYPE_REGISTRY.get(type_name)
         if spec is None or spec.cast is None:
             raise AppError(422, f"入参 {name} 类型 {type_name} 不可由文本构造，该树仅支持 ref 调用")
-    for name, value in (inputs or {}).items():
+    provided = inputs or {}
+    for name, value in provided.items():
         type_name = declared.get(name)
         if type_name is None:
             raise AppError(422, f"未声明的入参: {name}（声明: {', '.join(declared) or '无'}）")
@@ -178,6 +180,9 @@ def validate_run_inputs(content: str, inputs: dict | None) -> None:
                 coerce(type_name, value)
             except SchemaTypeError as exc:
                 raise AppError(422, f"入参 {name} 类型校验失败: {exc}") from None
+    missing = [name for name in declared if name not in provided]
+    if missing:
+        raise AppError(422, f"缺少必填入参: {', '.join(missing)}")
 
 
 class RunService:
@@ -229,7 +234,7 @@ class RunService:
     ) -> Run:
         """冻结快照（内容/树名/指纹/入参）→ 建 pending Run → 触发队列调度。
 
-        执行前校验已由路由层完成（422 拒绝）；此处读实时树内容冻结为快照，
+        执行前校验由 ``start_tree``/调度层完成（422 拒绝）；此处读实时树内容冻结为快照，
         执行与重试一律基于快照，不读实时树内容。``source``/``schedule_id``
         用于标注执行来源（manual / schedule / dependency）。
         """
@@ -252,6 +257,41 @@ class RunService:
         db.refresh(run)
         self._drain()
         return run
+
+    def start_tree(
+        self,
+        db: Session,
+        tree_id: int,
+        *,
+        inputs: dict | None = None,
+        source: str = "manual",
+        schedule_id: int | None = None,
+    ) -> Run:
+        """校验并触发指定树：归一化 → 校验文档/入参 → 冻结快照建 Run。"""
+        from autobranch.server.services.doclib import DbResolver
+        from autobranch.server.services.normalize import normalize_tree_content
+        from autobranch.server.services.validation import validate_document
+
+        tree = db.get(Tree, tree_id)
+        if tree is None:
+            raise AppError(404, f"行为树不存在 (id={tree_id})")
+        if tree.status != "published":
+            raise AppError(409, "行为树处于草稿状态，请先保存为正式版后再执行")
+        normalized = normalize_tree_content(
+            tree.content, registry=self._registry, resolver=DbResolver(db)
+        )
+        if normalized != tree.content:
+            tree.content = normalized
+            db.commit()
+        validate_document(tree.content, tree.name, registry=self._registry)
+        validate_run_inputs(tree.content, inputs)
+        return self.start(
+            db,
+            tree_id,
+            inputs=inputs,
+            source=source,
+            schedule_id=schedule_id,
+        )
 
     def retry(self, db: Session, run_id: int) -> Run:
         """按快照重试：复制原实例的快照 + 入参新建 Run（跑当时的内容，非最新树）。"""
