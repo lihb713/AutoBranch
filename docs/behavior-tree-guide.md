@@ -622,6 +622,37 @@ n3:
 
 `ssh_session` 是插件注册的自定义类型，不是 `generics`。
 
+### 8.6 行为树里如何标注自定义类型
+
+树级接口直接写真实类型：
+
+```yaml
+tree: 远程检查
+inputs:
+  session: ssh_session
+  command: str
+outputs:
+  stdout: str
+nodes:
+  r:
+    type: Root
+    body: n2
+  n2:
+    type: FunctionCall
+    name: 执行远程命令
+    function: ssh.ssh_exec
+    args: [Param.session, Param.command]
+    returns: {stdout: str}
+root: r
+```
+
+说明：
+
+- `inputs.session` 标注为 `ssh_session`，不是 `str`；
+- `FunctionCall.args` 不需要重复写类型，参数类型由函数声明提供；
+- `ssh_session` 不可由文本构造，因此这棵树通常作为 `ref` 子流程，由调用方通过 `session` 参数传入；
+- 前端会显示 `ssh_session`，执行时会校验实际值是否为 `SSHConnection`。
+
 ## 9. 执行与报告
 
 ### 9.1 触发执行
