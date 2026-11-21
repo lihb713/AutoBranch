@@ -30,6 +30,9 @@ from autobranch.parser.models import (
     FunctionCallNode,
     Loc,
     Node,
+    PredicateCall,
+    PredicateExpr,
+    PredicateGroup,
     RefNode,
     RepeatNode,
     SelectorNode,
@@ -146,6 +149,28 @@ def expand_document(
     return ExpansionResult(tree=tree, issues=tuple(ctx.issues))
 
 
+def _predicate_arg_texts(expr: PredicateExpr | None) -> list[str]:
+    """收集谓词表达式中的参数文本（供 Param 已定义校验）。"""
+    if expr is None:
+        return []
+    if isinstance(expr, PredicateCall):
+        texts = list(expr.args)
+        for _key, value in expr.kwargs:
+            if isinstance(value, str):
+                texts.append(value)
+            elif isinstance(value, list):
+                texts.extend(str(item) for item in value)
+            elif isinstance(value, dict):
+                texts.extend(str(item) for item in value.values())
+        return texts
+    if isinstance(expr, PredicateGroup):
+        out: list[str] = []
+        for child in expr.children:
+            out.extend(_predicate_arg_texts(child))
+        return out
+    return []
+
+
 def _check_get_defined(
     ctx: ExpandContext, tree: Node, input_names: set[str]
 ) -> None:
@@ -168,15 +193,19 @@ def _check_get_defined(
                         node.loc,
                     )
         elif isinstance(node, ConditionNode):
-            for name in _iter_get_paths(node.description or ""):
-                if name not in defined:
-                    ctx.add_issue(
-                        "scope",
-                        "get_undeclared",
-                        f"读取变量 '{name}' 未定义"
-                        f"（get 只能读 inputs 声明、块内 set 或 ref returns 目标）",
-                        node.loc,
-                    )
+            texts = [node.description or ""]
+            if node.mode == "predicate":
+                texts = list(_predicate_arg_texts(node.expression))
+            for text in texts:
+                for name in _iter_get_paths(text):
+                    if name not in defined:
+                        ctx.add_issue(
+                            "scope",
+                            "get_undeclared",
+                            f"读取变量 '{name}' 未定义"
+                            f"（get 只能读 inputs 声明、块内 set 或 ref returns 目标）",
+                            node.loc,
+                        )
         elif isinstance(node, DefineNode):
             for _var, _typ, value in node.vars:
                 for name in _iter_get_paths(value or ""):
@@ -460,9 +489,16 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
             loc=node.loc,
         )
     if kind == "Condition":
+        if node.condition_mode == "predicate":
+            return ConditionNode(
+                mode="predicate",
+                expression=node.expression,
+                loc=node.loc,
+            )
         _scope_check_texts(ctx, node.loc, node.description, node.target, node.predicate)
         _check_param_syntax(ctx, node.description, node.loc)
         return ConditionNode(
+            mode="natural",
             description=node.description or "",
             target=node.target,
             predicate=node.predicate,

@@ -141,3 +141,15 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - **实机联调**（已通过）：vite dev(5174) → uvicorn(8001) 代理链路，list/create/check/get/run/轮询/report/trace 全通
 
 **测试结果**：`npm run lint` ✓、`npm run typecheck` ✓、`npm test` ✓、`npm run test:e2e` ✓（workflow + ref-call，Playwright，前端执行+报告查看链路）、`npm run build` ✓。
+
+
+### 条件编辑器
+
+条件字段提供明确的「自然语言 / 谓词表达式」切换：
+
+- 自然语言：单行文本，不嵌套；
+- 谓词表达式：弹窗递归构建 `ALL / ANY / NOT` 组和谓词叶子；
+- 谓词函数下拉只列用户可见、单返回 `bool` 的函数，默认展示 `predicate.*`，可显示其他单 bool 函数；
+- 谓词叶子复用 FunctionCall 参数编辑规则；
+- 条件对象写入 `mode`，旧字符串按 natural 兼容；
+- `Step.expect` / `IfThenElse.if` / `LoopUntil.until` 内联编辑；`Branch.when` 使用摘要 + 弹窗，避免分支行过长。

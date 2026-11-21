@@ -233,3 +233,15 @@
 #### Scenario: 收集结果
 - **WHEN** ForEach body 调用 `transform.append` 并将返回值写回父帧变量
 - **THEN** 各轮结果累积到父帧 JSON 列表
+
+### Requirement: 确定性谓词条件
+
+`ConditionNode.mode=predicate` SHALL 由编排器确定性求值，不调用 LLM、不截图。`all/any` 从左到右短路，`not` 单子项；谓词函数错误、参数错误、非 bool 返回 MUST 视为条件错误而不是 false，并在 Branch/IfThenElse/LoopUntil 中直接失败而非进入兜底分支。报告 SHALL 记录表达式、谓词参数/结果、短路和最终结果。
+
+#### Scenario: 谓词错误不落入 else
+- **WHEN** IfThenElse 的谓词条件执行异常
+- **THEN** 节点失败，不执行 else 分支
+
+#### Scenario: all 短路
+- **WHEN** all 的第一个谓词为 false
+- **THEN** 后续谓词不执行，条件结果为 false

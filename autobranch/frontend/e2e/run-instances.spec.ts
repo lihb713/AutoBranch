@@ -68,6 +68,38 @@ nodes:
 root: n1
 `;
 
+const PREDICATE_NAME = `谓词条件${Date.now()}`;
+const PREDICATE_YAML = `tree: ${PREDICATE_NAME}
+inputs:
+  a: int
+outputs:
+  result: str
+nodes:
+  r:
+    type: Root
+    body: n2
+  n2:
+    type: IfThenElse
+    if:
+      mode: predicate
+      expression:
+        function: predicate.gt
+        args: [Param.a, "0"]
+    then: n3
+    else: n4
+  n3:
+    type: FunctionCall
+    function: transform.concat
+    args: ["positive", ""]
+    returns: {result: str}
+  n4:
+    type: FunctionCall
+    function: transform.concat
+    args: ["non", "positive"]
+    returns: {result: str}
+root: r
+`;
+
 const PAGE_REF_NAME = `页签树${Date.now()}`;
 const PAGE_REF_YAML = `tree: ${PAGE_REF_NAME}
 inputs:
@@ -88,6 +120,7 @@ test.beforeAll(async () => {
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
   await createTree(api, COMPUTE_NAME, COMPUTE_YAML);
   await createTree(api, COMPLEX_NAME, COMPLEX_YAML);
+  await createTree(api, PREDICATE_NAME, PREDICATE_YAML);
   await createTree(api, PAGE_REF_NAME, PAGE_REF_YAML);
   await api.dispose();
 });
@@ -95,7 +128,7 @@ test.beforeAll(async () => {
 test("带入参执行 → 报告出参 → 执行列表展示 → 重试", async ({ page }) => {
   // 1. 列表页定位带参树 → 点「执行」弹出入参对话框
   await page.goto("/");
-  const row = page.locator('[data-testid^="tree-row-"]', { hasText: COMPUTE_NAME });
+  const row = page.locator('[data-testid^="tree-row-"]', { hasText: COMPUTE_NAME }).first();
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "执行" }).click();
 
@@ -146,7 +179,7 @@ test("带入参执行 → 报告出参 → 执行列表展示 → 重试", async
 
 test("array/object 入参按 JSON 构造并执行", async ({ page }) => {
   await page.goto("/");
-  const row = page.locator('[data-testid^="tree-row-"]', { hasText: COMPLEX_NAME });
+  const row = page.locator('[data-testid^="tree-row-"]', { hasText: COMPLEX_NAME }).first();
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "执行" }).click();
 
@@ -161,6 +194,21 @@ test("array/object 入参按 JSON 构造并执行", async ({ page }) => {
   await expect(outputs).toBeVisible({ timeout: 120_000 });
   await expect(outputs).toContainText('"joined": "1,2,3"');
   await expect(outputs).toContainText('"url": "http://example.test:8080/api"');
+});
+
+test("谓词条件表达式可确定性执行", async ({ page }) => {
+  await page.goto("/");
+  const row = page.locator('[data-testid^="tree-row-"]', { hasText: PREDICATE_NAME }).first();
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "执行" }).click();
+  const dialog = page.getByTestId("run-input-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId("input-value-a").fill("1");
+  await dialog.getByTestId("run-dialog-confirm").click();
+  await page.waitForURL(/\/runs\/\d+/);
+  const outputs = page.getByTestId("outputs-section");
+  await expect(outputs).toBeVisible({ timeout: 120_000 });
+  await expect(outputs).toContainText('"result": "positive"');
 });
 
 test("含不可构造入参（page_ref）的树不渲染执行按钮", async ({ page }) => {

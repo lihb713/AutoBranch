@@ -209,3 +209,15 @@ FunctionCall SHALL 支持位置参数 `args` 与命名参数 `kwargs`。`args` �
 #### Scenario: 失败策略
 - **WHEN** 单轮 body 失败且 `on_failure=continue`
 - **THEN** 跳过该轮继续；`abort` 时立即返回失败
+
+### Requirement: 条件模式与谓词表达式
+
+条件字段 SHALL 支持显式 `mode`：`natural` 使用单行 `text`；`predicate` 使用 `expression`。谓词表达式 SHALL 支持 `function/args/kwargs` 叶子与嵌套 `all` / `any` / `not` 组；自然语言不可与谓词混用。空 `all/any`、多子项 `not`、未知 mode MUST 校验失败。谓词函数 MUST 用户可见、恰好单返回 `bool`。
+
+#### Scenario: 谓词表达式解析
+- **WHEN** IfThenElse.if 使用 mode=predicate 且 expression 为嵌套 all/any/not
+- **THEN** 解析通过，函数/参数校验在 checks 阶段执行
+
+#### Scenario: 空组拒绝
+- **WHEN** all 或 any 为空列表
+- **THEN** 返回 invalid_expression 校验错误

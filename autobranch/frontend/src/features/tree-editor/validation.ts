@@ -1,4 +1,9 @@
-import { slotFields, type TreeDoc } from "./treeModel";
+import {
+  slotFields,
+  type ConditionValue,
+  type PredicateExpr,
+  type TreeDoc,
+} from "./treeModel";
 import { TYPE_TOKENS } from "./tokens";
 
 /** 前端即时校验问题（用于红框定位与保存汇总展示）。 */
@@ -56,7 +61,68 @@ export const REQUIRED_SCALAR_FIELDS: Record<string, string[]> = {
   FunctionCall: [],
 };
 
+const CONDITION_FIELDS = new Set(["expect", "if", "until"]);
 const LITERAL_TOKENS = ["str", "int", "float", "bool"];
+
+function conditionHasContent(value: ConditionValue | undefined): boolean {
+  if (value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (value.mode === "natural") return value.text.trim().length > 0;
+  return predicateExprIssues(value.expression, "").length === 0;
+}
+
+function predicateExprIssues(expr: PredicateExpr, path: string): ClientIssue[] {
+  if ("function" in expr) {
+    if (!expr.function.trim()) {
+      return [{ code: "invalid_expression", message: `${path || "谓词"}缺少函数名` }];
+    }
+    return [];
+  }
+  if ("not" in expr) {
+    return predicateExprIssues(expr.not, `${path}not.`);
+  }
+  const key = "all" in expr ? "all" : "any";
+  const children = "all" in expr ? expr.all : expr.any;
+  if (children.length === 0) {
+    return [{ code: "invalid_expression", message: `${key.toUpperCase()} 至少需要一个子条件` }];
+  }
+  return children.flatMap((child, i) =>
+    predicateExprIssues(child, `${path}${key}[${i}].`),
+  );
+}
+
+function validateConditionValue(
+  value: ConditionValue,
+  nodeId: string,
+  field: string,
+): ClientIssue[] {
+  if (typeof value === "string") {
+    if (!value.trim()) {
+      return [{ code: "missing_field", message: "自然语言条件不能为空", nodeId, field }];
+    }
+    if (value.includes("\n")) {
+      return [{ code: "invalid_condition", message: "自然语言条件必须写成单行", nodeId, field }];
+    }
+    return [];
+  }
+  if (value.mode === "natural") {
+    if (!value.text.trim()) {
+      return [{ code: "missing_field", message: "自然语言条件不能为空", nodeId, field }];
+    }
+    if (value.text.includes("\n")) {
+      return [{ code: "invalid_condition", message: "自然语言条件必须写成单行", nodeId, field }];
+    }
+    return [];
+  }
+  if (value.mode === "predicate") {
+    return predicateExprIssues(value.expression, "").map((issue) => ({
+      ...issue,
+      nodeId,
+      field,
+    }));
+  }
+  return [{ code: "invalid_condition", message: "条件 mode 必须是 natural 或 predicate", nodeId, field }];
+}
 
 function literalMatches(typ: string, value: string): boolean {
   if (typ === "str") return true;
@@ -253,9 +319,16 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
       }
     }
     for (const f of REQUIRED_SCALAR_FIELDS[n.type] ?? []) {
-      if (!(n.fields[f] ?? "").trim()) {
+      if (CONDITION_FIELDS.has(f)) {
+        if (!conditionHasContent(n.conditions?.[f])) {
+          issues.push({ code: "missing_field", message: `节点「${n.name}」缺少必填字段 ${f}`, nodeId: n.id, field: f });
+        }
+      } else if (!(n.fields[f] ?? "").trim()) {
         issues.push({ code: "missing_field", message: `节点「${n.name}」缺少必填字段 ${f}`, nodeId: n.id, field: f });
       }
+    }
+    for (const [field, value] of Object.entries(n.conditions ?? {})) {
+      issues.push(...validateConditionValue(value, n.id, field));
     }
     if (n.type === "ForEach" && Object.keys(n.variables ?? {}).length === 0) {
       issues.push({ code: "missing_field", message: `节点「${n.name}」缺少 ForEach 变量`, nodeId: n.id });
@@ -266,8 +339,11 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
         issues.push({ code: "missing_branches", message: "Branch 缺少分支（至少一个 when 或 otherwise）", nodeId: n.id });
       } else {
         branches.forEach((b, i) => {
-          if (!(b.when ?? "").trim() && !(b.otherwise ?? "").trim()) {
+          if (!conditionHasContent(b.when) && !(b.otherwise ?? "").trim()) {
             issues.push({ code: "bad_branch", message: `分支 ${i + 1} 缺少 when 或 otherwise`, nodeId: n.id });
+          }
+          if (b.when !== undefined) {
+            issues.push(...validateConditionValue(b.when, n.id, "when"));
           }
         });
       }

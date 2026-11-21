@@ -29,6 +29,8 @@ from autobranch.parser.models import (
     ForEachNode,
     FunctionCallNode,
     Node,
+    PredicateCall,
+    PredicateExpr,
     RefNode,
     RepeatNode,
     SelectorNode,
@@ -72,8 +74,18 @@ def node_type_name(node: Node) -> str:
     return type(node).__name__
 
 
+def _predicate_summary(expr: PredicateExpr | None) -> str:
+    if expr is None:
+        return "谓词条件"
+    if isinstance(expr, PredicateCall):
+        return f"{expr.function}({', '.join(str(arg) for arg in expr.args)})"
+    return f"{expr.op.upper()}(" + ", ".join(_predicate_summary(c) for c in expr.children) + ")"
+
+
 def node_desc(node: Node) -> str:
     """节点描述：叶子取自然语言描述，组合节点取类型名。"""
+    if isinstance(node, ConditionNode) and node.mode == "predicate":
+        return _predicate_summary(node.expression)
     if isinstance(node, (ActionNode, ConditionNode)):
         return node.description
     if isinstance(node, FunctionCallNode):
@@ -161,6 +173,7 @@ class Traverser:
         self._depth = 0
         self._foreach_seq = 0
         self._meta_stack: list[dict] = []
+        self._predicate_error: str | None = None
 
     # ------------------------------------------------------------ tick 契约
 
@@ -199,6 +212,8 @@ class Traverser:
             return self._tick_function_call(node)
         if isinstance(node, DefineNode):
             return self._tick_define(node)
+        if isinstance(node, ConditionNode) and node.mode == "predicate":
+            return self._tick_predicate_condition(node)
         if isinstance(node, (ActionNode, ConditionNode)):
             return self._tick_leaf(node)
         if isinstance(node, SequenceNode):
@@ -230,8 +245,13 @@ class Traverser:
         （不承载兜底，命中后不再检查其余分支）。
         """
         for branch in node.branches:
-            if branch.condition is not None and self.tick(branch.condition) == FAILURE:
-                continue
+            if branch.condition is not None:
+                self._predicate_error = None
+                cond_status = self.tick(branch.condition)
+                if self._predicate_error is not None:
+                    return FAILURE
+                if cond_status == FAILURE:
+                    continue
             return self.tick(branch.child)
         return FAILURE
 
@@ -249,7 +269,11 @@ class Traverser:
             if node.until is None:
                 self._note_failure(node, "loop_until 缺少 until 条件")
                 return FAILURE
-            if self.tick(node.until) == SUCCESS:
+            self._predicate_error = None
+            until_status = self.tick(node.until)
+            if self._predicate_error is not None:
+                return FAILURE
+            if until_status == SUCCESS:
                 return SUCCESS
             if self.tick(node.body) == FAILURE:
                 return FAILURE
@@ -525,6 +549,121 @@ class Traverser:
                 return self._note_failure(node, f"Define 变量 '{name}' 写入失败: {exc}") or FAILURE
         meta["details"] = {"变量": defined}
         return SUCCESS
+
+    def _tick_predicate_condition(self, node: ConditionNode) -> NodeStatus:
+        """执行确定性谓词条件；异常/非 bool 结果不等于 false。"""
+        self._predicate_error = None
+        started = time.monotonic()
+        details: list[dict] = []
+        value, error = self._eval_predicate(node.expression, details, "expression")
+        if error is not None:
+            self._predicate_error = error
+            self._note_failure(node, error)
+        status: NodeStatus = SUCCESS if error is None and value is True else FAILURE
+        report = NodeReport(
+            node_type="Condition",
+            node_desc=_predicate_summary(node.expression),
+            result="success" if status == SUCCESS else "failure",
+            timestamp=_now_iso(),
+            condition_result=value if error is None else None,
+            duration=round(time.monotonic() - started, 3),
+            failure_reason=error,
+            details={
+                "条件模式": "predicate",
+                "表达式": _predicate_summary(node.expression),
+                "求值": details,
+                "最终结果": value if error is None else None,
+            },
+        )
+        self.ctx.reporter.record_node(report)
+        return status
+
+    def _eval_predicate(
+        self, expr: PredicateExpr | None, details: list[dict], path: str
+    ) -> tuple[bool | None, str | None]:
+        if expr is None:
+            return None, "谓词条件缺少 expression"
+        if isinstance(expr, PredicateCall):
+            return self._eval_predicate_call(expr, details, path)
+        if expr.op == "not":
+            if len(expr.children) != 1:
+                return None, "NOT 必须恰好一个子条件"
+            value, error = self._eval_predicate(expr.children[0], details, f"{path}.not")
+            if error is not None:
+                return None, error
+            return (not bool(value)), None
+        if expr.op not in ("all", "any"):
+            return None, f"未知谓词逻辑操作: {expr.op}"
+        short_circuit = False
+        result = expr.op == "all"
+        for index, child in enumerate(expr.children):
+            value, error = self._eval_predicate(child, details, f"{path}.{expr.op}[{index}]")
+            if error is not None:
+                return None, error
+            if expr.op == "all" and value is False:
+                result = False
+                short_circuit = True
+                break
+            if expr.op == "any" and value is True:
+                result = True
+                short_circuit = True
+                break
+        details.append(
+            {"路径": path, "逻辑": expr.op.upper(), "结果": result, "短路": short_circuit}
+        )
+        return result, None
+
+    def _eval_predicate_call(
+        self, call: PredicateCall, details: list[dict], path: str
+    ) -> tuple[bool | None, str | None]:
+        registry = self.ctx.registry
+        if registry is None:
+            return None, "谓词条件需要插件注册表（未注入 registry）"
+        spec = registry.function(call.function)
+        if spec is None:
+            return None, f"谓词函数不存在: {call.function}"
+        frame = self.ctx.current_frame
+        property_defs = dict((spec.parameters or {}).get("properties", {}))
+        param_names = list(property_defs) or list((spec.parameters or {}).get("required", []))
+        if len(call.args) > len(param_names):
+            return None, f"谓词函数 {call.function} 位置参数过多"
+        args: dict[str, object] = {}
+        for name, expr in zip(param_names, call.args, strict=False):
+            val = self._eval_arg(frame, expr)
+            if val is _MISSING:
+                return None, f"谓词参数 '{expr}' 求值失败（变量未定义）"
+            try:
+                args[name] = self._coerce_function_arg(name, val, property_defs)
+            except SchemaError as exc:
+                return None, f"谓词参数 {name} 类型转换失败: {exc}"
+        for name, raw in call.kwargs:
+            if name not in param_names or name in args:
+                return None, f"谓词命名参数非法或重复: {name}"
+            val = self._eval_value(frame, raw)
+            if val is _MISSING:
+                return None, f"谓词命名参数 '{name}' 求值失败（变量未定义）"
+            try:
+                args[name] = self._coerce_function_arg(name, val, property_defs)
+            except SchemaError as exc:
+                return None, f"谓词命名参数 {name} 类型转换失败: {exc}"
+        try:
+            result = registry.call(call.function, args, runtime=self.ctx.runtime)
+        except Exception as exc:  # noqa: BLE001
+            return None, f"谓词函数 {call.function} 执行异常: {exc}"
+        if not result.ok:
+            return None, f"谓词函数 {call.function} 失败: {result.error or '未知错误'}"
+        if len(result.values) != 1 or not isinstance(result.values[0], bool):
+            return None, f"谓词函数 {call.function} 必须返回单个 bool"
+        value = bool(result.values[0])
+        details.append(
+            {
+                "路径": path,
+                "函数": call.function,
+                "参数": args,
+                "结果": value,
+            }
+        )
+        return value, None
 
     def _tick_leaf(self, node: ActionNode | ConditionNode) -> NodeStatus:
         """Action/Condition 叶子：触发 M6 执行、接收 ``LeafResult``，返回前截图。"""

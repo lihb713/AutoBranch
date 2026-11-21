@@ -154,15 +154,39 @@ class ActionNode(Node):
 
 
 @dataclass(frozen=True)
-class ConditionNode(Node):
-    """条件叶子：自然语言描述（断言/分支/循环条件，§5.5/§5.6）。
+class PredicateCall:
+    """谓词函数调用叶子（条件表达式内，不经 LLM）。"""
 
-    :param description: 自然语言条件描述。
-    :param target: 谓词指向的页面对象/目标（可选项，结构可校验用）。
-    :param predicate: 比较谓词（可选项，如 等于/包含/存在）。
+    function: str = ""
+    args: tuple[str, ...] = ()
+    kwargs: tuple[tuple[str, object], ...] = ()
+
+
+@dataclass(frozen=True)
+class PredicateGroup:
+    """谓词逻辑组：all / any / not。"""
+
+    op: str = "all"
+    children: tuple[PredicateExpr, ...] = ()
+
+
+PredicateExpr = PredicateCall | PredicateGroup
+
+
+@dataclass(frozen=True)
+class ConditionNode(Node):
+    """条件叶子：自然语言描述或谓词表达式（§5.5/§5.6）。
+
+    :param mode: ``natural``（LLM）或 ``predicate``（确定性表达式）。
+    :param description: 自然语言条件描述；谓词模式为空。
+    :param expression: 谓词表达式；自然语言模式为 None。
+    :param target: 兼容字段（可选项，结构可校验用）。
+    :param predicate: 兼容字段（可选项）。
     """
 
+    mode: str = "natural"
     description: str = ""
+    expression: PredicateExpr | None = None
     target: str | None = None
     predicate: str | None = None
 

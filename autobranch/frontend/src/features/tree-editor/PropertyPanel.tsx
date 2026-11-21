@@ -5,6 +5,7 @@ import { HighlightedField } from "../../components/HighlightedField";
 import { TextAreaField } from "../../components/TextAreaField";
 import { TextField } from "../../components/TextField";
 import type { FunctionInfo } from "../../types/plugin";
+import { ConditionField } from "./ConditionEditor";
 import { schemaTypeToToken, TYPE_TOKENS } from "./tokens";
 import {
   freeRoots,
@@ -17,6 +18,8 @@ import {
 import { wouldCreateCycle, type RefMeta } from "./validation";
 
 type FieldDef = { key: string; label: string; placeholder?: string };
+
+const CONDITION_FIELD_KEYS = new Set(["expect", "if", "until"]);
 
 /** 各节点类型的标量字段定义（分组渲染，组名 = 组标题）。 */
 const FIELD_GROUPS: Record<string, { title: string; fields: FieldDef[] }[]> = {
@@ -98,6 +101,11 @@ export function PropertyPanel({
   };
 
   const setField = (key: string, value: string) => {
+    if (readonly) return;
+    onPatchNode(node.id, { [key]: value } as Partial<TreeNode>);
+  };
+
+  const setCondition = (key: string, value: unknown) => {
     if (readonly) return;
     onPatchNode(node.id, { [key]: value } as Partial<TreeNode>);
   };
@@ -340,17 +348,29 @@ export function PropertyPanel({
   const renderFieldGroup = (title: string, defs: FieldDef[]) => (
     <section className="prop-group" data-testid={`prop-group-${title}`}>
       <h4 className="prop-group__title">{title}</h4>
-      {defs.map((def) => (
-        <HighlightedField
-          key={def.key}
-          label={def.label}
-          value={node.fields[def.key] ?? ""}
-          placeholder={def.placeholder}
-          disabled={readonly}
-          data-testid={`field-${node.id}-${def.key}`}
-          onChange={(e) => setField(def.key, e.target.value)}
-        />
-      ))}
+      {defs.map((def) =>
+        CONDITION_FIELD_KEYS.has(def.key) ? (
+          <ConditionField
+            key={def.key}
+            label={def.label}
+            value={node.conditions?.[def.key]}
+            functions={functions}
+            disabled={readonly}
+            dataTestid={`field-${node.id}-${def.key}`}
+            onChange={(value) => setCondition(def.key, value)}
+          />
+        ) : (
+          <HighlightedField
+            key={def.key}
+            label={def.label}
+            value={node.fields[def.key] ?? ""}
+            placeholder={def.placeholder}
+            disabled={readonly}
+            data-testid={`field-${node.id}-${def.key}`}
+            onChange={(e) => setField(def.key, e.target.value)}
+          />
+        ),
+      )}
     </section>
   );
 
@@ -362,11 +382,13 @@ export function PropertyPanel({
           {b.otherwise ? (
             <span className="property-panel__type">otherwise</span>
           ) : (
-            <HighlightedField
+            <ConditionField
               label="条件 when"
-              value={b.when ?? ""}
+              value={b.when}
+              functions={functions}
               disabled={readonly}
-              onChange={(e) => updateBranch(i, { when: e.target.value })}
+              dataTestid={`branch-when-${i}`}
+              onChange={(value) => updateBranch(i, { when: value })}
             />
           )}
           <Combobox

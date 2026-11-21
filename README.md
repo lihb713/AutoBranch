@@ -22,8 +22,9 @@
 - **ForEach 动态遍历**：按变量中的列表逐项在临时子帧执行子树，支持 `continue` / `abort` 失败策略；子帧可读当前行为树变量、循环结束销毁。
 - **LLM Agent 叶子执行**：Action / Condition 由 LLM 依据语义图决策，调用插件函数并**落笔写变量**（引擎回收返回值，按类型 coerce）。
 - **确定性 FunctionCall 节点**：行为树可直接调用插件函数（`compute.add` 等），不经 LLM，可精确写变量 / 多返回值。
+- **条件模式**：来判断条件支持单行自然语言（LLM）或确定性谓词表达式（`all/any/not` + 单 bool 函数），谓词错误不会被当成 false。
 - **确定性 Define 节点**：在当前文档帧声明变量（字面量或 `Param.x` 拷贝重命名），不经 LLM。
-- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；插件可声明**自定义类型**（如 `page_object` / `ssh_session`）并注册进类型系统；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
+- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换 / 谓词插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；插件可声明**自定义类型**（如 `page_object` / `ssh_session`）并注册进类型系统；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **插件模块化**：插件可选提供 REST API、数据库模型、前端页面、存储目录与配置项；文件管理支持目录、路径、MD5，SSH/浏览器可与文件平台互通（含 SSH 递归目录传输）。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、调度管理页、插件管理页、执行报告页。
@@ -43,7 +44,7 @@ autobranch/
   plugin_system/           M3 插件框架（注册表/懒装配/能力选择/分发/报告）
   leaf_agent/              M4 叶子 Agent（Action/Condition 执行）
   orchestrator/            M5 编排器（遍历/FunctionCall/超时/会话）
-  plugins/                 M7 插件集（browser/compute/ssh/file/http/vars/transform + common）
+  plugins/                 M7 插件集（browser/compute/ssh/file/http/vars/transform/predicate + common）
   reporting/               报告 / 截图 / 回溯
   scheduler/               M10 定时/依赖调度（规则/引擎/API）
   server/                  M8 管理后端（FastAPI：trees/runs/schedules/reports/plugins/functions）
@@ -200,7 +201,7 @@ root: n1
 
 ### 插件管理
 
-- 预置插件：浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换（启动自动加载）。
+- 预置插件：浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换 / 谓词（启动自动加载）。
 - 自定义插件：前端「插件管理」页编写 Python 源码（仅标准库），保存即校验并重载；删除时提示关联行为树并置空引用。
 - 插件模块化：插件可选提供 REST API、数据库模型、前端页面、存储目录与配置项；`file` 插件提供文件管理页面与 `/api/plugins/file/files` API。
 - 函数清单：`GET /api/functions` 返回全部函数（全名 + 结构化定义），供编辑器函数选择器使用。
@@ -245,7 +246,7 @@ root: n1
 | M4 叶子 Agent | Action / Condition 的 LLM agent 式执行 + 变量落笔 |
 | M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall·Define 确定性执行 |
 | M6 报告 | 执行报告 / 截图 / 回溯 / 可查询状态 |
-| M7 插件集 | browser / compute / ssh / file / http / vars / transform + 自定义插件 |
+| M7 插件集 | browser / compute / ssh / file / http / vars / transform / predicate + 自定义插件 |
 | M8 管理后端 | FastAPI：trees / runs（执行实例：快照/入参/出参/列表/重试/队列）/ schedules / reports / plugins / functions / types |
 | M9 前端 | React + Vite：行为树编辑器 / 调度管理 / 插件管理 / 执行报告 / 执行列表 |
 | M10 定时调度 | interval/cron、依赖 DAG、失败重试、错过补跑；复用 M8 执行队列 |

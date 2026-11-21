@@ -77,7 +77,7 @@ describe("treeModel（统一槽位）", () => {
     expect(doc.nodes["n1"].body).toBe("n2");
     expect(doc.nodes["n2"].actions).toEqual(["n3", "n4"]);
     expect(doc.nodes["n3"].action).toBe("n5");
-    expect(doc.nodes["n3"].fields["expect"]).toBe('出现"工作台"');
+    expect(doc.nodes["n3"].conditions?.["expect"]).toBe('出现"工作台"');
     expect(doc.nodes["n5"].fields["description"]).toBe('点击"登录"按钮');
   });
 
@@ -334,5 +334,80 @@ root: n1
     const rebuilt = parseDoc(serializeDoc(doc));
     expect(rebuilt.nodes.n2.variables).toEqual(doc.nodes.n2.variables);
     expect(rebuilt.nodes.n2.onFailure).toBe("abort");
+  });
+});
+
+describe("condition values", () => {
+  it("解析并往返谓词条件", () => {
+    const yaml = `tree: 条件
+nodes:
+  r:
+    type: Root
+    body: n2
+  n2:
+    type: IfThenElse
+    if:
+      mode: predicate
+      expression:
+        all:
+          - function: predicate.gt
+            args: [Param.amount, "0"]
+          - not:
+              function: predicate.is_empty
+              args: [Param.name]
+    then: n3
+    else: n4
+  n3:
+    type: Action
+    description: 成功
+  n4:
+    type: Action
+    description: 失败
+root: r
+`;
+    const doc = parseDoc(yaml);
+    expect(doc.nodes.n2.conditions?.["if"]).toEqual({
+      mode: "predicate",
+      expression: {
+        all: [
+          { function: "predicate.gt", args: ["Param.amount", "0"] },
+          { not: { function: "predicate.is_empty", args: ["Param.name"] } },
+        ],
+      },
+    });
+    const again = parseDoc(serializeDoc(doc));
+    expect(again.nodes.n2.conditions?.["if"]).toEqual(doc.nodes.n2.conditions?.["if"]);
+  });
+
+  it("解析 Branch when 条件对象", () => {
+    const yaml = `tree: 条件
+nodes:
+  r:
+    type: Root
+    body: n2
+  n2:
+    type: Branch
+    action: n3
+    branches:
+      - when:
+          mode: predicate
+          expression:
+            function: predicate.eq
+            args: [Param.status, "paid"]
+        action: n3
+      - otherwise: n3
+  n3:
+    type: Action
+    description: 操作
+root: r
+`;
+    const doc = parseDoc(yaml);
+    expect(doc.nodes.n2.branches?.[0].when).toEqual({
+      mode: "predicate",
+      expression: {
+        function: "predicate.eq",
+        args: ["Param.status", "paid"],
+      },
+    });
   });
 });

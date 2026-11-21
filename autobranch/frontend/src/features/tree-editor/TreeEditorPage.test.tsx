@@ -113,7 +113,7 @@ describe("TreeEditorPage（后端权威编辑）", () => {
     await waitFor(() => expect(screen.getByTestId("node-card-n3")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("node-card-n3"));
     expect(screen.getByTestId("node-type-badge")).toHaveTextContent("Step");
-    expect(screen.getByTestId("field-n3-expect")).toHaveValue('出现"工作台"');
+    expect(screen.getByTestId("field-n3-expect-text")).toHaveValue('出现"工作台"');
   });
 
   it("字段编辑通过 update_node 命令提交", async () => {

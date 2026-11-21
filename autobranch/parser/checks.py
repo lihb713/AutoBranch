@@ -17,7 +17,11 @@ from autobranch.parser.models import (
     FinishNode,
     ForEachNode,
     FunctionCallNode,
+    Loc,
     Node,
+    PredicateCall,
+    PredicateExpr,
+    PredicateGroup,
     RefNode,
     RepeatNode,
     SelectorNode,
@@ -29,6 +33,9 @@ _BASIC_TYPES = (
     ActionNode,
     ConditionNode,
     DefineNode,
+    PredicateCall,
+    PredicateExpr,
+    PredicateGroup,
     FunctionCallNode,
     SequenceNode,
     SelectorNode,
@@ -97,7 +104,17 @@ def _walk_leaves(node: Node, issues: list[CheckIssue]) -> None:
             )
         return
     if isinstance(node, ConditionNode):
-        if not (node.description or "").strip():
+        if node.mode == "predicate":
+            if node.expression is None:
+                issues.append(
+                    make_issue(
+                        "predicate",
+                        "empty_condition",
+                        f"谓词条件缺少 expression（位于 {at}）",
+                        node.loc,
+                    )
+                )
+        elif not (node.description or "").strip():
             issues.append(
                 make_issue(
                     "predicate",
@@ -143,6 +160,10 @@ def _walk_functions(
     if isinstance(node, FunctionCallNode):
         _check_function_ref(node, registry, issues)
         return
+    if isinstance(node, ConditionNode):
+        if node.mode == "predicate" and node.expression is not None:
+            _check_predicate_expr(node.expression, registry, issues, node.loc)
+        return
     if isinstance(node, SequenceNode):
         for c in node.children:
             _walk_functions(c, registry, issues)
@@ -158,6 +179,103 @@ def _walk_functions(
     elif isinstance(node, ForEachNode):
         if node.body is not None:
             _walk_functions(node.body, registry, issues)
+
+
+def _check_predicate_expr(
+    expr: PredicateExpr, registry: object, issues: list[CheckIssue], loc: Loc | None
+) -> None:
+    """校验谓词表达式：函数存在/可见/单 bool 返回，参数与签名对齐。"""
+    if isinstance(expr, PredicateGroup):
+        for child in expr.children:
+            _check_predicate_expr(child, registry, issues, loc)
+        return
+    fn = expr.function
+    at = loc.path if loc else "?"
+    lookup = getattr(registry, "function", None)
+    spec = lookup(fn) if callable(lookup) else None
+    if spec is None:
+        issues.append(
+            make_issue(
+                "ref",
+                "unknown_function",
+                f"谓词函数 '{fn}' 不存在（未注册）（位于 {at}）",
+                loc,
+            )
+        )
+        return
+    if getattr(spec, "user_visible", True) is False:
+        issues.append(
+            make_issue(
+                "ref",
+                "function_not_user_visible",
+                f"谓词函数 '{fn}' 仅供 LLM 调用（位于 {at}）",
+                loc,
+            )
+        )
+        return
+    returns = dict(getattr(spec, "returns", {}) or {})
+    if len(returns) != 1 or next(iter(returns.values()), "") != "bool":
+        issues.append(
+            make_issue(
+                "predicate",
+                "not_boolean",
+                f"谓词函数 '{fn}' 必须恰好返回一个 bool（当前: {returns}，位于 {at}）",
+                loc,
+            )
+        )
+        return
+    _check_call_signature(fn, expr.args, expr.kwargs, spec, at, loc, issues)
+
+
+def _check_call_signature(
+    fn: str,
+    args: tuple[str, ...],
+    kwargs: tuple[tuple[str, object], ...],
+    spec: object,
+    at: str,
+    loc: Loc | None,
+    issues: list[CheckIssue],
+) -> None:
+    required = list((getattr(spec, "parameters", {}) or {}).get("required", []))
+    properties = list((getattr(spec, "parameters", {}) or {}).get("properties", {}))
+    param_names = properties or required
+    if len(args) > len(param_names):
+        issues.append(
+            make_issue(
+                "ref",
+                "args_mismatch",
+                f"函数 '{fn}' 位置实参数量 {len(args)} 超过参数总数 "
+                f"{len(param_names)}（位于 {at}）",
+                loc,
+            )
+        )
+        return
+    positional_names = param_names[: len(args)]
+    kwargs_dict = dict(kwargs or ())
+    unknown = [name for name in kwargs_dict if name not in param_names]
+    duplicated = [name for name in kwargs_dict if name in positional_names]
+    if unknown or duplicated:
+        detail = "、".join(unknown + duplicated)
+        issues.append(
+            make_issue(
+                "ref",
+                "kwargs_invalid",
+                f"函数 '{fn}' 命名参数非法/重复: {detail}（位于 {at}）",
+                loc,
+            )
+        )
+        return
+    provided = set(positional_names) | set(kwargs_dict)
+    missing = [name for name in required if name not in provided]
+    if missing:
+        issues.append(
+            make_issue(
+                "ref",
+                "args_mismatch",
+                f"函数 '{fn}' 缺少必填参数: {', '.join(missing)}（位于 {at}）",
+                loc,
+            )
+        )
 
 
 def _check_function_ref(

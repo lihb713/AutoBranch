@@ -276,7 +276,13 @@ session=custom_type_param("ssh_session", "SSH 会话对象")
 
 ## 6. 返回值与类型
 
-### 6.1 `returns`
+### 6.1 谓词函数
+
+条件表达式中的函数必须是**单返回 bool**。内置 `predicate` 插件提供常用谓词；其他用户可见函数只要满足“恰好返回一个 `bool`”也可以作为谓词候选，前端会展示所有符合条件的函数。
+
+谓词函数应保持无副作用，不应依赖写变量。
+
+### 6.2 `returns`
 
 ```python
 returns={"result": "float", "count": "int"}
@@ -302,7 +308,7 @@ returns={"result": "float", "count": "int"}
 
 不要把所有对象都用 `object`：`object` 在 AutoBranch 中表示 Python `dict`。
 
-### 6.2 返回裸值
+### 6.3 返回裸值
 
 ```python
 @engine_function(name="add", returns={"result": "float"})
@@ -310,7 +316,7 @@ def add(self, a: float, b: float) -> float:
     return a + b
 ```
 
-### 6.3 返回 `FunctionResult`
+### 6.4 返回 `FunctionResult`
 
 需要失败原因、报告附加信息或多返回值时：
 

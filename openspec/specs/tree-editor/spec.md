@@ -62,3 +62,11 @@ ref 节点的「目标文档」下拉 SHALL 支持输入过滤（行为树文档
 #### Scenario: 必填 kwargs 回显
 - **WHEN** 节点 args 为空、kwargs 含必填参数
 - **THEN** 属性面板显示该值，编辑后回写 kwargs
+
+### Requirement: 条件模式编辑器
+
+条件字段 SHALL 提供显式「自然语言 / 谓词表达式」切换。谓词表达式编辑器 SHALL 支持递归添加谓词、ALL、ANY、NOT；只展示用户可见且单返回 bool 的函数；保存前校验空组、空函数、NOT 子项数量等。Branch.when SHALL 以摘要 + 弹窗方式编辑。
+
+#### Scenario: 添加谓词组
+- **WHEN** 用户切换到谓词表达式并点击添加 ALL/ANY/NOT
+- **THEN** 编辑器生成对应嵌套结构并在保存时写回条件字段

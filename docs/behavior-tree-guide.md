@@ -381,6 +381,64 @@ vars:
 
 两者的失败语义、终止条件、临时变量都不同，混在一起会让行为树难以理解。
 
+## 5.13 条件：自然语言与谓词表达式
+
+所有判断位置统一支持两种模式：
+
+- `Step.expect`
+- `IfThenElse.if`
+- `Branch.branches[].when`
+- `LoopUntil.until`
+
+### 自然语言条件
+
+自然语言条件是一行完整判断，由 LLM 判断，不允许嵌套：
+
+```yaml
+expect:
+  mode: natural
+  text: 页面出现“工作台”且金额大于 0
+```
+
+旧写法直接写字符串仍兼容：
+
+```yaml
+expect: 页面出现“工作台”
+```
+
+### 谓词表达式
+
+谓词表达式是确定性判断，只允许函数谓词和 `all` / `any` / `not`：
+
+```yaml
+if:
+  mode: predicate
+  expression:
+    all:
+      - function: predicate.gt
+        args: [Param.amount, "0"]
+      - function: predicate.le
+        args: [Param.amount, "100000"]
+      - any:
+          - function: predicate.eq
+            args: [Param.status, "paid"]
+          - not:
+              function: predicate.contains
+              args: [Param.status, "cancel"]
+```
+
+规则：
+
+- 谓词函数必须恰好返回一个 `bool`；
+- 函数错误不等于 `false`，会让条件失败并记录原因；
+- `all` / `any` 从左到右短路；
+- `all: []` / `any: []` 不合法；
+- `not` 必须恰好一个子条件；
+- 自然语言和谓词不能混用；
+- 每个条件必须显式写 `mode`（字符串旧写法除外）。
+
+谓词表达式适合确定性判断；需要理解页面语义、文本含义时用自然语言。
+
 ## 6. 变量与黑板
 
 变量是行为树在运行期传递数据的核心。

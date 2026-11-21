@@ -246,3 +246,16 @@ class RunConfig:
 ### 8.3 截图
 
 插件模式叶子不无条件截图；截图由浏览器插件 `semantic_graph` 产出，经 `LeafResult.screenshots` 写入 `NodeReport.screenshot_path`（报告展示）。
+
+
+## 谓词条件执行
+
+`ConditionNode.mode == "predicate"` 时由编排器确定性执行谓词表达式，不调用 LLM、不截图：
+
+- 叶子 `PredicateCall` 复用 FunctionCall 的参数求值/类型校验后调用插件函数；
+- 函数必须返回单个 `bool`；
+- `all` / `any` 从左到右短路；`not` 必须恰好一个子条件；
+- 空 `all` / `any` 非法；
+- 谓词函数异常、参数错误、非 bool 返回值均视为条件执行错误，**不等于 false**；
+- 条件错误在 Selector/Branch/IfThenElse/LoopUntil 中直接让节点失败，不进入 else/下一分支；
+- 节点报告 details 记录表达式、每个谓词参数/结果、短路与最终结果。

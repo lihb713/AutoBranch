@@ -56,7 +56,8 @@ AutoBranch 是一个**自然语言驱动的行为树自动化工具**。你不�
 | 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall/Define） | [行为树指南](behavior-tree-guide.md) |
 | 变量 | `Param.x` 读、`NewParam.x[:类型]` 写（仅 Action 描述）、`returns` 裸名接收、`Define` 声明 | [变量与黑板](behavior-tree-guide.md#6-变量与黑板) |
 | 入参/出参 | 文档级 `inputs`（外部传入）、`outputs`（对外返回） | [行为树指南](behavior-tree-guide.md) |
-| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/自定义），函数以 `插件名.函数名` 标识 | [内置插件](builtin-plugins.md) / [插件开发](plugin-development-guide.md) |
+| 条件 | 单行自然语言（LLM）或谓词表达式（`all/any/not` + 单 bool 函数） | [条件指南](behavior-tree-guide.md#513-条件自然语言与谓词表达式) |
+| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/谓词/自定义），函数以 `插件名.函数名` 标识 | [内置插件](builtin-plugins.md) / [插件开发](plugin-development-guide.md) |
 | 执行实例 | 一次执行 = 自包含实例（快照 + 入参 + 出参） | §9 |
 | 报告 | 执行报告（节点结果+截图）/ 回溯报告（含 LLM 推理） | §9.5 |
 
@@ -388,7 +389,7 @@ browser: chromium  # 浏览器类型
 
 ## 10. 内置插件与函数详解
 
-浏览器、计算、数据变换、SSH、文件、HTTP、变量插件的函数清单与示例，见：
+浏览器、计算、数据变换、SSH、文件、HTTP、变量、谓词插件的函数清单与示例，见：
 
 - **[内置插件介绍](builtin-plugins.md)**
 
@@ -508,6 +509,6 @@ autobranch/plugins/browser/proxy.config.json
 - **类型 token**：核心 `str` `int` `float` `bool` `array` `object` `generics` `page_ref`，以及插件注册的自定义类型（如 `ssh_session`、`page_object`）
 - **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / scheduler_tick_seconds / timezone / experience_*）
 - **代理配置**：`autobranch/plugins/browser/proxy.config.json`
-- **内置插件**：`browser` `compute` `ssh` `file` `http` `vars` `transform`；函数全名 `插件名.函数名`
+- **内置插件**：`browser` `compute` `ssh` `file` `http` `vars` `transform` `predicate`；函数全名 `插件名.函数名`
 - **端口**：后端 8001，前端 5174
 - **数据库**：`data/autobranch.db`（自动创建）

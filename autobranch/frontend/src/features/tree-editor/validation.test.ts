@@ -129,7 +129,10 @@ root: n1
 
   it("Step 缺 expect 报错", () => {
     const doc = parseDoc(DOC_YAML);
-    const broken: TreeDoc = { ...doc, nodes: { ...doc.nodes, n3: { ...doc.nodes["n3"], fields: {} } } };
+    const broken: TreeDoc = {
+      ...doc,
+      nodes: { ...doc.nodes, n3: { ...doc.nodes["n3"], conditions: {} } },
+    };
     const issues = validateDoc(broken, ctx());
     expect(issues.some((i) => i.code === "missing_field" && i.field === "expect")).toBe(true);
   });
@@ -399,5 +402,47 @@ root: n1
       ctx({ typeTokens: ["str", "ssh_session"] }),
     );
     expect(issues.some((i) => i.code === "invalid_var_type")).toBe(false);
+  });
+});
+
+describe("validation 条件模式", () => {
+  const base = `tree: 主流程
+nodes:
+  r:
+    type: Root
+    body: n2
+  n2:
+    type: IfThenElse
+    then: n3
+    else: n4
+  n3:
+    type: Action
+    description: x
+  n4:
+    type: Action
+    description: y
+root: r
+`;
+
+  it("谓词 ALL 空组不合法", () => {
+    const doc = parseDoc(
+      base.replace(
+        "then: n3",
+        "if:\n      mode: predicate\n      expression:\n        all: []\n    then: n3",
+      ),
+    );
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "invalid_expression")).toBe(true);
+  });
+
+  it("自然语言条件必须单行", () => {
+    const doc = parseDoc(
+      base.replace(
+        "then: n3",
+        'if:\n      mode: natural\n      text: "第一行\\n第二行"\n    then: n3',
+      ),
+    );
+    const issues = validateDoc(doc, ctx());
+    expect(issues.some((i) => i.code === "invalid_condition")).toBe(true);
   });
 });

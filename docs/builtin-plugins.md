@@ -17,6 +17,7 @@
 | `ssh` | SSH 会话、命令、交互通道、文件传输 | `ssh_session` |
 | `file` | 文件读写、对比、文件管理平台 | — |
 | `http` | 独立 HTTP 请求 | — |
+| `predicate` | 条件表达式常用单 bool 谓词 | — |
 | `vars` | 直接把值写入变量 | — |
 
 插件声明的自定义类型会出现在：
@@ -464,7 +465,80 @@ n2:
 - 认证头需要显式提供；
 - 需要页面 cookie 时使用浏览器插件的 `page_request`。
 
-## 8. 变量插件 `vars`
+## 8. 谓词插件 `predicate`
+
+### 8.0 为什么需要谓词插件
+
+`compute` / `transform` 中有一些返回 bool 的函数，但它们首先服务于数据计算/变换，函数语义和参数并不专为条件表达式设计。
+
+`predicate` 插件提供一组**只返回单个 bool、无副作用**的常用谓词，适合：
+
+- `Step.expect`
+- `IfThenElse.if`
+- `Branch.when`
+- `LoopUntil.until` 的谓词表达式
+
+前端条件编辑器默认展示 `predicate.*`，也允许显示其他单 bool 返回函数。
+
+### 8.1 函数
+
+### 基础比较
+
+| 函数 | 参数 | 返回 |
+|---|---|---|
+| `predicate.eq` / `ne` | `a`, `b` | `result: bool` |
+| `predicate.gt` / `ge` / `lt` / `le` | `a`, `b` | `result: bool` |
+| `predicate.between` | `value`, `low`, `high` | `result: bool` |
+
+### 字符串
+
+| 函数 | 参数 | 返回 |
+|---|---|---|
+| `predicate.contains` / `not_contains` | `value`, `needle`, `ignore_case?` | `result: bool` |
+| `predicate.starts_with` / `ends_with` | `value`, `prefix/suffix`, `ignore_case?` | `result: bool` |
+| `predicate.matches` | `value`, `pattern`, `ignore_case?` | `result: bool` |
+| `predicate.matches_full` | `value`, `pattern`, `ignore_case?` | `result: bool` |
+| `predicate.equals_ignore_case` | `a`, `b` | `result: bool` |
+
+### 空值/集合/长度
+
+| 函数 | 参数 | 返回 |
+|---|---|---|
+| `predicate.is_empty` / `is_not_empty` | `value` | `result: bool` |
+| `predicate.is_null` / `is_not_null` | `value` | `result: bool` |
+| `predicate.has_key` | `data: object`, `key` | `result: bool` |
+| `predicate.has_value` | `data: object`, `value` | `result: bool` |
+| `predicate.value_in` / `value_not_in` | `value`, `values: array` | `result: bool` |
+| `predicate.length_eq/ge/gt/le/lt` | `value`, `n` | `result: bool` |
+
+示例：
+
+```yaml
+if:
+  mode: predicate
+  expression:
+    all:
+      - function: predicate.gt
+        args: [Param.amount, "0"]
+      - function: predicate.le
+        args: [Param.amount, "100000"]
+      - any:
+          - function: predicate.eq
+            args: [Param.status, "paid"]
+          - not:
+              function: predicate.contains
+              args: [Param.status, "cancel"]
+```
+
+说明：
+
+- 谓词函数错误（如类型不匹配、正则非法）**不等于 false**；
+- 错误会让整个条件表达式失败，并记录原因；
+- 空 `ALL` / `ANY` 不合法；
+- `NOT` 必须恰好一个子条件；
+- 谓词函数不写变量，不使用 `save_to`。
+
+## 9. 变量插件 `vars`
 
 ### 8.0 有了 `save_to`，为什么还要 `vars.set`
 
@@ -521,9 +595,9 @@ n2:
 
 LLM 会调用 `vars.set(value1="...")`，并通过 `save_to="summary"` 保存。
 
-## 9. 常见问题
+## 10. 常见问题
 
-### 9.1 为什么浏览器函数不能写进 FunctionCall？
+### 10.1 为什么浏览器函数不能写进 FunctionCall？
 
 浏览器大量函数是 **LLM-only**（`@llm_function`），因为它们依赖当前页面语义图 `ref` 与上下文。FunctionCall 只支持用户可见函数。
 
@@ -536,7 +610,7 @@ LLM 会调用 `vars.set(value1="...")`，并通过 `save_to="summary"` 保存。
 
 其他操作请在 Action 描述中让 LLM 执行。
 
-### 9.2 `page_object` / `ssh_session` 能作为树入参吗？
+### 10.2 `page_object` / `ssh_session` 能作为树入参吗？
 
 不能直接由文本构造。它们只能：
 
@@ -546,14 +620,14 @@ LLM 会调用 `vars.set(value1="...")`，并通过 `save_to="summary"` 保存。
 
 `GET /api/types` 会显示 `constructible=false`。
 
-### 9.3 `object` 和 `generics` 有什么区别？
+### 10.3 `object` 和 `generics` 有什么区别？
 
 - `object`：确定是 Python `dict`；
 - `array`：确定是 Python `list`；
 - `generics`：不确定类型，任意值；
 - 插件自己的对象应声明为自定义类型，而不是 `generics`。
 
-### 9.4 怎样确认函数参数与返回值？
+### 10.4 怎样确认函数参数与返回值？
 
 直接调用：
 

@@ -113,7 +113,7 @@ class RefNode(Node):
 - 节点均为 `frozen` dataclass，保证确定性输出；组合结构使用 `tuple`（可哈希、比较稳定）。
 - `Node` 基类仅含 `loc: Loc | None`（文档位置，路径式定位）。运行期帧由 `RefNode` 动态调用（M7 `_tick_ref`）维护，节点不携带静态帧标识。
 - `RefNode`：文档引用调用节点（`target` 为单段文档名），保留为运行期动态调用，**不内联展开**；`args`/`returns` 携带参数声明（§5.7.3）。
-- `ConditionNode` 扩展可选字段（超出 §5.2 的 description-only，供谓词结构校验与 M6 执行）：`target`（谓词指向对象）、`predicate`（比较谓词）。
+- `ConditionNode` 支持两种模式：`mode="natural"`（`description` 单行自然语言）与 `mode="predicate"`（`expression` 谓词表达式）。谓词表达式由 `PredicateCall` 和 `all/any/not` 嵌套组成，解析期校验结构，函数存在/可见/单 bool 返回在 checks 阶段校验。
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：树名（=文档名） + 基础节点根。
 - 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action` / `ForEach.body`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ForEach/ref/FunctionCall/Define`；`Action` 为真正叶子（`description` 操作描述），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段；`Define` 为变量声明叶子（`vars: {名: {type, value}}`）。
@@ -146,7 +146,7 @@ class RefNode(Node):
 | `scope` | 变量契约 | `scope.out_of_scope` / `get_undeclared` |
 | `locatable` | 可定位性 | `locatable.not_locatable` / `no_description` |
 | `verify` | 验证条件 | `verify.missing_condition` |
-| `predicate` | 谓词可校验 | `predicate.empty_condition` |
+| `predicate` | 谓词可校验 | `predicate.empty_condition` / `predicate.not_boolean` |
 
 **文档格式与变量契约落地细节**：
 

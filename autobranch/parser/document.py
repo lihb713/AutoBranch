@@ -80,6 +80,8 @@ class IRNode:
     children: tuple[IRNode, ...] = ()
     branches: tuple[IRBranch, ...] = ()
     condition: IRNode | None = None
+    condition_mode: str = "natural"
+    expression: object = None
     action: IRNode | None = None
     until: IRNode | None = None
     body: IRNode | None = None

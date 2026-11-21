@@ -23,7 +23,14 @@ const DOC: TreeDoc = {
   nodes: {
     n1: { id: "n1", type: "Root", name: "根", fields: {}, body: "n2" },
     n2: { id: "n2", type: "Sequence", name: "主流程", fields: {}, actions: ["n3"] },
-    n3: { id: "n3", type: "Step", name: "登录", fields: { expect: "ok" }, action: "n4" },
+    n3: {
+      id: "n3",
+      type: "Step",
+      name: "登录",
+      fields: {},
+      conditions: { expect: "ok" },
+      action: "n4",
+    },
     n4: { id: "n4", type: "Action", name: "点登录", fields: { description: "点" } },
     f1: { id: "f1", type: "Action", name: "游离一", fields: { description: "a" } },
     f2: { id: "f2", type: "Sequence", name: "游离二", fields: {}, actions: [] },
@@ -50,6 +57,8 @@ const REF_DOC: TreeDoc = {
   },
 };
 
+const CONDITION_KEYS = new Set(["expect", "if", "until"]);
+
 const DIRECT_KEYS = new Set([
   "name",
   "body",
@@ -75,7 +84,12 @@ function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>):
   const next: TreeNode = { ...node, fields: { ...node.fields } };
   const target = next as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
-    if (key === "on_failure") {
+    if (CONDITION_KEYS.has(key)) {
+      next.conditions = {
+        ...(next.conditions ?? {}),
+        [key]: value as never,
+      };
+    } else if (key === "on_failure") {
       next.onFailure = String(value ?? "continue");
     } else if (DIRECT_KEYS.has(key)) {
       target[key] = value;
@@ -249,7 +263,7 @@ describe("PropertyPanel", () => {
 
   it("Step 展示 expect 标量字段", () => {
     renderPanel(DOC, DOC.nodes.n3);
-    expect(screen.getByTestId("field-n3-expect")).toHaveValue("ok");
+    expect(screen.getByTestId("field-n3-expect-text")).toHaveValue("ok");
   });
 
   it("Root 的删除按钮禁用", () => {
@@ -343,7 +357,7 @@ describe("PropertyPanel", () => {
 
   it("readonly 模式：字段/槽位禁用、无删除与增删按钮", () => {
     renderPanel(DOC, DOC.nodes.n3, { readonly: true });
-    expect(screen.getByTestId("field-n3-expect")).toBeDisabled();
+    expect(screen.getByTestId("field-n3-expect-text")).toBeDisabled();
     expect(screen.getByTestId("slot-n3-0")).toBeDisabled();
     expect(screen.queryByTestId("delete-node")).not.toBeInTheDocument();
     expect(screen.queryByTestId("delete-subtree")).not.toBeInTheDocument();

@@ -28,7 +28,13 @@ from autobranch.parser.document import (
     _empty_ir,
     _loc,
 )
-from autobranch.parser.models import Loc, make_issue
+from autobranch.parser.models import (
+    Loc,
+    PredicateCall,
+    PredicateExpr,
+    PredicateGroup,
+    make_issue,
+)
 from autobranch.parser.yamlio import normalize_document
 
 _NODE_TYPES = frozenset(
@@ -98,6 +104,99 @@ def _str_or_none(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _predicate_expr(
+    value: object, doc_id: str, path: str, issues: list
+) -> PredicateExpr | None:
+    """解析谓词表达式：{function,...} 或 {all/any/not: ...}；空/非法报错。"""
+    loc = _loc(doc_id, path)
+    if not isinstance(value, dict) or not value:
+        issues.append(
+            make_issue(
+                "structure",
+                "invalid_expression",
+                f"谓词表达式必须是非空映射（位于 {_path(doc_id, path)}）",
+                loc,
+            )
+        )
+        return None
+    group_keys = [key for key in ("all", "any", "not") if key in value]
+    if "function" in value:
+        if group_keys:
+            issues.append(
+                make_issue(
+                    "structure", "invalid_expression",
+                    f"谓词叶子不能同时包含 function 与 all/any/not（位于 {_path(doc_id, path)}）",
+                    loc,
+                )
+            )
+            return None
+        function = value.get("function")
+        if not isinstance(function, str) or not function.strip():
+            issues.append(
+                make_issue(
+                    "structure", "invalid_expression",
+                    f"谓词函数名必须是非空字符串（位于 {_path(doc_id, path)}）",
+                    loc,
+                )
+            )
+            return None
+        raw_args = value.get("args", [])
+        if not isinstance(raw_args, list):
+            issues.append(
+                make_issue(
+                    "structure", "invalid_expression",
+                    f"谓词 args 必须是列表（位于 {_path(doc_id, path)}）",
+                    loc,
+                )
+            )
+            return None
+        raw_kwargs = value.get("kwargs", {})
+        if not isinstance(raw_kwargs, dict):
+            issues.append(
+                make_issue(
+                    "structure", "invalid_expression",
+                    f"谓词 kwargs 必须是映射（位于 {_path(doc_id, path)}）",
+                    loc,
+                )
+            )
+            return None
+        return PredicateCall(
+            function=function.strip(),
+            args=tuple(str(item) for item in raw_args),
+            kwargs=tuple((str(key), item) for key, item in raw_kwargs.items()),
+        )
+    if len(group_keys) != 1:
+        issues.append(
+            make_issue(
+                "structure", "invalid_expression",
+                f"谓词表达式必须包含 function 或唯一 all/any/not（位于 {_path(doc_id, path)}）",
+                loc,
+            )
+        )
+        return None
+    op = group_keys[0]
+    raw = value[op]
+    if op in ("all", "any"):
+        if not isinstance(raw, list) or not raw:
+            issues.append(
+                make_issue(
+                    "structure", "invalid_expression",
+                    f"{op} 必须是非空表达式列表（位于 {_path(doc_id, path)}）",
+                    loc,
+                )
+            )
+            return None
+        children = tuple(
+            expr
+            for i, item in enumerate(raw)
+            if (expr := _predicate_expr(item, doc_id, f"{path}/{op}/{i}", issues))
+            is not None
+        )
+        return PredicateGroup(op=op, children=children)
+    child = _predicate_expr(raw, doc_id, f"{path}/not", issues)
+    return PredicateGroup(op="not", children=(child,)) if child is not None else None
+
+
 def _cond(
     desc: object,
     doc_id: str,
@@ -106,13 +205,80 @@ def _cond(
     code: str = "",
     message: str = "",
 ) -> IRNode:
-    """把条件字段描述解析为 Condition IRNode（缺失按必填报错）。"""
+    """把条件字段解析为 Condition IRNode（支持自然语言字符串/对象与谓词对象）。"""
     loc = _loc(doc_id, path)
-    if not isinstance(desc, str) or not desc.strip():
-        if code:
-            issues.append(make_issue("verify", code, message, loc))
+    if isinstance(desc, str):
+        if not desc.strip():
+            if code:
+                issues.append(make_issue("verify", code, message, loc))
+            return _empty_ir("Condition", loc)
+        if "\n" in desc:
+            issues.append(
+                make_issue(
+                    "structure",
+                    "invalid_value",
+                    f"自然语言条件必须是单行文本（位于 {_path(doc_id, path)}）",
+                    loc,
+                )
+            )
+            return _empty_ir("Condition", loc)
+        return IRNode(
+            kind="Condition",
+            condition_mode="natural",
+            description=desc.strip(),
+            loc=loc,
+        )
+    if isinstance(desc, dict):
+        mode = desc.get("mode")
+        if mode == "natural":
+            text = desc.get("text")
+            if not isinstance(text, str) or not text.strip() or "\n" in text:
+                issues.append(
+                    make_issue(
+                        "structure",
+                        "invalid_value",
+                        f"自然语言条件 text 必须是单行非空文本（位于 {_path(doc_id, path)}）",
+                        loc,
+                    )
+                )
+                return _empty_ir("Condition", loc)
+            return IRNode(
+                kind="Condition",
+                condition_mode="natural",
+                description=text.strip(),
+                loc=loc,
+            )
+        if mode == "predicate":
+            raw_expr = desc.get("expression")
+            if raw_expr is None:
+                issues.append(
+                    make_issue(
+                        "structure",
+                        "missing_field",
+                        f"谓词条件缺少 expression（位于 {_path(doc_id, path)}）",
+                        loc,
+                    )
+                )
+                return _empty_ir("Condition", loc)
+            expr = _predicate_expr(raw_expr, doc_id, f"{path}/expression", issues)
+            return IRNode(
+                kind="Condition",
+                condition_mode="predicate",
+                expression=expr,
+                loc=loc,
+            )
+        issues.append(
+            make_issue(
+                "structure",
+                "invalid_value",
+                f"条件 mode 必须是 natural 或 predicate（位于 {_path(doc_id, path)}）",
+                loc,
+            )
+        )
         return _empty_ir("Condition", loc)
-    return IRNode(kind="Condition", description=desc.strip(), loc=loc)
+    if code:
+        issues.append(make_issue("verify", code, message, loc))
+    return _empty_ir("Condition", loc)
 
 
 def _parse_max(value: object, doc_id: str, path: str, issues: list) -> int | None:
@@ -374,7 +540,7 @@ def parse_document(doc, resolver=None) -> OneDocResult:
                     meta = s.metas[i] if i < len(s.metas) else None
                     built.append((child_ir, meta))
             child_map[s.field] = built
-        return _attach_children(node, slots, child_map)
+        return _attach_children(node, slots, child_map, doc_id, issues)
 
     if root_id in nodes:
         result.main_tree = build(root_id)
@@ -393,7 +559,11 @@ def parse_document(doc, resolver=None) -> OneDocResult:
 
 
 def _attach_children(
-    node: IRNode, slots: list[_Slot], child_map: dict[str, list[tuple[IRNode, object]]]
+    node: IRNode,
+    slots: list[_Slot],
+    child_map: dict[str, list[tuple[IRNode, object]]],
+    doc_id: str,
+    issues: list,
 ) -> IRNode:
     """按节点类型把槽位子树挂到 IRNode 对应字段。"""
     kind = node.kind
@@ -414,11 +584,15 @@ def _attach_children(
     if kind == "Branch":
         act = child_map.get("action", [])
         branches: list[IRBranch] = []
-        for target, meta in child_map.get("branches", []):
-            when_desc = meta if isinstance(meta, str) else None
+        for idx, (target, meta) in enumerate(child_map.get("branches", [])):
             when_ir = (
-                IRNode(kind="Condition", description=when_desc, loc=node.loc)
-                if when_desc
+                _cond(
+                    meta,
+                    doc_id,
+                    f"{node.loc.path}/branches/{idx}" if node.loc else "?",
+                    issues,
+                )
+                if meta is not None
                 else None
             )
             branches.append(IRBranch(when=when_ir, target=target))
@@ -531,29 +705,33 @@ def _build_ir_node(
         return IRNode(kind="Sequence", loc=loc), [_Slot("actions", ids, [])]
     if ntype == "Step":
         expect = body.get("expect")
-        if not isinstance(expect, str) or not expect.strip():
-            issues.append(
-                _issue(
-                    doc_id,
-                    "verify",
-                    "missing_condition",
-                    f"Step 缺少验证条件 'expect'（每步必须有验证条件，位于 {_path(doc_id, path)}）",
-                )
-            )
-        node = IRNode(kind="Step", condition=_cond(expect, doc_id, path, issues), loc=loc)
+        node = IRNode(
+            kind="Step",
+            condition=_cond(
+                expect,
+                doc_id,
+                path,
+                issues,
+                code="missing_condition",
+                message=f"Step 缺少验证条件 'expect'（位于 {_path(doc_id, path)}）",
+            ),
+            loc=loc,
+        )
         return node, [_slot("action", _str_or_none(body.get("action")))]
     if ntype == "IfThenElse":
         cond = body.get("if")
-        if not isinstance(cond, str) or not cond.strip():
-            issues.append(
-                _issue(
-                    doc_id,
-                    "verify",
-                    "missing_condition",
-                    f"IfThenElse 缺少判断条件 'if'（位于 {_path(doc_id, path)}）",
-                )
-            )
-        node = IRNode(kind="IfThenElse", condition=_cond(cond, doc_id, path, issues), loc=loc)
+        node = IRNode(
+            kind="IfThenElse",
+            condition=_cond(
+                cond,
+                doc_id,
+                path,
+                issues,
+                code="missing_condition",
+                message=f"IfThenElse 缺少判断条件 'if'（位于 {_path(doc_id, path)}）",
+            ),
+            loc=loc,
+        )
         return node, [
             _slot("then", _str_or_none(body.get("then"))),
             _slot("else", _str_or_none(body.get("else"))),
@@ -575,18 +753,19 @@ def _build_ir_node(
         )
     if ntype == "LoopUntil":
         until = body.get("until")
-        if not isinstance(until, str) or not until.strip():
-            issues.append(
-                _issue(
-                    doc_id,
-                    "verify",
-                    "missing_condition",
-                    f"LoopUntil 缺少终止条件 'until'（位于 {_path(doc_id, path)}）",
-                )
-            )
         mx = _parse_max(body.get("max"), doc_id, path, issues)
         node = IRNode(
-            kind="LoopUntil", until=_cond(until, doc_id, path, issues), max=mx, loc=loc
+            kind="LoopUntil",
+            until=_cond(
+                until,
+                doc_id,
+                path,
+                issues,
+                code="missing_condition",
+                message=f"LoopUntil 缺少终止条件 'until'（位于 {_path(doc_id, path)}）",
+            ),
+            max=mx,
+            loc=loc,
         )
         return node, [_slot("action", _str_or_none(body.get("action")))]
     if ntype == "Branch":
@@ -1080,6 +1259,8 @@ def _with_children(node: IRNode, children: list[IRNode]) -> IRNode:
         children=tuple(children),
         branches=node.branches,
         condition=node.condition,
+        condition_mode=node.condition_mode,
+        expression=node.expression,
         action=node.action,
         until=node.until,
         body=node.body,
@@ -1106,6 +1287,8 @@ def _set(node: IRNode, **kwargs) -> IRNode:
         children=node.children,
         branches=kwargs.get("branches", node.branches),
         condition=node.condition,
+        condition_mode=node.condition_mode,
+        expression=node.expression,
         action=kwargs.get("action", node.action),
         until=node.until,
         body=kwargs.get("body", node.body),

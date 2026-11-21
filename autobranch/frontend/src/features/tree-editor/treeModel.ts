@@ -22,9 +22,24 @@ export type DefineVar = {
   value: string;
 };
 
+export type PredicateExpr =
+  | { all: PredicateExpr[] }
+  | { any: PredicateExpr[] }
+  | { not: PredicateExpr }
+  | {
+      function: string;
+      args: string[];
+      kwargs?: Record<string, unknown>;
+    };
+
+export type ConditionValue =
+  | string
+  | { mode: "natural"; text: string }
+  | { mode: "predicate"; expression: PredicateExpr };
+
 /** Branch 的分支行：{when, action: id} 或 {otherwise: id}（otherwise 值即槽位引用）。 */
 export type BranchRow = {
-  when?: string;
+  when?: ConditionValue;
   action?: string;
   otherwise?: string;
 };
@@ -41,6 +56,7 @@ export type TreeNode = {
   type: NodeType;
   name: string;
   fields: Record<string, string>;
+  conditions?: Record<string, ConditionValue>;
   body?: string;
   actions?: string[];
   action?: string;
@@ -183,9 +199,11 @@ export function freeRoots(doc: TreeDoc): string[] {
 const CONFIG_KEYS = ["timeout", "retry", "browser"];
 const SLOT_KEYS = ["body", "actions", "action", "then", "else", "branches"];
 const REF_KEYS = ["target", "args", "returns"];
+const CONDITION_KEYS = ["expect", "if", "until"] as const;
 const SKIP_KEYS = new Set([
   ...SLOT_KEYS,
   ...REF_KEYS,
+  ...CONDITION_KEYS,
   "function",
   "type",
   "name",
@@ -228,7 +246,9 @@ export function parseDoc(yamlText: string): TreeDoc {
       node.branches = body["branches"].map((b) => {
         if (!isRecord(b)) return { otherwise: "" };
         const row: BranchRow = {};
-        if (typeof b["when"] === "string") row.when = b["when"];
+        if (typeof b["when"] === "string" || isRecord(b["when"])) {
+          row.when = b["when"] as ConditionValue;
+        }
         if (typeof b["action"] === "string") row.action = b["action"];
         if (typeof b["otherwise"] === "string") row.otherwise = b["otherwise"];
         return row;
@@ -269,6 +289,12 @@ export function parseDoc(yamlText: string): TreeDoc {
           }))
         : [];
     }
+    for (const key of CONDITION_KEYS) {
+      const value = body[key];
+      if (typeof value === "string" || isRecord(value)) {
+        node.conditions = { ...(node.conditions ?? {}), [key]: value as ConditionValue };
+      }
+    }
     for (const [k, v] of Object.entries(body)) {
       if (SKIP_KEYS.has(k)) continue;
       node.fields[k] = String(v);
@@ -304,6 +330,9 @@ export function serializeDoc(doc: TreeDoc): string {
     if (node.then) body["then"] = node.then;
     if (node.else) body["else"] = node.else;
     if (node.branches && node.branches.length > 0) body["branches"] = node.branches;
+    for (const [k, v] of Object.entries(node.conditions ?? {})) {
+      body[k] = v;
+    }
     for (const [k, v] of Object.entries(node.fields)) {
       if (v !== "") body[k] = v;
     }

@@ -4,7 +4,7 @@
 
 ## Purpose
 
-预置插件集（浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换）与用户自定义插件，作为引擎核心之外的「能力层」：插件只返回值（业务值 + 报告附加信息），不写变量（引擎落笔）。
+预置插件集（浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换 / 谓词）与用户自定义插件，作为引擎核心之外的「能力层」：插件只返回值（业务值 + 报告附加信息），不写变量（引擎落笔）。
 
 ## Requirements
 
@@ -48,6 +48,15 @@
 - 比较：`compare(a, b, op, ignore_case)`，支持 `eq/ne/gt/ge/lt/le/contains/startswith/endswith`。
 - 正则：`regex_match` / `regex_extract` / `regex_findall`。
 - 累积：`append` / `dict_set`（产出型 JSON 字符串，ForEach 跨轮收集结果）。
+
+### predicate 插件
+
+条件表达式专用谓词插件：全部函数返回单个 `bool`，无副作用、无 `output_param`：
+
+- 比较：`eq` / `ne` / `gt` / `ge` / `lt` / `le` / `between`
+- 字符串：`contains` / `not_contains` / `starts_with` / `ends_with` / `matches` / `matches_full` / `equals_ignore_case`
+- 空值/集合：`is_empty` / `is_not_empty` / `is_null` / `is_not_null` / `has_key` / `has_value` / `value_in` / `value_not_in`
+- 长度：`length_eq` / `length_ge` / `length_gt` / `length_le` / `length_lt`
 
 ### vars 插件
 
@@ -123,7 +132,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 
 - **预置插件位于 `autobranch/plugins/`**（工具的一部分，随工具分发）：
   - `autobranch/plugins/browser/`：浏览器插件——**自包含**浏览器驱动（`driver/` 子包）、语义图生成（`semantic_graph/` 子包）、元素引用映射（`refmap.py`）、页面探针（`probe.py`）、**代理路由**（`proxy.py` + `proxy.config.json` 配置 + `proxy.config.example.json` 示例）+ 插件类（`__init__.py`）。
-  - `autobranch/plugins/compute/`、`autobranch/plugins/ssh/`、`autobranch/plugins/file/`、`autobranch/plugins/transform/`、`autobranch/plugins/common/`（共享库）。
+  - `autobranch/plugins/compute/`、`autobranch/plugins/ssh/`、`autobranch/plugins/file/`、`autobranch/plugins/transform/`、`autobranch/plugins/predicate/`、`autobranch/plugins/common/`（共享库）。
 - 每个插件包以 `plugin` 变量暴露 `PluginBase` 实例；引擎启动经 `load_builtin_plugins` 扫描 `autobranch/plugins` 注册。
 - **浏览器代理路由**（browser-proxy-routing）：代理决策不进行为树描述，由插件内 `proxy.config.json`（缺失则不启用）按站点规则匹配——`default` + `profiles`（system / direct / 自定义）+ `rules`（首条命中）。`BrowserDriver.open(url)` 按 URL 路由到对应会话（context-per-mode，懒建）；`direct` 经独立 `--no-proxy-server` 浏览器承载（Playwright 不支持 context 级 `direct://`）；system/custom 共用一个默认浏览器。
 - 兼容转发层：`autobranch.browser` / `autobranch.semantic_graph` / `autobranch.engine.probe` / `autobranch.engine.refmap` 为薄转发（物理实现在浏览器插件内），供引擎核心 / 旧非插件路径引用。
