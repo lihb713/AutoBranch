@@ -25,7 +25,7 @@
 
 - 场景：插件声明 `ssh_session → SSHConnection`，函数返回 `{"session": "ssh_session"}`；注册后 `/api/types` 出现 `ssh_session`（constructible=false，owner=ssh）。
 - 场景：`custom_types` token 与核心类型或其他插件冲突 → 注册失败。
-- 场景：插件对象作为函数参数时，JSON Schema `type` 保持标准值（如 `string`），用 `x-autobranch-type` 标注自定义类型；API 返回该扩展，发送给 LLM 的 tool schema 自动剥离。
+- 场景：插件对象作为函数参数时不写标准 JSON Schema `type`，用 `x-autobranch-type` 标注自定义类型；API 返回该扩展，发送给 LLM 的 tool schema 自动剥离，只保留 description。
 
 ### 两级能力选择
 

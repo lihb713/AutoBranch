@@ -118,5 +118,5 @@
 #### Scenario: 自定义类型参数标注
 
 - **WHEN** 插件函数参数值是自定义类型对象
-- **THEN** JSON Schema `type` 保持标准值（如 `string`），并用 `x-autobranch-type` 标注真实类型
-- **AND** API/前端显示自定义类型，发送给 LLM 的 tool schema 自动剥离该扩展键
+- **THEN** 不写标准 JSON Schema `type`，用 `x-autobranch-type` 标注真实类型，description 说明传 `Param.变量名`
+- **AND** API/前端显示自定义类型，发送给 LLM 的 tool schema 自动剥离该扩展键，只保留 description

@@ -334,7 +334,7 @@ SSH 不是一次性的命令字符串，而是有生命周期的会话：
 |---|---|---|
 | `ssh_session` | `SSHConnection` | SSH 会话对象；不可文本构造 |
 
-`create_session` 返回 `session: ssh_session`，后续用 `Param.session` 传递。函数参数中的 `session` 在 API 里保留标准 JSON Schema `type=string`，并用 `x-autobranch-type=ssh_session` 标注真实类型；前端会显示为 `ssh_session`，执行时按 `SSHConnection` 校验。
+`create_session` 返回 `session: ssh_session`，后续用 `Param.session` 传递。函数参数中的 `session` 不写标准 JSON Schema `type`，而是用 `x-autobranch-type=ssh_session` 标注真实类型；前端会显示为 `ssh_session`，执行时按 `SSHConnection` 校验。LLM 通过变量表和参数描述知道要传 `Param.session`。
 
 ### 5.2 函数
 

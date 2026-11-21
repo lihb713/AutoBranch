@@ -34,12 +34,12 @@ AUTOBRANCH_TYPE_KEY = "x-autobranch-type"
 def custom_type_param(token: str, description: str = "") -> dict[str, Any]:
     """声明“参数值是插件自定义类型”的参数 schema。
 
-    JSON Schema 的 ``type`` 使用 ``string`` 以兼容 LLM 工具 schema；
-    ``x-autobranch-type`` 供 AutoBranch 前端/执行器展示与校验自定义类型。
-    发送给 LLM 的 tool schema 会自动剥离该扩展键。
+    自定义类型不是 JSON Schema 基本类型，因此这里**不写标准 ``type``**；
+    ``x-autobranch-type`` 供 AutoBranch 前端/执行器展示与校验。
+    发送给 LLM 的 tool schema 会剥离该扩展键，只保留 description；
+    LLM 通过变量表看到变量真实类型，并在调用时传 ``Param.变量名`` 引用。
     """
     return {
-        "type": "string",
         AUTOBRANCH_TYPE_KEY: token,
         "description": description,
     }

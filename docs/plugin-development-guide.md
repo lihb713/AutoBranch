@@ -239,16 +239,18 @@ parameters={
 
 LLM 工具 schema 必须是标准 JSON Schema，因此插件对象参数不能把 `type` 写成 `ssh_session` 这种非标准值。正确做法是：
 
-- JSON Schema `type` 保留标准值（通常是 `string`）；
+- **不写标准 `type`**（自定义类型不是 string/object/array 等基本类型）；
 - 用扩展键 `x-autobranch-type` 标注真实 AutoBranch 类型；
+- description 说明“使用 `Param.变量名` 引用”；
 - 该扩展只用于前端显示和引擎校验，发送给 LLM 时会自动剥离。
+
+LLM 不需要看到自定义类型的 Python 类，也不需要把它展开成基本类型。它从变量表看到 `session (ssh_session): ...`，从参数说明知道应传 `Param.session` 即可。
 
 ```python
 parameters={
     "type": "object",
     "properties": {
         "session": {
-            "type": "string",
             "x-autobranch-type": "ssh_session",
             "description": "SSH 会话对象，使用 Param.session 引用",
         }
@@ -267,7 +269,7 @@ session=custom_type_param("ssh_session", "SSH 会话对象")
 
 这样：
 
-- LLM 看到的仍是合法 JSON Schema；
+- LLM 看到的参数没有伪造的 `type: string`，只有描述与变量表中的真实类型；
 - 前端属性面板显示 `ssh_session`；
 - 引擎会按 `SSHConnection` 做 isinstance 校验；
 - 用户必须传 `Param.session`，不能随便传字符串。

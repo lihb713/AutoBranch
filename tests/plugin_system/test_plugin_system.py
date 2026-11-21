@@ -98,7 +98,8 @@ def test_tool_spec_strips_custom_type_marker():
     assert spec.parameters["properties"]["session"]["x-autobranch-type"] == "marker_session"
     tool = spec.to_tool_spec()
     assert "x-autobranch-type" not in str(tool.parameters)
-    assert tool.parameters["properties"]["session"]["type"] == "string"
+    assert "type" not in tool.parameters["properties"]["session"]
+    assert tool.parameters["properties"]["session"]["description"] == "会话"
     reg.unregister("marker")
 
 
