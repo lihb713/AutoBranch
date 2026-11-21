@@ -7,11 +7,17 @@ import { TYPE_TOKENS } from "./tokens";
 type DocInterfaceEditorProps = {
   doc: TreeDoc;
   readonly?: boolean;
+  typeTokens?: readonly string[];
   onPatch: (patch: Partial<TreeDoc>) => void;
 };
 
 /** 文档级接口编辑：`inputs` / `outputs` 均为 `{名称: 类型}` 映射。 */
-export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterfaceEditorProps) {
+export function DocInterfaceEditor({
+  doc,
+  readonly = false,
+  typeTokens = TYPE_TOKENS,
+  onPatch,
+}: DocInterfaceEditorProps) {
   const setInputName = (oldKey: string, newKey: string) => {
     const inputs = { ...doc.inputs };
     const type = inputs[oldKey];
@@ -89,7 +95,7 @@ export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterf
               data-testid={`doc-input-type-${name}`}
               onChange={(e) => setInputType(name, e.target.value)}
             >
-              {TYPE_TOKENS.map((t) => (
+              {typeTokens.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>
@@ -130,7 +136,7 @@ export function DocInterfaceEditor({ doc, readonly = false, onPatch }: DocInterf
               data-testid={`doc-output-type-${name}`}
               onChange={(e) => setOutputType(name, e.target.value)}
             >
-              {TYPE_TOKENS.map((t) => (
+              {typeTokens.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>

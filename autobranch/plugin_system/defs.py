@@ -257,6 +257,11 @@ class PluginBase:
         return None
 
     @property
+    def custom_types(self) -> dict[str, type]:
+        """插件自定义类型：``token -> Python 类``（可选；对用户不可文本构造）。"""
+        return {}
+
+    @property
     def storage_dir(self) -> str | None:
         """插件存储目录名（相对插件目录；默认 None）。"""
         return None

@@ -26,7 +26,7 @@ MAPPING = {
     "入参1": "input1",
 }
 
-TYPE_TOKENS = r"(?:str|int|float|bool|array|object|generics|page_ref)"
+TYPE_TOKENS = r"(?:[A-Za-z_][A-Za-z0-9_]*)"
 _IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 
 _GET_OLD = re.compile(r"\[\[\s*get:\s*(?:this/)?([^\s\[\]]+?)\s*\]\]")

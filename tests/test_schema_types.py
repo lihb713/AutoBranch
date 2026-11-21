@@ -14,9 +14,9 @@ from autobranch.schema.types import (
 
 
 def test_registry_has_english_tokens():
-    assert set(TYPE_REGISTRY) == {
+    assert {
         "str", "int", "float", "bool", "array", "object", "generics", "page_ref"
-    }
+    } <= set(TYPE_REGISTRY)
 
 
 def test_py_types_mapped():

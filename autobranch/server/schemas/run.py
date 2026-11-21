@@ -69,10 +69,13 @@ class RunDetailOut(RunOut):
 
 
 class TypeInfoOut(BaseModel):
-    """类型可构造性信息（GET /api/types）。"""
+    """类型信息（GET /api/types）：token / 可构造性 / 来源。"""
 
     token: str
     constructible: bool
+    owner: str = "core"
+    custom: bool = False
+    description: str = ""
 
 
 class NodeInfoOut(BaseModel):

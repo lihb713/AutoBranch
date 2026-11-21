@@ -52,6 +52,9 @@ export type RunStart = {
 export type TypeInfo = {
   token: string;
   constructible: boolean;
+  owner?: string;
+  custom?: boolean;
+  description?: string;
 };
 
 export type RunOut = {

@@ -94,9 +94,9 @@ def test_split_segments_rejects_var_with_slash():
 
 def test_supported_types_enumerable():
     """1.3 类型登记表可枚举核心类型（英文 token）。"""
-    assert set(TYPE_REGISTRY) == {
+    assert {
         "str", "int", "float", "bool", "array", "object", "generics", "page_ref"
-    }
+    } <= set(TYPE_REGISTRY)
     for name in ["str", "int", "float", "bool", "array", "object", "generics", "page_ref"]:
         assert name in TYPE_REGISTRY
 

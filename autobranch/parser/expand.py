@@ -36,6 +36,7 @@ from autobranch.parser.models import (
     SequenceNode,
     make_issue,
 )
+from autobranch.schema.types import TYPE_REGISTRY
 
 #: ``Param.<name>`` 读取引用（叶子执行前程序替换为真实值）；name 为 ASCII 标识符。
 #: ``(?<![A-Za-z0-9_])`` ASCII 词边界防护：``NewParam.x`` 内嵌的 ``Param.x`` 不被误判为读取；
@@ -43,7 +44,7 @@ from autobranch.parser.models import (
 _GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
 #: ``NewParam.<name>[:type]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略）
 _SET_TMPL = re.compile(
-    r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|array|object|generics|page_ref))?"
+    r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?"
 )
 #: 数字开头的非法变量名（``Param.2x`` → 校验错误 syntax.invalid_name）
 _INVALID_NAME_TMPL = re.compile(r"(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)")
@@ -421,6 +422,14 @@ def _check_param_syntax(ctx: ExpandContext, text: str | None, loc: Loc | None) -
             "变量名仅支持 ASCII 标识符（[A-Za-z_][A-Za-z0-9_]*），不支持中文",
             loc,
         )
+    for _name, type_name in _iter_set_decls(text):
+        if type_name and type_name not in TYPE_REGISTRY:
+            ctx.add_issue(
+                "syntax",
+                "syntax.invalid_type",
+                f"NewParam 类型 {type_name!r} 未登记（支持: {sorted(TYPE_REGISTRY)}）",
+                loc,
+            )
 
 
 def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:

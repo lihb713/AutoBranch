@@ -373,3 +373,31 @@ root: n1
     expect(validateDoc(doc, ctx())).toEqual([]);
   });
 });
+describe("validation 自定义类型", () => {
+  const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Define
+    name: 声明
+    vars:
+      s: {type: ssh_session, value: "x"}
+root: n1
+`;
+
+  it("默认未登记插件类型时报非法类型", () => {
+    const issues = validateDoc(parseDoc(yaml), ctx());
+    expect(issues.some((i) => i.code === "invalid_var_type")).toBe(true);
+  });
+
+  it("后端类型表包含 ssh_session 时通过", () => {
+    const issues = validateDoc(
+      parseDoc(yaml),
+      ctx({ typeTokens: ["str", "ssh_session"] }),
+    );
+    expect(issues.some((i) => i.code === "invalid_var_type")).toBe(false);
+  });
+});

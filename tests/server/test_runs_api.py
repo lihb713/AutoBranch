@@ -295,6 +295,12 @@ def test_types_api(client):
     assert types["object"]["constructible"] is True
     assert types["array"]["constructible"] is True
     assert types["generics"]["constructible"] is True
+    assert types["page_object"]["constructible"] is False
+    assert types["page_object"]["custom"] is True
+    assert types["page_object"]["owner"] == "browser"
+    assert types["ssh_session"]["constructible"] is False
+    assert types["ssh_session"]["custom"] is True
+    assert types["ssh_session"]["owner"] == "ssh"
 
 
 # ------------------------------------------------------------- 经验回灌采集（任务 4.1）

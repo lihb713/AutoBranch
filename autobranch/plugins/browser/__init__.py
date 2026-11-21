@@ -3,7 +3,7 @@
 自包含浏览器驱动、语义图生成、元素引用映射与页面对象。函数只返回值
 （业务值 + 报告附加信息），不写变量（引擎落笔）。
 
-- 页面对象：``plugins.common.PageObject``（``generics`` 值）。
+- 页面对象：``plugins.common.PageObject``（自定义类型 ``page_object``）。
 - 当前活动页：由插件维护（最近 open / activate 的页面）。
 - ``semantic_graph`` 时强制截图并写入报告附加信息。
 """
@@ -65,6 +65,10 @@ class BrowserPlugin(PluginBase):
         "语义图（看页面）、滚动/等待、下载/上传、HTTP 请求与响应读取"
     )
 
+    @property
+    def custom_types(self) -> dict[str, type]:
+        return {"page_object": PageObject}
+
     def __init__(self) -> None:
         self._browser: BrowserDriver | None = None
         self._probe: EngineProbe | None = None
@@ -113,7 +117,7 @@ class BrowserPlugin(PluginBase):
         ),
         parameters=_props(("url",), url={"type": "string", "description": "要打开的 URL"}),
         output_param="save_to",
-        returns={"page": "generics"},
+        returns={"page": "page_object"},
     )
     def open(self, url: str) -> FunctionResult:
         browser = self._browser
@@ -134,7 +138,7 @@ class BrowserPlugin(PluginBase):
             "page 使用 Param.变量名 引用 open 保存的页面对象"
         ),
         parameters=_props(("page",), page={"type": "string", "description": _PAGE_DESC}),
-        returns={"page": "generics"},
+        returns={"page": "page_object"},
     )
     def activate(self, page: PageObject) -> FunctionResult:
         browser = self._browser

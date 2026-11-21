@@ -45,6 +45,14 @@ def test_list_plugins_includes_builtins(client):
     assert browser["kind"] == "builtin"
     assert "browser.open" in browser["functions"]
     assert "browser.semantic_graph" not in browser["functions"]
+    assert browser["custom_types"] == [
+        {
+            "token": "page_object",
+            "class_name": "PageObject",
+            "description": "页面对象（浏览器插件自定义类型 ``page_object`` 的值）。",
+            "constructible": False,
+        }
+    ]
 
 
 def test_builtin_detail_source_is_null(client):
@@ -99,6 +107,45 @@ def test_create_custom_plugin(client):
     detail = client.get("/api/plugins/demo")
     assert detail.status_code == 200
     assert detail.json()["source"] == VALID_PLUGIN
+
+
+TYPED_PLUGIN = """
+class Widget:
+    pass
+
+class TypedDemo(PluginBase):
+    name = "typeddemo"
+    description = "带自定义类型的演示插件"
+
+    @property
+    def custom_types(self):
+        return {"typeddemo_widget": Widget}
+
+    @engine_function(
+        name="make",
+        description="造一个对象",
+        returns={"w": "typeddemo_widget"},
+    )
+    def make(self):
+        return Widget()
+
+plugin = TypedDemo()
+""".strip()
+
+
+def test_custom_plugin_type_registers_and_unregisters(client):
+    res = client.post("/api/plugins", json={"name": "typeddemo", "source": TYPED_PLUGIN})
+    assert res.status_code == 201, res.text
+    assert res.json()["custom_types"][0]["token"] == "typeddemo_widget"
+    types = {t["token"]: t for t in client.get("/api/types").json()}
+    assert types["typeddemo_widget"]["owner"] == "typeddemo"
+    assert types["typeddemo_widget"]["custom"] is True
+    assert types["typeddemo_widget"]["constructible"] is False
+    listed = next(p for p in client.get("/api/plugins").json() if p["name"] == "typeddemo")
+    assert listed["custom_types"][0]["token"] == "typeddemo_widget"
+
+    assert client.delete("/api/plugins/typeddemo").status_code == 200
+    assert "typeddemo_widget" not in {t["token"] for t in client.get("/api/types").json()}
 
 
 def test_create_builtin_name_conflict(client):

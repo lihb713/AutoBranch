@@ -47,6 +47,7 @@ type PropertyPanelProps = {
   onSlotChange: (nodeId: string, slotIndex: number, childId: string | null) => void;
   onLoadRefMeta: (target: string) => void;
   onDeleteNode: (id: string, subtree: boolean) => void;
+  typeTokens?: readonly string[];
 };
 
 function nodeLabel(doc: TreeDoc, id: string): string {
@@ -65,6 +66,7 @@ export function PropertyPanel({
   onSlotChange,
   onLoadRefMeta,
   onDeleteNode,
+  typeTokens = TYPE_TOKENS,
 }: PropertyPanelProps) {
   const [cycleError, setCycleError] = useState("");
   const [functions, setFunctions] = useState<FunctionInfo[]>([]);
@@ -427,7 +429,7 @@ export function PropertyPanel({
             data-testid={`define-type-${node.id}-${i}`}
             onChange={(e) => setVar(i, { type: e.target.value })}
           >
-            {TYPE_TOKENS.map((t) => (
+            {typeTokens.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>

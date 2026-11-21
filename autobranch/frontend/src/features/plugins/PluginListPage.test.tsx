@@ -23,6 +23,14 @@ describe("PluginListPage", () => {
         kind: "builtin",
         description: "浏览器",
         functions: ["open", "extract"],
+        custom_types: [
+          {
+            token: "page_object",
+            class_name: "PageObject",
+            description: "页面对象",
+            constructible: false,
+          },
+        ],
         created_at: "",
         updated_at: "",
       },
@@ -47,5 +55,6 @@ describe("PluginListPage", () => {
     expect(screen.getByText("自定义")).toBeInTheDocument();
     // 预置插件只读，不提供编辑/删除
     expect(screen.getByText("只读")).toBeInTheDocument();
+    expect(screen.getByTestId("plugin-types-browser")).toHaveTextContent("page_object");
   });
 });

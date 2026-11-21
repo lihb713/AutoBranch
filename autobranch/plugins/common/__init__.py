@@ -10,10 +10,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PageObject:
-    """页面对象（浏览器插件的 ``generics`` 值）。
-
-    作为 ``object`` 类型值在变量中存储与传递；黑板 / 报告以 ``str`` 呈现。
-    """
+    """页面对象（浏览器插件自定义类型 ``page_object`` 的值）。"""
 
     id: str
     url: str = ""

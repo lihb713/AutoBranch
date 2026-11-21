@@ -30,6 +30,15 @@ class PluginCheckIn(BaseModel):
     source: str = Field(description="待校验的插件源码")
 
 
+class PluginTypeOut(BaseModel):
+    """插件声明的自定义类型。"""
+
+    token: str
+    class_name: str
+    description: str = ""
+    constructible: bool = False
+
+
 class PluginOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -38,6 +47,7 @@ class PluginOut(BaseModel):
     kind: str
     description: str
     functions: list[str] = Field(default_factory=list)
+    custom_types: list[PluginTypeOut] = Field(default_factory=list)
     frontend_manifest: dict | None = None
     config_schema: list[dict] | None = None
     created_at: datetime
@@ -75,6 +85,7 @@ class FunctionInfo(BaseModel):
 class PluginManifestOut(BaseModel):
     frontend_manifest: dict | None = None
     config_schema: list[dict] | None = None
+    custom_types: list[PluginTypeOut] = Field(default_factory=list)
 
 
 class PluginCheckError(BaseModel):
@@ -100,6 +111,7 @@ __all__ = [
     "PluginCreate",
     "PluginUpdate",
     "PluginCheckIn",
+    "PluginTypeOut",
     "PluginOut",
     "PluginDetailOut",
     "FunctionInfo",

@@ -34,6 +34,9 @@ class TypeSpec:
     token: str
     py_type: type
     cast: Callable[[Value], Value] | None = None
+    owner: str = "core"
+    custom: bool = False
+    description: str = ""
 
 
 def _to_int(value: Value) -> int:
@@ -103,8 +106,53 @@ TYPE_REGISTRY: dict[str, TypeSpec] = {
     "array": TypeSpec("array", list, _to_array),
     "object": TypeSpec("object", dict, _to_object),
     "generics": TypeSpec("generics", object, _identity),
-    "page_ref": TypeSpec("page_ref", PageRef, None),
+    "page_ref": TypeSpec(
+        "page_ref",
+        PageRef,
+        None,
+        owner="core",
+        custom=True,
+        description="页签引用（仅引擎产生，不能由文本构造）",
+    ),
 }
+
+#: 核心类型 token 固化：插件自定义类型不得覆盖。
+_CORE_TYPE_TOKENS = frozenset(TYPE_REGISTRY)
+
+
+def register_type(
+    token: str, py_type: type, *, owner: str, description: str = ""
+) -> TypeSpec:
+    """注册插件自定义类型（不可由文本构造，按 Python 类 isinstance 校验）。
+
+    同名 token 已存在时：同 owner 且同类 → 幂等；否则报错，避免插件互相覆盖。
+    """
+    if not token or token in _CORE_TYPE_TOKENS:
+        raise SchemaTypeError(f"自定义类型 token 非法或与核心类型冲突: {token!r}")
+    existing = TYPE_REGISTRY.get(token)
+    if existing is not None and existing.owner != owner:
+        raise SchemaTypeError(
+            f"自定义类型 {token!r} 已被 {existing.owner} 注册（{existing.py_type.__name__}）"
+        )
+    if existing is not None and existing.py_type is py_type:
+        return existing
+    spec = TypeSpec(
+        token,
+        py_type,
+        None,
+        owner=owner,
+        custom=True,
+        description=description,
+    )
+    TYPE_REGISTRY[token] = spec
+    return spec
+
+
+def unregister_type(token: str, *, owner: str) -> None:
+    """注销插件自定义类型（仅允许注销本 owner 注册的 token）。"""
+    spec = TYPE_REGISTRY.get(token)
+    if spec is not None and spec.custom and spec.owner == owner:
+        TYPE_REGISTRY.pop(token, None)
 
 
 def validate_type_name(token: str) -> None:

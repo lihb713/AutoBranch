@@ -56,23 +56,75 @@ class PluginRegistry:
     # ------------------------------------------------------------ 注册
 
     def register(self, plugin: PluginBase, *, allow_override: bool = False) -> PluginBase:
-        """注册插件及其函数；同一插件内函数名唯一，重名默认拒绝。
+        """注册插件、自定义类型及其函数；同一插件内函数名唯一，重名默认拒绝。
 
         跨插件允许同名函数（全名 ``插件名.函数名`` 不同，不视为冲突）；
         同一插件重复注册视为重载（幂等覆盖，供引擎每次 run 重载预置插件）。
+        自定义类型 token 在注册期间进入全局 ``TYPE_REGISTRY``，供树声明/校验使用。
         """
         if not getattr(plugin, "name", ""):
             raise PluginError("插件缺少 name")
-        for spec in plugin.function_defs():
-            _validate_returns(plugin.name, spec)
-            full = f"{plugin.name}.{spec.name}"
-            existing = self._owner.get(full)
-            if existing is not None and existing != plugin.name and not allow_override:
-                raise PluginError(f"函数重名: {full} 已属插件 {existing}")
-            self._functions[full] = replace(spec, plugin=plugin.name)
-            self._owner[full] = plugin.name
+        self._register_plugin_types(plugin)
+        try:
+            for spec in plugin.function_defs():
+                _validate_returns(plugin.name, spec)
+                full = f"{plugin.name}.{spec.name}"
+                existing = self._owner.get(full)
+                if existing is not None and existing != plugin.name and not allow_override:
+                    raise PluginError(f"函数重名: {full} 已属插件 {existing}")
+                self._functions[full] = replace(spec, plugin=plugin.name)
+                self._owner[full] = plugin.name
+        except Exception:
+            self._unregister_plugin_types(plugin)
+            raise
         self._plugins[plugin.name] = plugin
         return plugin
+
+    def _register_plugin_types(self, plugin: PluginBase) -> None:
+        """注册插件声明的自定义类型（token → Python 类）。"""
+        from autobranch.schema.errors import SchemaTypeError
+        from autobranch.schema.types import register_type, unregister_type
+
+        raw = plugin.custom_types
+        if not isinstance(raw, dict):
+            raise PluginError(f"插件 {plugin.name} 的 custom_types 必须是 {{token: 类}} 映射")
+        registered: list[str] = []
+        try:
+            for token, py_type in raw.items():
+                if not isinstance(token, str) or not _ASCII_NAME.fullmatch(token):
+                    raise PluginError(
+                        f"插件 {plugin.name} 的自定义类型 token {token!r} 非法"
+                    )
+                if not isinstance(py_type, type):
+                    raise PluginError(
+                        f"插件 {plugin.name} 的自定义类型 {token} 必须是 Python 类"
+                    )
+                description = (py_type.__doc__ or "").strip().splitlines()
+                try:
+                    register_type(
+                        token,
+                        py_type,
+                        owner=plugin.name,
+                        description=description[0] if description else "",
+                    )
+                except SchemaTypeError as exc:
+                    raise PluginError(str(exc)) from None
+                registered.append(token)
+        except Exception:
+            for token in registered:
+                unregister_type(token, owner=plugin.name)
+            raise
+
+    @staticmethod
+    def _unregister_plugin_types(plugin: PluginBase) -> None:
+        from autobranch.schema.types import unregister_type
+
+        raw = plugin.custom_types
+        if not isinstance(raw, dict):
+            return
+        for token in raw:
+            if isinstance(token, str):
+                unregister_type(token, owner=plugin.name)
 
     def unregister(self, name: str) -> None:
         """注销插件及其函数（供插件管理重载 / 删除）。"""
@@ -84,6 +136,7 @@ class PluginRegistry:
             if self._owner.get(full) == name:
                 self._owner.pop(full, None)
                 self._functions.pop(full, None)
+        self._unregister_plugin_types(plugin)
         self._loaded.discard(name)
 
     # ------------------------------------------------------------ 查询

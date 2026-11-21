@@ -80,5 +80,22 @@ def test_non_ascii_name_rejected():
     assert "syntax.invalid_name" in _issues("读 Param.苹果金额")
 
 
+def test_invalid_type_rejected():
+    assert "syntax.invalid_type" in _issues("写 NewParam.x:bogus")
+
+
+def test_plugin_custom_type_accepted():
+    from autobranch.schema.types import register_type, unregister_type
+
+    class Widget:
+        pass
+
+    register_type("widget_type", Widget, owner="test_parser_vars")
+    try:
+        assert _issues("写 NewParam.x:widget_type") == []
+    finally:
+        unregister_type("widget_type", owner="test_parser_vars")
+
+
 def test_clean_text_no_issues():
     assert _issues("访问 Param.base_url 并保存为 NewParam.siteUrl:int") == []

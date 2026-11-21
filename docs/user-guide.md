@@ -525,7 +525,7 @@ n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
 n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
 ```
 
-- 类型 token：`str` / `int` / `float` / `bool` / `array` / `object` / `generics` / `page_ref`（可省略，按动作推断）。
+- 类型 token：核心 `str` / `int` / `float` / `bool` / `array` / `object` / `generics` / `page_ref`，以及插件已注册的自定义类型（如 `ssh_session`、`page_object`）；可省略，按动作推断。
 - 产出型工具的目标必须在 `NewParam.` 声明集内，否则拒绝写入。
 - `NewParam.` **只能出现在 Action 的 `description`**；Condition 描述只能读取，不能声明写入。
 - **对象变量**：工具参数可以直接写 `Param.x` 引用变量中的对象（如 `session="Param.ssh_conn"`、`page="Param.tab"`），引擎调用前会解析为实际对象。
@@ -822,6 +822,7 @@ plugin = Demo()
   `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
 - 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
 - 产出型函数：`output_param` 声明变量目标参数（如 `extract` 的 `target`、SSH 的 `save_to`），引擎落笔写变量；`save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值）。
+- 自定义类型：实现 `custom_types` 属性返回 `{token: Python 类}`（如 SSH 的 `ssh_session`、浏览器 `page_object`），注册后自动进入 `/api/types`、编辑器类型下拉和插件管理页；该类型不可文本构造。
 - `init(runtime)` 可选：初始化插件公共资源；`release()` 释放（运行结束统一调用）。
 - 可依赖 `common` 共享库（预置插件；自定义插件不允许）。
 
@@ -938,7 +939,7 @@ autobranch/plugins/browser/proxy.config.json
 
 - **节点类型**：`Root` `Sequence` `Step` `IfThenElse` `Branch` `Retry` `LoopUntil` `ForEach` `Action` `ref` `FunctionCall` `Define`
 - **变量**：`Param.x`（读） / `NewParam.x[:type]`（写，仅 Action 描述） / `returns` 键为裸 ASCII 名 / `Define` 声明变量 / 变量名仅 ASCII
-- **类型 token**：`str` `int` `float` `bool` `array` `object` `generics` `page_ref`
+- **类型 token**：核心 `str` `int` `float` `bool` `array` `object` `generics` `page_ref`，以及插件注册的自定义类型（如 `ssh_session`、`page_object`）
 - **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / scheduler_tick_seconds / timezone / experience_*）
 - **代理配置**：`autobranch/plugins/browser/proxy.config.json`
 - **内置插件**：`browser` `compute` `ssh` `file` `http` `vars` `transform`；函数全名 `插件名.函数名`

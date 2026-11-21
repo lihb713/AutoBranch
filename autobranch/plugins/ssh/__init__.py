@@ -62,7 +62,7 @@ class _ChannelState:
 
 @dataclass
 class SSHConnection:
-    """远程 SSH 会话对象（``generics`` 值）。"""
+    """远程 SSH 会话对象（自定义类型 ``ssh_session`` 的值）。"""
 
     id: str
     client: Any | None = field(default=None, repr=False)
@@ -86,6 +86,10 @@ class SSHPlugin(PluginBase):
         "SSH 远程能力：直连/SOCKS5/跳板机会话；非交互命令返回退出码；"
         "交互命令返回流式通道（send/read/close）"
     )
+
+    @property
+    def custom_types(self) -> dict[str, type]:
+        return {"ssh_session": SSHConnection}
 
     def __init__(self) -> None:
         self._connections: dict[str, SSHConnection] = {}
@@ -145,7 +149,7 @@ class SSHPlugin(PluginBase):
                 },
             },
         ),
-        returns={"session": "generics"},
+        returns={"session": "ssh_session"},
         output_param="save_to",
     )
     def create_session(

@@ -36,6 +36,7 @@ from autobranch.server.schemas.plugin import (
     PluginCreate,
     PluginDetailOut,
     PluginOut,
+    PluginTypeOut,
     PluginUpdate,
 )
 
@@ -105,14 +106,35 @@ class PluginService:
 
     # ------------------------------------------------------------- 查询
 
+    @staticmethod
+    def _custom_types(plugin: object) -> list[dict]:
+        raw = getattr(plugin, "custom_types", {})
+        if not isinstance(raw, dict):
+            return []
+        out: list[dict] = []
+        for token, py_type in raw.items():
+            doc = (getattr(py_type, "__doc__", "") or "").strip().splitlines()
+            out.append(
+                {
+                    "token": str(token),
+                    "class_name": getattr(py_type, "__name__", str(py_type)),
+                    "description": doc[0] if doc else "",
+                    "constructible": False,
+                }
+            )
+        return out
+
     def list_all(self, include_manifest: bool = False) -> list[PluginOut]:
         rows = self.db.scalars(select(Plugin).order_by(Plugin.id)).all()
         out: list[PluginOut] = []
         for row in rows:
             item = PluginOut.model_validate(row)
-            if include_manifest:
-                plugin = self.registry.plugin(row.name)
-                if plugin is not None:
+            plugin = self.registry.plugin(row.name)
+            if plugin is not None:
+                item.custom_types = [
+                    PluginTypeOut(**info) for info in self._custom_types(plugin)
+                ]
+                if include_manifest:
                     item.frontend_manifest = plugin.frontend_manifest
                     item.config_schema = plugin.config_schema
             out.append(item)
@@ -125,6 +147,7 @@ class PluginService:
         return {
             "frontend_manifest": plugin.frontend_manifest,
             "config_schema": plugin.config_schema,
+            "custom_types": self._custom_types(plugin),
         }
 
     def get_config(self, name: str) -> dict:
@@ -187,6 +210,11 @@ class PluginService:
 
     def get_detail(self, name: str) -> PluginDetailOut:
         detail = PluginDetailOut.model_validate(self.get(name))
+        plugin = self.registry.plugin(name)
+        if plugin is not None:
+            detail.custom_types = [
+                PluginTypeOut(**info) for info in self._custom_types(plugin)
+            ]
         if detail.kind == KIND_BUILTIN and self.plugins_dir:
             # 内置插件只读：从文件系统读取源码供查看（DB 的 source 恒 NULL）
             detail.source = self._read_builtin_source(name)
@@ -245,7 +273,11 @@ class PluginService:
             self._apply_row_config(row, plugin)
         self.db.commit()
         self.db.refresh(row)
-        return PluginOut.model_validate(row)
+        out = PluginOut.model_validate(row)
+        out.custom_types = [
+            PluginTypeOut(**info) for info in self._custom_types(plugin)
+        ] if plugin is not None else []
+        return out
 
     def update(self, name: str, payload: PluginUpdate) -> PluginOut:
         row = self.get(name)
@@ -266,7 +298,11 @@ class PluginService:
             self._apply_row_config(row, plugin)
         self.db.commit()
         self.db.refresh(row)
-        return PluginOut.model_validate(row)
+        out = PluginOut.model_validate(row)
+        out.custom_types = [
+            PluginTypeOut(**info) for info in self._custom_types(plugin)
+        ] if plugin is not None else []
+        return out
 
     def delete(self, name: str) -> list[str]:
         """删除自定义插件；引用其函数的行为树中 FunctionCall 引用置空。"""

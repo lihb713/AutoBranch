@@ -19,7 +19,13 @@ router = APIRouter(prefix="/api/types", tags=["types"])
 def list_types():
     """全部类型 token + 可构造标志（str/int/float/bool 可构造，page_ref/object 不可）。"""
     return [
-        TypeInfoOut(token=token, constructible=spec.cast is not None)
+        TypeInfoOut(
+            token=token,
+            constructible=spec.cast is not None,
+            owner=spec.owner,
+            custom=spec.custom,
+            description=spec.description,
+        )
         for token, spec in TYPE_REGISTRY.items()
     ]
 

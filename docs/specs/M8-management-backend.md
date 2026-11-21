@@ -77,9 +77,10 @@ GET    /api/runs/{run_id}/state       # 轮询执行状态（ExecStateOut）
 GET    /api/runs/{run_id}/report      # 执行报告（进行中 200 JSON {"status":"running"}，结束 text/markdown）
 GET    /api/runs/{run_id}/trace       # 回溯报告（同上；OpenAPI 同时声明 application/json 与 text/markdown）
 GET    /api/reports/{path}            # 截图/报告文件（白名单防目录穿越）
-GET    /api/types                     # 类型可构造性（TypeInfoOut：token + constructible = cast is not None；page_ref 不可构造）
+GET    /api/types                     # 类型信息（TypeInfoOut：token/constructible/owner/custom/description；含插件自定义类型）
 ```
 
+- **插件自定义类型暴露**：`GET /api/plugins` / manifest 的 `custom_types` 返回 `{token, class_name, description, constructible=false}`；`GET /api/types` 返回全部核心与插件类型（`owner`/`custom` 标识来源）。
 - 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（仅 `page_ref`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 / 缺少声明的必填入参 → 422。`array`/`object` 入参可由 JSON 数组/对象文本构造，`generics` 原样接收。统一入口 `POST /api/runs` 与树入口共用 `RunService.start_tree` 的归一化/校验/快照逻辑。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
 - **执行实例快照**：触发时刻冻结 `content_snapshot`（行为树 yaml 全文）/ `tree_name_snapshot` / `tree_content_hash`（执行结构指纹）/ `inputs`（原始入参）。执行与重试一律基于快照，不读实时树内容；树被删除后历史实例仍可回看/重试（自包含）。
 - **执行来源（M10）**：`RunService.start(..., source="manual"|"schedule"|"dependency", schedule_id=...)`；`runs` 保存来源，`GET /api/runs?schedule_id=&source=` 过滤；详情返回 `schedule` 摘要（规则名/调度方式）；`RunService.set_on_run_complete(callback)` 在执行终态通知 M10 调度引擎。

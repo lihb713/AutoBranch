@@ -22,6 +22,8 @@ export type ValidateContext = {
   refMeta: Record<string, RefMeta>;
   /** 文档引用图：文档名 → 其内 ref 目标文档名列表（跨文档环检测用）。 */
   refTargetsOf: (name: string) => string[];
+  /** 可用类型 token（含插件自定义类型）；缺省使用内置 TYPE_TOKENS。 */
+  typeTokens?: readonly string[];
 };
 
 /** 各类型必填槽位字段（引用子树根，空槽位报错）。 */
@@ -64,7 +66,7 @@ function literalMatches(typ: string, value: string): boolean {
   return true;
 }
 
-const SET_TMPL = /(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|array|object|generics|page_ref))?/g;
+const SET_TMPL = /(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?/g;
 
 const DEPRECATED_RX = /\[\[\s*(?:get|set)\s*:|(?<![\w$])this\//;
 const INVALID_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)/;
@@ -184,6 +186,7 @@ export function wouldCreateCycle(
 /** 即时校验：单根 / 孤儿槽位 / 重复引用 / 必填（槽位+标量） / Branch 分支 / ref 目标与参数 / 无环 / 跨文档环。 */
 export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
   const issues: ClientIssue[] = [];
+  const allowedTypes = ctx.typeTokens ?? TYPE_TOKENS;
 
   // 参数名与节点 id 必须 ASCII
   for (const id of Object.keys(doc.nodes)) {
@@ -332,7 +335,7 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
             nodeId: n.id,
           });
         }
-        if (!TYPE_TOKENS.includes(v.type as (typeof TYPE_TOKENS)[number])) {
+        if (!allowedTypes.includes(v.type)) {
           issues.push({ code: "invalid_var_type", message: `变量「${name || i + 1}」类型「${v.type}」非法`, nodeId: n.id });
         }
         const val = v.value.trim();

@@ -190,7 +190,7 @@ vars:
   alias:   {type: str, value: "Param.baseUrl"}   # 从本帧拷贝/重命名
 ```
 
-- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（str/int/float/bool/array/object/generics/page_ref）。
+- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（核心 str/int/float/bool/array/object/generics/page_ref，或插件已注册自定义类型）。
 - `value` 可为标量字面量 / `Param.x`；`object`/`array` 也可直接写 YAML dict/list（解析后以 JSON 文本保存并由运行时构造）。
 - `value` 为字面量，或 `Param.<名>`（读取本帧变量做拷贝）；按 `type` coerce 后写入本帧 `this/<名>`。
 - 声明变量计入"已定义"，供后续 `Param` 读取；`Define` 不经 LLM、无截图。
@@ -577,7 +577,8 @@ TYPE_REGISTRY = { str, int, float, bool, array, object, generics, page_ref }
 - array    基本类型：Python list；文本入参必须是 JSON 数组
 - object   基本类型：Python dict；文本入参必须是 JSON 对象
 - generics 不确定类型：任意值（页面对象/会话/句柄等），不校验、不转换
-- page_ref 自定义类型：PageRef（保留的页签引用类型，不能从文本转换）；浏览器插件当前 `open` 返回 `PageObject`，其返回值声明为 `generics`。
+- page_ref 核心自定义类型：PageRef（不能从文本转换）。
+- 插件自定义类型：插件 `custom_types` 注册 `{token: Python 类}`，动态进入 `TYPE_REGISTRY`（如 `page_object`、`ssh_session`），不可文本构造；`GET /api/types` 暴露 owner/custom/description。
 ```
 
 语义类型（金额 / 订单号 / URL / 日期 等）**不占类型位**——本质为 str/float 等基础类型；确有格式校验需求时注册为自定义类型（token + Python 类 + cast）。
@@ -588,7 +589,7 @@ TYPE_REGISTRY = { str, int, float, bool, array, object, generics, page_ref }
   n4: {type: Action, description: 提取"订单金额" NewParam.amount:float}
 
 页面引用类型 (见 §5.10):
-  open("https://.../login", save_to="登录页")   ← 类型: generics（PageObject）
+  open("https://.../login", save_to="登录页")   ← 类型: page_object（浏览器插件自定义类型）
   操作函数的页面绑定 = 当前页面变量指向的页
 ```
 
@@ -2296,7 +2297,8 @@ M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理�
      SSH 插件（直连/SOCKS5/跳板机、非交互退出码、交互式流式通道、文件平台传输、ANSI 清洗）;
      数据变换插件（路径/索引/键提取、字符串、JSON、正则、比较）;
      文件插件（工作区读/写/对比 + 平台目录/文件管理，供 SSH/浏览器互通）;
-     用户自定义插件（DB 源码，仅标准库）
+     用户自定义插件（DB 源码，仅标准库；可声明 custom_types）
+     插件自定义类型：版本化注册到 TYPE_REGISTRY（page_object / ssh_session 等）
      ——浏览器插件健壮性：submit/button/reset 输入=button（标签在 value 并渲染）;
        ref 选择器按 id→文本→input[value]→真实 DOM 索引路径（nth-of-type）生成;
        open 用 domcontentloaded（不依赖可能永不触发的 load 事件）; 插件懒装配冷启动驱动
@@ -2511,6 +2513,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 - **仅可使用 Python 标准库**；不 import 其他插件 / `common` / 三方库。
 - **直接使用内置注入的名字** `PluginBase` / `engine_function` / `FunctionResult`（无需 import `autobranch`）。
 - 插件名：小写字母 / 数字 / `_` / `-`，且**不得与预置插件同名**（browser/compute/ssh/file/http/vars/transform）。
+- 自定义类型：实现 `custom_types` 属性返回 `{token: Python 类}`；token 全局唯一，不能覆盖核心类型；注册后可在树 inputs/outputs/ref returns 与函数 returns 中使用，`GET /api/types` / 插件管理页可见。
 
 ### 13.2 插件模板
 

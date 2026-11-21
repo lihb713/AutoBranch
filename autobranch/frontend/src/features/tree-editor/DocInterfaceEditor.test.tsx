@@ -66,4 +66,9 @@ describe("DocInterfaceEditor", () => {
     patch = onPatch.mock.calls[1][0] as Partial<TreeDoc>;
     expect(patch.outputs?.result).toBeUndefined();
   });
+
+  it("类型下拉接受后端提供的插件自定义类型", () => {
+    renderEditor({ typeTokens: ["str", "ssh_session"] });
+    expect(screen.getAllByRole("option", { name: "ssh_session" }).length).toBeGreaterThan(0);
+  });
 });

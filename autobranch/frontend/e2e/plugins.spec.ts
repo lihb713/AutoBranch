@@ -37,6 +37,8 @@ test("P1 插件卡片展示 manifest/配置入口与函数详情", async ({ page
   await expect(page.getByTestId("plugin-card-browser")).toBeVisible();
   await expect(page.getByTestId("plugin-card-compute")).toBeVisible();
   await expect(page.getByTestId("plugin-card-browser").getByText("预置")).toBeVisible();
+  await expect(page.getByTestId("plugin-types-browser")).toContainText("page_object");
+  await expect(page.getByTestId("plugin-types-ssh")).toContainText("ssh_session");
 
   const fileCard = page.getByTestId("plugin-card-file");
   await expect(fileCard.getByTestId("plugin-config-file")).toBeVisible();

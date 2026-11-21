@@ -99,6 +99,63 @@ def test_user_visible_and_llm_only_functions():
     assert reg.call("scoped.internal").value == 2
 
 
+def test_plugin_custom_type_registration_and_unregister():
+    from autobranch.schema.types import TYPE_REGISTRY
+
+    class Widget:
+        """测试自定义类型"""
+
+    class TypedPlugin(PluginBase):
+        name = "typed"
+
+        @property
+        def custom_types(self):
+            return {"typed_widget": Widget}
+
+        @engine_function(name="make", description="造对象", returns={"w": "typed_widget"})
+        def make(self):
+            return Widget()
+
+    reg = PluginRegistry()
+    reg.register(TypedPlugin())
+    spec = TYPE_REGISTRY["typed_widget"]
+    assert spec.owner == "typed"
+    assert spec.custom is True
+    assert spec.cast is None
+    assert spec.py_type is Widget
+    assert reg.function("typed.make").returns == {"w": "typed_widget"}
+    reg.unregister("typed")
+    assert "typed_widget" not in TYPE_REGISTRY
+
+
+def test_plugin_custom_type_collision_rejected():
+    class A:
+        pass
+
+    class B:
+        pass
+
+    class One(PluginBase):
+        name = "one"
+
+        @property
+        def custom_types(self):
+            return {"shared_type": A}
+
+    class Two(PluginBase):
+        name = "two"
+
+        @property
+        def custom_types(self):
+            return {"shared_type": B}
+
+    reg = PluginRegistry()
+    reg.register(One())
+    with pytest.raises(PluginError):
+        reg.register(Two())
+    reg.unregister("one")
+
+
 def test_cross_plugin_same_name_allowed():
     class Other(PluginBase):
         name = "other"

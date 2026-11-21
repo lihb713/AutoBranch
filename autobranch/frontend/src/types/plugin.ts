@@ -18,12 +18,20 @@ export interface ConfigSchemaItem {
   description?: string;
 }
 
+export interface PluginCustomType {
+  token: string;
+  class_name: string;
+  description: string;
+  constructible: boolean;
+}
+
 export interface PluginOut {
   id: number;
   name: string;
   kind: "builtin" | "custom";
   description: string;
   functions: string[];
+  custom_types?: PluginCustomType[];
   frontend_manifest?: PluginManifest | null;
   config_schema?: ConfigSchemaItem[] | null;
   created_at: string;
@@ -63,6 +71,7 @@ export interface PluginDeleteOut {
 export interface PluginManifestOut {
   frontend_manifest: PluginManifest | null;
   config_schema: ConfigSchemaItem[] | null;
+  custom_types: PluginCustomType[];
 }
 
 export interface FunctionInfo {

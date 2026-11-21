@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../api/request";
 import { runsApi } from "../../api/runs";
 import { treesApi } from "../../api/trees";
+import { typesApi } from "../../api/types";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
@@ -14,7 +15,9 @@ import { PropertyPanel } from "./PropertyPanel";
 import { TreeCanvas } from "./TreeCanvas";
 import { parseDoc, type NodeType, type TreeDoc } from "./treeModel";
 import type { TreeCommand, TreeDetailOut, TreeStatus } from "../../types/tree";
+import { TYPE_TOKENS } from "./tokens";
 import { validateDoc, type RefMeta } from "./validation";
+import type { TypeInfo } from "../../types/run";
 
 function collectRefTargets(doc: TreeDoc): string[] {
   const targets: string[] = [];
@@ -41,6 +44,7 @@ export function TreeEditorPage() {
   const [selectedPreview, setSelectedPreview] = useState<{ refId: string; nodeId: string } | null>(null);
   const [docNames, setDocNames] = useState<string[]>([]);
   const [refMeta, setRefMeta] = useState<Record<string, RefMeta>>({});
+  const [typeInfos, setTypeInfos] = useState<TypeInfo[]>([]);
   const [docRefs, setDocRefs] = useState<Record<string, string[]>>({});
   const [expandedRefs, setExpandedRefs] = useState<Set<string>>(new Set());
   const [refPreviews, setRefPreviews] = useState<Record<string, TreeDoc>>({});
@@ -58,6 +62,26 @@ export function TreeEditorPage() {
       .then((list) => setDocNames(list.map((t) => t.name)))
       .catch(() => setDocNames([]));
   }, []);
+
+  // 类型 token 由后端统一提供（含插件自定义类型）
+  useEffect(() => {
+    typesApi
+      .listTypes()
+      .then(setTypeInfos)
+      .catch(() => setTypeInfos([]));
+  }, []);
+
+  const availableTypeTokens = useMemo(
+    () => (typeInfos.length > 0 ? typeInfos.map((t) => t.token) : [...TYPE_TOKENS]),
+    [typeInfos],
+  );
+  const constructibleTypeTokens = useMemo(
+    () =>
+      typeInfos.length > 0
+        ? typeInfos.filter((t) => t.constructible).map((t) => t.token)
+        : [...TYPE_TOKENS],
+    [typeInfos],
+  );
 
   const applyDetail = useCallback((tree: TreeDetailOut) => {
     setDoc(parseDoc(tree.content));
@@ -241,7 +265,12 @@ export function TreeEditorPage() {
   // 即时校验
   const { issues, issueByNode } = useMemo(() => {
     if (!doc) return { issues: [], issueByNode: new Map<string, Set<string>>() };
-    const found = validateDoc(doc, { docNames, refMeta, refTargetsOf });
+    const found = validateDoc(doc, {
+      docNames,
+      refMeta,
+      refTargetsOf,
+      typeTokens: availableTypeTokens,
+    });
     const byNode = new Map<string, Set<string>>();
     for (const issue of found) {
       if (!issue.nodeId) continue;
@@ -250,7 +279,7 @@ export function TreeEditorPage() {
       byNode.set(issue.nodeId, set);
     }
     return { issues: found, issueByNode: byNode };
-  }, [doc, docNames, refMeta, refTargetsOf]);
+  }, [doc, docNames, refMeta, refTargetsOf, availableTypeTokens]);
 
   const handleAddNode = useCallback(
     async (type: NodeType) => {
@@ -484,6 +513,7 @@ export function TreeEditorPage() {
                   docNames={docNames}
                   refMeta={refMeta}
                   refTargetsOf={refTargetsOf}
+                  typeTokens={constructibleTypeTokens}
                   onPatchNode={handlePatchNode}
                   onSlotChange={handleSlotChange}
                   onLoadRefMeta={loadRefMeta}
@@ -504,6 +534,7 @@ export function TreeEditorPage() {
                   <DocInterfaceEditor
                     doc={doc}
                     readonly={selectedPreview !== null}
+                    typeTokens={availableTypeTokens}
                     onPatch={(patch) => void handlePatchDoc(patch)}
                   />
                 </div>

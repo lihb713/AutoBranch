@@ -28,6 +28,8 @@ from autobranch.schema.types import (
     coerce,
     infer_type,
     is_fully_basic,
+    register_type,
+    unregister_type,
     validate_type_name,
 )
 
@@ -42,6 +44,8 @@ __all__ = [
     "coerce",
     "infer_type",
     "is_fully_basic",
+    "register_type",
+    "unregister_type",
     "validate_type_name",
     "SchemaError",
     "SchemaPathError",

@@ -104,13 +104,15 @@ TYPE_REGISTRY = {
     "array":    TypeSpec("array", list,    _to_array),          # 基本类型：列表；JSON 数组文本可解析
     "object":   TypeSpec("object", dict,   _to_object),         # 基本类型：字典；JSON 对象文本可解析
     "generics": TypeSpec("generics", object, _identity),        # 不确定类型：任意值，不校验
-    "page_ref": TypeSpec("page_ref", PageRef, None),            # 自定义类型：页签引用，仅引擎 open() 产生
+    "page_ref": TypeSpec("page_ref", PageRef, None),            # 核心自定义类型：页签引用
 }
+# 插件自定义类型经 register_type() 动态加入（如 page_object / ssh_session）
 ```
 
 - **基本类型**：`str/int/float/bool/array/object`。`array` 存 Python `list`，`object` 存 Python `dict`。
 - **不确定类型**：`generics`，用于插件返回的页面对象/会话/文件句柄等无法归入基本类型的值；任意值原样存储、不校验。
-- **自定义类型**：`page_ref`（PageRef），不允许文本构造；浏览器插件当前以 `generics` 承载 `PageObject`。
+- **自定义类型**：`page_ref`（核心内置，不允许文本构造）；插件可经 `custom_types` 注册更多 token（如浏览器 `page_object`、SSH `ssh_session`），均不可文本构造。
+- 插件注册时动态写入全局 `TYPE_REGISTRY`（带 owner/custom 元数据），注销时移除；`GET /api/types` 一并暴露。
 - **类型即真实存储类型**：`coerce(token, raw)` 只把用户输入文本转成声明的 Python 类型；函数返回值本来就是 list/dict 时原样写入，不重复转换。
 - `array` / `object` 文本入参必须是 JSON 数组 / JSON 对象；`generics` 原样保留。
 - `infer_type`：list → `array`，dict → `object`，标量按对应 token，其他对象 → `generics`。
@@ -172,7 +174,8 @@ TYPE_REGISTRY = {
 - `array`：Python `list`，用户文本必须是 JSON 数组，如 `[1, 2]`。
 - `object`：Python `dict`，用户文本必须是 JSON 对象，如 `{"host": "x"}`。
 - `generics`：不确定类型，接受任意 Python 值（页面对象 / SSH 会话 / 文件句柄等），不校验、不转换。
-- `page_ref`：保留的自定义页签引用类型，不能由文本构造；浏览器插件当前 `open()` 返回 `PageObject`，声明为 `generics`。
+- `page_ref`：核心自定义页签引用类型，不能由文本构造。
+- 插件自定义类型：注册 `{token: Python 类}` 后进入类型系统，例如 `page_object`（PageObject）、`ssh_session`（SSHConnection）。
 
 函数返回值保存到黑板时保留原始 Python 类型：返回 list 就是 `array`，返回 dict 就是 `object`，返回插件对象则声明为 `generics`。文本→类型的转换只发生在用户输入/行为树字面量边界。
 

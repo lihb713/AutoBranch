@@ -64,6 +64,19 @@ export function PluginListPage() {
                 </span>
                 <span className="plugin-desc">{p.description}</span>
               </div>
+              {(p.custom_types?.length ?? 0) > 0 ? (
+                <div
+                  className="plugin-custom-types"
+                  data-testid={`plugin-types-${p.name}`}
+                >
+                  <span className="muted">自定义类型：</span>
+                  {p.custom_types!.map((t) => (
+                    <code key={t.token} title={t.description}>
+                      {t.token}
+                    </code>
+                  ))}
+                </div>
+              ) : null}
               <div className="plugin-card-actions">
                 <Link to={`/plugins/edit/${encodeURIComponent(p.name)}`}>
                   查看函数详情

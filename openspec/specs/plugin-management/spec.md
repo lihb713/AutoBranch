@@ -74,3 +74,12 @@
 #### Scenario: 配置重启保留
 - **WHEN** 用户修改 file 插件 `max_file_size` 后重启服务
 - **THEN** 配置仍生效
+
+
+### Requirement: 插件自定义类型展示
+
+插件列表与 manifest SHALL 返回 `custom_types`（token / class_name / description / constructible=false）；插件管理页 SHALL 展示这些 token，供用户了解插件提供了哪些非基本类型。
+
+#### Scenario: 浏览器插件展示 page_object
+- **WHEN** 用户查看插件管理页的浏览器插件卡片
+- **THEN** 卡片展示自定义类型 `page_object`

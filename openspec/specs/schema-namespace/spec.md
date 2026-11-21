@@ -179,3 +179,12 @@
 #### Scenario: 函数返回数组直接入黑板
 - **WHEN** 插件返回 Python list 并保存到变量
 - **THEN** 变量类型为 array，值为原 list，不转成字符串
+
+
+### Requirement: 插件自定义类型动态注册
+
+`TYPE_REGISTRY` SHALL 支持插件注册自定义 token（owner/custom 元数据、cast=None）。核心类型不可被覆盖，跨插件 token 冲突 SHALL 拒绝；插件注销时移除其类型。`GET /api/types` SHALL 返回核心与插件类型及来源信息。
+
+#### Scenario: 查询插件类型
+- **WHEN** 浏览器/SSH 插件已注册
+- **THEN** `/api/types` 包含 `page_object`（owner=browser）与 `ssh_session`（owner=ssh），constructible=false

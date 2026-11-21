@@ -13,7 +13,7 @@
 - **LLM Agent 叶子执行**：Action / Condition 由 LLM 依据语义图决策，调用插件函数并**落笔写变量**（引擎回收返回值，按类型 coerce）。
 - **确定性 FunctionCall 节点**：行为树可直接调用插件函数（`compute.add` 等），不经 LLM，可精确写变量 / 多返回值。
 - **确定性 Define 节点**：在当前文档帧声明变量（字面量或 `Param.x` 拷贝重命名），不经 LLM。
-- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
+- **插件框架**：预置浏览器 / 计算 / SSH / 文件 / HTTP / 变量 / 数据变换插件 + 用户自定义插件（DB 源码，仅标准库）；函数以**全名 `插件名.函数名`** 标识，跨插件可同名；插件可声明**自定义类型**（如 `page_object` / `ssh_session`）并注册进类型系统；两级能力选择（`use_capability`）+ 懒装配；**接口分层**——`@engine_function` 用户与 LLM 均可见，`@llm_function` 仅 LLM 可见（LLM 全量、用户精选）。
 - **语义图 + 引用定位**：浏览器插件自包含驱动与语义图生成，元素以 ref（`[N]`）+ 真实 DOM 索引路径精确定位。
 - **插件模块化**：插件可选提供 REST API、数据库模型、前端页面、存储目录与配置项；文件管理支持目录、路径、MD5，SSH/浏览器可与文件平台互通（含 SSH 递归目录传输）。
 - **管理后端 + 前端**：行为树 CRUD / 清晰度校验 / 执行触发与状态轮询 / 报告与截图；前端提供画布式行为树编辑器、调度管理页、插件管理页、执行报告页。
@@ -29,7 +29,7 @@ autobranch/
   config.py                引擎统一配置（LLM/浏览器等）
   llm/                     M0 LLM 客户端（OpenAI 兼容，重试/预算/流式）
   parser/                  M1 行为树解析 + 清晰度校验
-  schema/                  M2 变量空间 / 类型契约（str/int/float/bool/array/object/generics/page_ref）
+  schema/                  M2 变量空间 / 类型契约（基本类型 + generics + page_ref + 插件自定义类型）
   plugin_system/           M3 插件框架（注册表/懒装配/能力选择/分发/报告）
   leaf_agent/              M4 叶子 Agent（Action/Condition 执行）
   orchestrator/            M5 编排器（遍历/FunctionCall/超时/会话）
@@ -230,8 +230,8 @@ root: n1
 |---|---|
 | M0 LLM | OpenAI 兼容客户端：多轮工具调用 / 重试 / token 预算 / 流式 |
 | M1 解析 | 行为树解析 + 清晰度校验（结构/引用/循环/变量契约/FunctionCall 校验） |
-| M2 变量空间 | 帧命名空间 / 严格作用域 / 类型契约（array/object 基本类型 + generics 泛型 + page_ref 自定义） |
-| M3 插件框架 | 注册表（全名）/ 懒装配 / `use_capability` 两级能力选择 / 统一分发 / 报告接口 |
+| M2 变量空间 | 帧命名空间 / 严格作用域 / 类型契约（基本类型 + generics + page_ref + 插件自定义类型） |
+| M3 插件框架 | 注册表（全名）/ 自定义类型注册 / 懒装配 / `use_capability` 两级能力选择 / 统一分发 / 报告接口 |
 | M4 叶子 Agent | Action / Condition 的 LLM agent 式执行 + 变量落笔 |
 | M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall·Define 确定性执行 |
 | M6 报告 | 执行报告 / 截图 / 回溯 / 可查询状态 |

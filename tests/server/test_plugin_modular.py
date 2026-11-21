@@ -29,6 +29,7 @@ def test_manifest_and_config_endpoints(client):
     manifest = client.get("/api/plugins/file/manifest")
     assert manifest.status_code == 200
     assert manifest.json()["frontend_manifest"]["pages"][0]["component"] == "FileManager"
+    assert manifest.json()["custom_types"] == []
 
     current = client.get("/api/plugins/file/config")
     assert current.status_code == 200
