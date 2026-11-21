@@ -17,7 +17,7 @@
 - **HTTP 能力拆分**：独立请求用 `http.request(method, url, headers?, params?, body?, json?, timeout?)`（用户可见，返回 status/body/headers）；页面内请求用 `page_request`（cookie 自动携带，LLM-only）；`list_requests` / `get_response` / `get_responses` / `clear_requests` 用于页面请求记录。
 - **多标签页**：`list_tabs` / `switch_tab` 管理新标签页；操作返回 `new_tabs`/`tabs_hint`。
 - **捕获操作**：`click_capture` / `type_capture` / `press_capture` / `select_capture` / `check_capture` / `uncheck_capture` / `scroll_capture` / `upload_capture` 封装 clear→操作→批量响应。
-- 页面对象（`PageObject`）作为泛型 `object` 值在变量中存储与传递；当前活动页由插件维护。
+- 页面对象（`PageObject`）作为 `generics` 值在变量中存储与传递；当前活动页由插件维护。
 - **文件平台联动**：`upload_from_platform(ref, file_path)` / `download_to_platform(ref, file_path?)` 从文件管理平台取文件上传到页面，或把页面下载保存到文件管理平台（平台路径）。
 
 **元素角色分类（ARIA 对齐）**：`<input type="submit|button|reset">` SHALL 分类为 `button`（其标签存于 `value`）；`checkbox/radio/number/range` 分别映射；其余输入为 `textbox`。语义图序列化时，input 型按钮 SHALL 渲染 `value="..."`（标签），使 LLM 能识别按钮文本。
@@ -59,7 +59,7 @@
 
 ### SSH 插件
 
-会话对象（`SSHConnection`）作为泛型 `object` 值。
+会话对象（`SSHConnection`）作为 `generics` 值。
 
 - `create_session(host, port?, user?, pwd?/key?, timeout?, proxy?, jump?)`：直连；`proxy` 为 SOCKS5；`jump` 为 SSH 跳板机。有 jump 时 proxy 用于连接跳板机；jump→目标改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁用 `direct-tcpip` 的环境），目标认证需提供 `pwd`。
 - `ssh_exec(session, command, timeout?, stdin?, interactive?, idle_timeout?)`：
@@ -109,7 +109,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 - 仅用 Python 标准库；直接使用 exec 注入的 `PluginBase` / `engine_function` / `FunctionResult`（**不 import**）。
 - 不 import 其他插件 / `common` / 三方库；插件名小写字母/数字/`_`/`-`、不与预置同名。
 - `@engine_function` 显式注册**用户与 LLM 均可见**的函数；`@llm_function` 注册**仅 LLM 可见**的函数（技术性接口）；未标注不注册。
-- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法；未填写接收名时后端生成 `<节点id>_<返回参数名>`。
+- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/array/object/generics/page_ref`）；列表用 `array`、字典用 `object`、无法归类对象用 `generics`、页签引用用 `page_ref`；未填写接收名时后端生成 `<节点id>_<返回参数名>`。
 - 函数只返回值（裸值或 `FunctionResult`）、不写变量（引擎落笔）。
 - `output_param`：产出型工具声明变量目标参数名，引擎按节点 `NewParam.名[:类型]` 声明类型 coerce 后写入变量。
 - 删除插件会置空引用它的行为树 FunctionCall 引用。

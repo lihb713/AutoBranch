@@ -299,7 +299,7 @@ nodes:
     kwargs:
       jump: {host: jump.local, user: ops}
       timeout: 5
-    returns: {session: object}
+    returns: {session: generics}
 root: n1
 `;
     const doc = parseDoc(yaml);

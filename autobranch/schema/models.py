@@ -1,7 +1,8 @@
 """M3 schema 命名空间：数据模型（契约 §5.3/§5.7.4）。
 
-``Value`` 是变量值的最小表示：标量（str/int/float/bool）或页面引用
-（``PageRef``）。``SchemaFrame`` 是每次块引用创建的独立命名空间帧，
+``Value`` 是变量值的常用表示：标量（str/int/float/bool）、容器
+（list/dict）或页面引用（``PageRef``）；``generics`` 类型还可承载任意
+插件对象。``SchemaFrame`` 是每次块引用创建的独立命名空间帧，
 帧内以相对路径平铺存储业务变量（``storage``），并保存声明类型
 （``declared``）用于读取时的强校验。纯内存结构，无任何 I/O。
 """

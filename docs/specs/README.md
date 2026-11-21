@@ -10,7 +10,7 @@
 |---|---|---|---|
 | M0 | [M0-llm-client.md](M0-llm-client.md) | LLM 客户端 | 无 |
 | M1 | [M1-behavior-tree-parser.md](M1-behavior-tree-parser.md) | 行为树解析器（含 FunctionCall） | 无 |
-| M2 | [M2-schema-namespace.md](M2-schema-namespace.md) | 变量空间（泛型 object） | 无 |
+| M2 | [M2-schema-namespace.md](M2-schema-namespace.md) | 变量空间（基本容器 + 泛型） | 无 |
 | M3 | [M3-plugin-system.md](M3-plugin-system.md) | 插件框架 | 无 |
 | M4 | [M4-leaf-agent.md](M4-leaf-agent.md) | 叶子 agent（两级能力选择） | M0 + M2 + M3 |
 | M5 | [M5-orchestrator.md](M5-orchestrator.md) | 编排器（FunctionCall/懒装配） | M1 + M2 + M4 + M6 |

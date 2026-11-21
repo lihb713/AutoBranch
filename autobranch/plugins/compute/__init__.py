@@ -28,7 +28,7 @@ class ComputePlugin(PluginBase):
             a={"type": "number", "description": "被乘数"},
             b={"type": "number", "description": "乘数"},
         ),
-        returns={"result": "object"},
+        returns={"result": "float"},
     )
     def multiply(self, a: float, b: float) -> float:
         return a * b
@@ -41,7 +41,7 @@ class ComputePlugin(PluginBase):
             data={"type": "array", "items": {}, "description": "待排序数值列表"},
             desc={"type": "boolean", "description": "是否降序（默认升序）"},
         ),
-        returns={"result": "object"},
+        returns={"result": "array"},
     )
     def sort(self, data: list[Any], desc: bool = False) -> list[Any]:
         return sorted(data, reverse=bool(desc))
@@ -83,7 +83,7 @@ class ComputePlugin(PluginBase):
             a={"type": "number", "description": "加数 a"},
             b={"type": "number", "description": "加数 b"},
         ),
-        returns={"result": "object"},
+        returns={"result": "float"},
     )
     def add(self, a: float, b: float) -> float:
         return a + b

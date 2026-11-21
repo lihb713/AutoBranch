@@ -14,7 +14,7 @@ from autobranch.schema.types import (
 
 def test_registry_has_english_tokens():
     assert set(TYPE_REGISTRY) == {
-        "str", "int", "float", "bool", "page_ref", "object", "array"
+        "str", "int", "float", "bool", "array", "object", "generics", "page_ref"
     }
 
 
@@ -24,8 +24,9 @@ def test_py_types_mapped():
     assert TYPE_REGISTRY["float"].py_type is float
     assert TYPE_REGISTRY["bool"].py_type is bool
     assert TYPE_REGISTRY["page_ref"].py_type is PageRef
-    assert TYPE_REGISTRY["object"].cast is not None
+    assert TYPE_REGISTRY["object"].py_type is dict
     assert TYPE_REGISTRY["array"].py_type is list
+    assert TYPE_REGISTRY["generics"].cast is not None
 
 
 def test_validate_unknown_token_raises():
@@ -66,13 +67,24 @@ def test_coerce_basic():
     assert coerce("bool", "true") is True
     assert coerce("str", 123) == "123"
     assert coerce("object", '{"host": "x"}') == {"host": "x"}
-    assert coerce("object", "plain") == "plain"
     assert coerce("array", "[1, 2]") == [1, 2]
+    assert coerce("generics", "plain") == "plain"
 
 
 def test_coerce_array_rejects_non_array():
     with pytest.raises(SchemaTypeError):
         coerce("array", '{"a": 1}')
+
+
+def test_coerce_object_rejects_non_object():
+    with pytest.raises(SchemaTypeError):
+        coerce("object", "[1, 2]")
+
+
+def test_object_rejects_non_dict_and_generics_accepts_any():
+    with pytest.raises(SchemaTypeError):
+        check_type("object", ["a"])
+    check_type("generics", object())
 
 
 @pytest.mark.parametrize("raw", ["abc", "", "1.5x"])
@@ -94,3 +106,4 @@ def test_infer_type_english():
     assert infer_type("abc") == "str"
     assert infer_type([1, 2]) == "array"
     assert infer_type({"a": 1}) == "object"
+    assert infer_type(object()) == "generics"

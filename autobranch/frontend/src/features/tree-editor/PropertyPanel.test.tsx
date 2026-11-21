@@ -417,7 +417,7 @@ describe("PropertyPanel", () => {
         plugin: "compute",
         name: "add",
         description: "加法",
-        returns: { result: "object" },
+        returns: { result: "float" },
         parameters: {
           type: "object",
           properties: {
@@ -478,7 +478,7 @@ describe("PropertyPanel", () => {
         plugin: "ssh",
         name: "create_session",
         description: "建会话",
-        returns: { session: "object" },
+        returns: { session: "generics" },
         parameters: {
           type: "object",
           properties: {
@@ -540,7 +540,7 @@ describe("PropertyPanel", () => {
         plugin: "ssh",
         name: "create_session",
         description: "建会话",
-        returns: { session: "object" },
+        returns: { session: "generics" },
         parameters: {
           type: "object",
           properties: { host: { type: "string" } },

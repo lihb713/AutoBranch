@@ -190,7 +190,7 @@ vars:
   alias:   {type: str, value: "Param.baseUrl"}   # 从本帧拷贝/重命名
 ```
 
-- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（str/int/float/bool/page_ref/object/array）。
+- `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（str/int/float/bool/array/object/generics/page_ref）。
 - `value` 可为标量字面量 / `Param.x`；`object`/`array` 也可直接写 YAML dict/list（解析后以 JSON 文本保存并由运行时构造）。
 - `value` 为字面量，或 `Param.<名>`（读取本帧变量做拷贝）；按 `type` coerce 后写入本帧 `this/<名>`。
 - 声明变量计入"已定义"，供后续 `Param` 读取；`Define` 不经 LLM、无截图。
@@ -474,8 +474,8 @@ n9:
 **机制**：
 - **读取（Param.）确定性**：`Param.xxx` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取：
-  - 基本类型（str/int/float/bool）：替换为真实值文本；
-  - 对象类型（object/page_ref）：**保留 `Param.xxx` 原文**，并在用户消息的「当前变量表」中展示变量名/类型/对象 repr，供 LLM 在函数参数中用 `Param.xxx` 引用。
+  - 基本类型（str/int/float/bool/array/object）：替换为真实值文本；
+  - 不确定/引用类型（generics/page_ref）：**保留 `Param.xxx` 原文**，并在用户消息的「当前变量表」中展示变量名/类型/对象 repr，供 LLM 在函数参数中用 `Param.xxx` 引用。
   读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
 - **对象参数解析**：LLM 调用插件函数时，字符串参数值若完整匹配 `Param.xxx`，引擎从当前帧读取实际对象后传给插件
   （如 `ssh.ssh_exec(session="Param.ssh_conn", ...)`、`browser.activate(page="Param.tab")`）。
@@ -564,19 +564,20 @@ root: n1
 
 #### 5.3.5 类型契约
 
-每次创建变量时声明预期类型（`str` / `int` / `float` / `bool` / `page_ref`），规则引擎据此强校验。**类型即真实存储类型**：`set` 标注驱动的 `coerce` 把网页提取值转成声明的 Python 类型后存储，转换失败则断言失败并终止。
+每次创建变量时声明预期类型（`str` / `int` / `float` / `bool` / `array` / `object` / `generics` / `page_ref`），规则引擎据此强校验。**类型即真实存储类型**：`set` 标注驱动的 `coerce` 把网页提取值转成声明的 Python 类型后存储，转换失败则断言失败并终止。
 
 **支持的类型集合**（M3 已落地，token 与 Python 类型映射）：
 
 ```
-TYPE_REGISTRY = { str, int, float, bool, page_ref, object, array }
+TYPE_REGISTRY = { str, int, float, bool, array, object, generics, page_ref }
 - str      任意字符串（文本 / URL / 订单号……一切字符串）
 - int      真整数（校验排除布尔）
 - float    数字 / 金额
 - bool     布尔
-- page_ref PageRef 类型变量（页签引用，只能由 open() 产生，不能从文本转换；§5.10）
-- object   泛型对象；文本入参按 JSON 解析，失败保留原字符串
-- array    列表；文本入参必须是 JSON 数组
+- array    基本类型：Python list；文本入参必须是 JSON 数组
+- object   基本类型：Python dict；文本入参必须是 JSON 对象
+- generics 不确定类型：任意值（页面对象/会话/句柄等），不校验、不转换
+- page_ref 自定义类型：PageRef（保留的页签引用类型，不能从文本转换）；浏览器插件当前 `open` 返回 `PageObject`，其返回值声明为 `generics`。
 ```
 
 语义类型（金额 / 订单号 / URL / 日期 等）**不占类型位**——本质为 str/float 等基础类型；确有格式校验需求时注册为自定义类型（token + Python 类 + cast）。
@@ -587,7 +588,7 @@ TYPE_REGISTRY = { str, int, float, bool, page_ref, object, array }
   n4: {type: Action, description: 提取"订单金额" NewParam.amount:float}
 
 页面引用类型 (见 §5.10):
-  open("https://.../login", save_to="登录页")   ← 类型: page_ref
+  open("https://.../login", save_to="登录页")   ← 类型: generics（PageObject）
   操作函数的页面绑定 = 当前页面变量指向的页
 ```
 
@@ -1031,7 +1032,7 @@ ref 语义:
   - save_to: 字符串（单返回值）或 {返回参数名: 变量名}（多返回值，可部分保存）
 
 open(url) 变量名约定:
-  仅当动作描述含 NewParam.名:object 声明时才经 save_to 显式命名变量（页面对象为泛型 object）;
+  仅当动作描述含 NewParam.名:generics 声明时才经 save_to 显式命名变量（页面对象等为泛型 generics）;
   省略 save_to 不保存（当前活动页由浏览器插件维护）
 
 ref 映射 / semantic_graph / extract 类型来源 / wait/download 缺省:
@@ -2218,8 +2219,8 @@ autobranch run   文档.yaml    # 阶段二: 批处理执行, 输出执行报告
 
 ```
 M0  LLM 客户端          无依赖
-M1  行为树解析器         无依赖（含 FunctionCall 节点、泛型 object 类型）
-M2  变量空间            无依赖（泛型对象类型）
+M1  行为树解析器         无依赖（含 FunctionCall 节点、array/object/generics 类型）
+M2  变量空间            无依赖（基本容器类型 + 泛型 + 自定义类型）
 M3  插件框架            无依赖（注册/懒装配/use_capability/分发/报告接口）
 M4  叶子 agent          M0+M2+M3（两级能力选择 + 变量落笔）
 M5  编排器              M1+M2+M4+M6（FunctionCall 节点/插件分发/资源释放）
@@ -2244,14 +2245,14 @@ M10 定时调度           M8（执行入口/完成回调）+ M9（调度管理�
 ```
 功能: yaml/dict 解析（一文档一树）; 复合节点展开; ref 引用解析;
      FunctionCall 节点解析（function/args/kwargs/returns）+ 函数存在/参数校验（经插件注册表）;
-     泛型 object 类型 token; 清晰度校验
+     array/object/generics/page_ref 类型 token; 清晰度校验
 依赖: 无（纯逻辑; 函数存在校验可选依赖插件注册表）
 ```
 
 #### M2 变量空间
 ```
 功能: 帧模型/严格作用域（裸变量名单段，跨帧经 ref args/returns）;
-     配置参数继承（向上查找）; 变量类型 TYPE_REGISTRY (str/int/float/bool/page_ref/object/array)
+     配置参数继承（向上查找）; 变量类型 TYPE_REGISTRY (str/int/float/bool/array/object/generics/page_ref)
 依赖: 无（纯逻辑）
 ```
 
@@ -2343,16 +2344,16 @@ type: function
 function: compute.add          # 全名：插件名.函数名（跨插件可同名）
 args: [a, b]                # 位置实参（本树裸变量名或字面量，按序对应函数入参）
 kwargs: {jump: {host: jump.internal}}  # 命名可选参数（可跳过中间可选参数）
-returns: {total: object}   # 接收名 → 类型（类型由函数声明决定，用户只改名称）
+returns: {total: float}    # 接收名 → 类型（类型由函数声明决定，用户只改名称）
 ```
 
 - 引擎核心不感知具体能力；能力全部经插件框架（M3）调用。
 - 插件只返回值（业务值 + 报告附加信息），变量写入由引擎落笔。
-- 泛型 `object` 类型承载插件对象（页面对象/会话等）。
+- `array`/`object` 承载列表/字典；不确定的插件对象（页面对象/会话等）用 `generics`；`page_ref` 为自定义页签类型。
 - **接收名规则**（与 ref 一致）：`returns` 键**必须**为**裸 ASCII 名**（隐式创建变量）——含 `.`（如
   `NewParam.x`）或非 ASCII 名 → 校验错误 `syntax.invalid_return_name`；变量名仅 ASCII（§4.2/§5.3，不支持中文）。
 - **默认接收名与类型**：未填写时后端生成 `<节点id>_<函数返回参数名>`；类型取 `FunctionDef.returns` 声明（用户不可编辑）。例如 id 为 `n2` 的节点调用 `http.request` 自动得到
-  `n2_status: int`、`n2_body: str`、`n2_headers: object`。
+  `n2_status: int`、`n2_body: str`、`n2_headers: object`（headers 是字典）。
 
 ### 12.3 引擎内嵌形态
 
@@ -2440,7 +2441,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   `update_node` / `update_doc` / `set_slot` / `detach_slot`；后端生成节点 id、补默认接收名/类型、
   实现删除/槽位语义，返回完整文档。前端只负责渲染与提交命令。
 - `POST /api/trees/{id}/save` 执行完整清晰度校验；失败 422 且保持 draft。
-- **状态轮询变量序列化**：`GET /api/runs/{id}/state` 的 `variables[].value` 必须 JSON 安全 —— 标量原样、`PageRef` 转 `{page_id,url}`、其他对象（如 `SSHConnection`）转 `str` 截断，避免 object 变量导致 500。
+- **状态轮询变量序列化**：`GET /api/runs/{id}/state` 的 `variables[].value` 必须 JSON 安全 —— 标量原样、`PageRef` 转 `{page_id,url}`、其他对象（如 `SSHConnection`）转 `str` 截断，避免 generics/插件对象变量导致 500。
 - 迁移脚本 `scripts.migrate_default_return_param_names`：ASCII 改名、typed outputs、默认接收名、
   published 状态、清空 experiences；不改 `runs.content_snapshot`。
 ```
@@ -2591,7 +2592,7 @@ class MyCalcPlugin(PluginBase):
             },
             "required": ["a", "b"],
         },
-        returns={"result": "object"},
+        returns={"result": "float"},
     )
     def my_add(self, a, b):
         return a + b

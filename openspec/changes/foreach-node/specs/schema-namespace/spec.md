@@ -111,7 +111,7 @@
 - **THEN** 读取返回空值，不产生祖先帧的值
 ### Requirement: 类型契约
 
-创建变量 SHALL 声明类型（`TYPE_REGISTRY` token 之一：`str`、`int`、`float`、`bool`、`object`）；类型即真实存储类型，`set` 标注驱动的 `coerce` SHALL 把网页提取值转成声明类型后存储；写入与提取时系统 SHALL 强校验类型（`isinstance`），类型不匹配或转换失败导致断言失败并终止流程。`object` 为**泛型对象类型**——不校验（任意对象值），呈现用 `str(value)`（由对象类型的 `__str__` 定义），用于承载插件对象（页面对象 / 会话 / 文件句柄…）；引擎 SHALL 记录其实际类型（来自产出函数声明的返回类型）供黑板/报告展示。`object` SHALL 接受任意对象值（不校验具体类型）；对象在报告 / 黑板中按 `repr` 截断展示（防超长）。语义类型（金额/订单号/URL/日期 等）不占类型位，本质为 str/float 等基础类型。
+创建变量 SHALL 声明类型（`TYPE_REGISTRY` token 之一：`str`、`int`、`float`、`bool`、`array`、`object`、`generics`、`page_ref`）。`array`/`object` 为基本类型，分别对应 Python `list`/`dict`；`generics` 为不确定类型（任意值，不校验）；`page_ref` 为自定义页签引用类型。类型即真实存储类型，用户文本经 `coerce` 转成声明类型后存储；函数返回值已是 list/dict 时原样保存，不重复转换。写入与提取时系统 SHALL 强校验类型（`isinstance`），类型不匹配或转换失败导致断言失败并终止流程。`generics`/`page_ref` 在报告 / 黑板中按 `repr` 截断展示。语义类型（金额/订单号/URL/日期 等）不占类型位，本质为 str/float 等基础类型。
 
 #### Scenario: 合法类型值写入成功
 

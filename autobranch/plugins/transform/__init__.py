@@ -60,7 +60,7 @@ class TransformPlugin(PluginBase):
                 "type": "string",
                 "description": "原列表（JSON 数组字符串；空字符串视为空列表）",
             },
-            value={"type": "object", "description": "要追加的值"},
+            value={"description": "要追加的值"},
         ),
         returns={"list": "str"},
         output_param="save_to",
@@ -88,7 +88,7 @@ class TransformPlugin(PluginBase):
                 "description": "原字典（JSON 对象字符串；空字符串视为空字典）",
             },
             key={"type": "string", "description": "键"},
-            value={"type": "object", "description": "值"},
+            value={"description": "值"},
         ),
         returns={"dict": "str"},
         output_param="save_to",
@@ -114,12 +114,12 @@ class TransformPlugin(PluginBase):
         ),
         parameters=_params(
             ("data", "path"),
-            data={"type": "object", "description": "列表或字典"},
+            data={"description": "列表或字典"},
             path={"type": "string", "description": "点路径，如 0.a.b.1"},
             required={"type": "boolean", "description": "路径不存在是否失败（默认 true）"},
-            default={"type": "object", "description": "required=false 时返回的默认值"},
+            default={"description": "required=false 时返回的默认值"},
         ),
-        returns={"value": "object"},
+        returns={"value": "generics"},
     )
     def get_path(
         self,
@@ -143,9 +143,9 @@ class TransformPlugin(PluginBase):
             data={"type": "array", "items": {}, "description": "列表"},
             index={"type": "integer", "description": "索引"},
             required={"type": "boolean", "description": "索引不存在是否失败（默认 true）"},
-            default={"type": "object", "description": "required=false 时返回的默认值"},
+            default={"description": "required=false 时返回的默认值"},
         ),
-        returns={"value": "object"},
+        returns={"value": "generics"},
     )
     def get_index(
         self, data: list[Any], index: int, required: bool = True, default: Any = None
@@ -163,9 +163,9 @@ class TransformPlugin(PluginBase):
             data={"type": "object", "description": "字典"},
             key={"type": "string", "description": "键名"},
             required={"type": "boolean", "description": "键不存在是否失败（默认 true）"},
-            default={"type": "object", "description": "required=false 时返回的默认值"},
+            default={"description": "required=false 时返回的默认值"},
         ),
-        returns={"value": "object"},
+        returns={"value": "generics"},
     )
     def get_key(
         self, data: dict, key: str, required: bool = True, default: Any = None
@@ -183,7 +183,7 @@ class TransformPlugin(PluginBase):
             separator={"type": "string", "description": "分隔符"},
             maxsplit={"type": "integer", "description": "最大切分次数（默认 -1）"},
         ),
-        returns={"values": "object"},
+        returns={"values": "array"},
     )
     def split(self, text: str, separator: str, maxsplit: int = -1) -> FunctionResult:
         if not separator:
@@ -210,11 +210,11 @@ class TransformPlugin(PluginBase):
         description="顺序拼接文本片段（按 a→e，忽略空值，可指定 separator）",
         parameters=_params(
             ("a", "b"),
-            a={"type": "object", "description": "第 1 段"},
-            b={"type": "object", "description": "第 2 段"},
-            c={"type": "object", "description": "第 3 段（可选）"},
-            d={"type": "object", "description": "第 4 段（可选）"},
-            e={"type": "object", "description": "第 5 段（可选）"},
+            a={"description": "第 1 段"},
+            b={"description": "第 2 段"},
+            c={"description": "第 3 段（可选）"},
+            d={"description": "第 4 段（可选）"},
+            e={"description": "第 5 段（可选）"},
             separator={"type": "string", "description": "片段间分隔符（默认空）"},
         ),
         returns={"text": "str"},
@@ -319,7 +319,7 @@ class TransformPlugin(PluginBase):
     @engine_function(
         name="length",
         description="返回字符串/列表/字典的长度",
-        parameters=_params(("value",), value={"type": "object", "description": "待求长度值"}),
+        parameters=_params(("value",), value={"description": "待求长度值"}),
         returns={"length": "int"},
     )
     def length(self, value: Any) -> FunctionResult:
@@ -332,12 +332,12 @@ class TransformPlugin(PluginBase):
         description="对列表或字符串切片（支持 start/end/step）",
         parameters=_params(
             ("value",),
-            value={"type": "object", "description": "列表或字符串"},
+            value={"description": "列表或字符串"},
             start={"type": "integer", "description": "起始索引（默认 0）"},
             end={"type": "integer", "description": "结束索引（默认到末尾）"},
             step={"type": "integer", "description": "步长（默认 1）"},
         ),
-        returns={"value": "object"},
+        returns={"value": "generics"},
     )
     def slice(
         self,
@@ -355,7 +355,7 @@ class TransformPlugin(PluginBase):
         name="keys",
         description="返回字典的全部键列表",
         parameters=_params(("data",), data={"type": "object", "description": "字典"}),
-        returns={"keys": "object"},
+        returns={"keys": "array"},
     )
     def keys(self, data: dict) -> FunctionResult:
         if not isinstance(data, dict):
@@ -366,7 +366,7 @@ class TransformPlugin(PluginBase):
         name="values",
         description="返回字典的全部值列表",
         parameters=_params(("data",), data={"type": "object", "description": "字典"}),
-        returns={"values": "object"},
+        returns={"values": "array"},
     )
     def values(self, data: dict) -> FunctionResult:
         if not isinstance(data, dict):
@@ -381,8 +381,8 @@ class TransformPlugin(PluginBase):
         ),
         parameters=_params(
             ("a", "b"),
-            a={"type": "object", "description": "值 a"},
-            b={"type": "object", "description": "值 b"},
+            a={"description": "值 a"},
+            b={"description": "值 b"},
             op={
                 "type": "string",
                 "description": "比较操作（默认 eq）",
@@ -434,7 +434,7 @@ class TransformPlugin(PluginBase):
     @engine_function(
         name="to_string",
         description="把任意值转换为字符串（JSON 对象会序列化）",
-        parameters=_params(("value",), value={"type": "object", "description": "待转换值"}),
+        parameters=_params(("value",), value={"description": "待转换值"}),
         returns={"text": "str"},
     )
     def to_string(self, value: Any) -> str:
@@ -445,7 +445,7 @@ class TransformPlugin(PluginBase):
     @engine_function(
         name="to_int",
         description="把文本/数字转换为整数（失败返回错误）",
-        parameters=_params(("value",), value={"type": "object", "description": "待转换值"}),
+        parameters=_params(("value",), value={"description": "待转换值"}),
         returns={"value": "int"},
     )
     def to_int(self, value: Any) -> FunctionResult:
@@ -457,7 +457,7 @@ class TransformPlugin(PluginBase):
     @engine_function(
         name="to_number",
         description="把文本/数字转换为浮点数（失败返回错误）",
-        parameters=_params(("value",), value={"type": "object", "description": "待转换值"}),
+        parameters=_params(("value",), value={"description": "待转换值"}),
         returns={"value": "float"},
     )
     def to_number(self, value: Any) -> FunctionResult:
@@ -469,7 +469,7 @@ class TransformPlugin(PluginBase):
     @engine_function(
         name="to_bool",
         description="把常见真假值转换为布尔（true/1/yes/on 为真，false/0/no/off/空为假）",
-        parameters=_params(("value",), value={"type": "object", "description": "待转换值"}),
+        parameters=_params(("value",), value={"description": "待转换值"}),
         returns={"value": "bool"},
     )
     def to_bool(self, value: Any) -> bool:
@@ -483,7 +483,7 @@ class TransformPlugin(PluginBase):
         name="json_parse",
         description="解析 JSON 文本为对象/列表",
         parameters=_params(("text",), text={"type": "string", "description": "JSON 文本"}),
-        returns={"value": "object"},
+        returns={"value": "generics"},
     )
     def json_parse(self, text: str) -> FunctionResult:
         try:
@@ -496,7 +496,7 @@ class TransformPlugin(PluginBase):
         description="把对象/列表序列化为 JSON 文本",
         parameters=_params(
             ("value",),
-            value={"type": "object", "description": "待序列化值"},
+            value={"description": "待序列化值"},
             indent={"type": "integer", "description": "缩进空格数（默认 0）"},
         ),
         returns={"text": "str"},
@@ -574,7 +574,7 @@ class TransformPlugin(PluginBase):
             pattern={"type": "string", "description": "正则表达式"},
             ignore_case={"type": "boolean", "description": "是否忽略大小写"},
         ),
-        returns={"values": "object"},
+        returns={"values": "array"},
     )
     def regex_findall(
         self, text: str, pattern: str, ignore_case: bool = False

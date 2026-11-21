@@ -147,7 +147,7 @@ class FilePlugin(PluginBase):
             ("path",),
             path={"type": "string", "description": "平台内目录路径（空=根目录）"},
         ),
-        returns={"entries": "object"},
+        returns={"entries": "array"},
     )
     def list_dir(self, path: str = "") -> FunctionResult:
         from .store import get_service, session_scope

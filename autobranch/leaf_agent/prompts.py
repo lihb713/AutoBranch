@@ -17,14 +17,14 @@ from typing import Literal
 from autobranch.parser.models import ActionNode, ConditionNode
 from autobranch.schema.types import infer_type
 
-PROMPT_VERSION = "2.1"
+PROMPT_VERSION = "2.2"
 
 _VARIABLE_MECHANISM = """\
 变量机制：
 1. 行为树维护一个变量表，函数返回值可通过 save_to 参数存入变量
 2. 描述中出现 Param.xxx 时，表示引用变量 xxx 中的值
-   - 基本类型（str/int/float/bool）：描述中 Param.xxx 会被替换为变量的实际值
-   - 对象类型（object/page_ref）：描述中保留 Param.xxx，需配合变量表理解
+   - 基本类型（str/int/float/bool/array/object）：描述中 Param.xxx 会被替换为变量的实际值
+   - 不确定/引用类型（generics/page_ref）：描述中保留 Param.xxx，需配合变量表理解
 3. 调用函数时，参数值可填 Param.xxx 来引用变量中存储的对象
 4. save_to 参数指定返回值存入哪个变量：
    - 单返回值函数：save_to="变量名"
@@ -159,7 +159,7 @@ def _format_variables(variables: list[dict] | None) -> str:
         name = item.get("name") or item.get("path") or "?"
         typ = item.get("type") or infer_type(item.get("value"))
         value = item.get("value")
-        text = str(value) if typ not in ("object", "page_ref") else repr(value)
+        text = str(value) if typ not in ("generics", "page_ref") else repr(value)
         if len(text) > 200:
             text = text[:200] + "…"
         lines.append(f"  - {name} ({typ}): {text}")

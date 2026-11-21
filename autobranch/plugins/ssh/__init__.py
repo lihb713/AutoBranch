@@ -62,7 +62,7 @@ class _ChannelState:
 
 @dataclass
 class SSHConnection:
-    """远程 SSH 会话对象（泛型 ``object`` 值）。"""
+    """远程 SSH 会话对象（``generics`` 值）。"""
 
     id: str
     client: Any | None = field(default=None, repr=False)
@@ -145,7 +145,7 @@ class SSHPlugin(PluginBase):
                 },
             },
         ),
-        returns={"session": "object"},
+        returns={"session": "generics"},
         output_param="save_to",
     )
     def create_session(

@@ -198,6 +198,7 @@ tree: 复杂入参
 inputs:
   payload: object
   items: array
+  extra: generics
 nodes:
   n1:
     type: Root
@@ -210,13 +211,14 @@ root: n1
     tree_id = _create(client, "复杂入参", yaml)
     resp = client.post(
         f"/api/trees/{tree_id}/run",
-        json={"inputs": {"payload": '{"a":1}', "items": "[1,2]"}},
+        json={"inputs": {"payload": '{"a":1}', "items": "[1,2]", "extra": "raw"}},
     )
     assert resp.status_code == 202, resp.text
     run_id = resp.json()["run_id"]
     assert mock_engine.run_inputs_log[-1] == {
         "payload": '{"a":1}',
         "items": "[1,2]",
+        "extra": "raw",
     }
     assert session.get(Run, run_id).status in ("pending", "running", "success")
 
@@ -292,6 +294,7 @@ def test_types_api(client):
     assert types["page_ref"]["constructible"] is False
     assert types["object"]["constructible"] is True
     assert types["array"]["constructible"] is True
+    assert types["generics"]["constructible"] is True
 
 
 # ------------------------------------------------------------- 经验回灌采集（任务 4.1）
@@ -469,13 +472,13 @@ class _ObjectVar:
         return "SSHConnection(id=abc)"
 
 
-def test_state_serializes_object_variables(client, mock_engine):
-    """object 变量（如 SSHConnection）在轮询响应中必须 JSON 安全。"""
+def test_state_serializes_generics_variables(client, mock_engine):
+    """generics 变量（如 SSHConnection）在轮询响应中必须 JSON 安全。"""
     mock_engine.default_final_state = ExecState(
         run_id="x",
         finished=True,
         variables=[
-            {"path": "主流程/ssh_conn", "type": "object", "value": _ObjectVar()},
+            {"path": "主流程/ssh_conn", "type": "generics", "value": _ObjectVar()},
             {"path": "主流程/count", "type": "int", "value": 3},
         ],
     )

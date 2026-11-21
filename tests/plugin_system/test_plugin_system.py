@@ -44,7 +44,7 @@ class DemoPlugin(PluginBase):
             },
             "required": ["a", "b"],
         },
-        returns={"result": "object"},
+        returns={"result": "float"},
     )
     def multiply(self, a, b):
         return a * b
@@ -71,7 +71,7 @@ def test_registration_only_marked_functions():
     reg = PluginRegistry()
     reg.register(DemoPlugin())
     assert set(reg.functions()) == {"demo.multiply", "demo.greet"}
-    assert reg.function("demo.multiply").returns == {"result": "object"}
+    assert reg.function("demo.multiply").returns == {"result": "float"}
     assert reg.function("demo.greet").is_producing
 
 

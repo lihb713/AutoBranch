@@ -26,7 +26,7 @@ from autobranch.schema.models import PageRef
 
 _GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
 _SET_TMPL = re.compile(
-    r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object))?"
+    r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|array|object|generics|page_ref))?"
 )
 
 

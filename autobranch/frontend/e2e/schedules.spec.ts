@@ -15,7 +15,7 @@ inputs:
   a: int
   b: int
 outputs:
-  total: object
+  total: int
 nodes:
   n1:
     type: Root

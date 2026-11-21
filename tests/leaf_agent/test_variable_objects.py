@@ -44,9 +44,9 @@ def _ctx(llm_config, space, transport, engine):
     )
 
 
-def test_object_param_preserved_and_variable_table_injected(llm_config, space):
+def test_generics_param_preserved_and_variable_table_injected(llm_config, space):
     conn = Conn()
-    space.write(space._current, "this/conn", conn, "object")
+    space.write(space._current, "this/conn", conn, "generics")
     transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
     ctx = _ctx(llm_config, space, transport, MockRegistry())
     node = ActionNode(description="在SSH会话 Param.conn 上执行命令")
@@ -56,12 +56,12 @@ def test_object_param_preserved_and_variable_table_injected(llm_config, space):
         m["content"] for m in transport.last_request.json()["messages"] if m["role"] == "user"
     )
     assert "Param.conn" in user_text
-    assert "conn (object): SSHConnection(id=abc)" in user_text
+    assert "conn (generics): SSHConnection(id=abc)" in user_text
 
 
-def test_param_arg_resolved_to_object(llm_config, space):
+def test_param_arg_resolved_to_generics(llm_config, space):
     conn = Conn()
-    space.write(space._current, "this/conn", conn, "object")
+    space.write(space._current, "this/conn", conn, "generics")
     engine = MockRegistry()
     engine.register("ssh.ssh_exec")
     engine.results["ssh.ssh_exec"] = FunctionResult.success("file1", "", 0)
@@ -116,7 +116,7 @@ def test_multi_return_save_to_dict(llm_config, space):
             chat_response(text="结果: 成功"),
         ]
     )
-    space.write(space._current, "this/conn", Conn(), "object")
+    space.write(space._current, "this/conn", Conn(), "generics")
     ctx = _ctx(llm_config, space, transport, engine)
     node = ActionNode(
         description="执行命令 NewParam.home_list:str NewParam.code:int",
@@ -158,7 +158,7 @@ def test_single_return_save_to_string_for_multi_return_function(llm_config, spac
             chat_response(text="结果: 成功"),
         ]
     )
-    space.write(space._current, "this/conn", Conn(), "object")
+    space.write(space._current, "this/conn", Conn(), "generics")
     ctx = _ctx(llm_config, space, transport, engine)
     node = ActionNode(
         description="执行命令 NewParam.home_list:str",
@@ -198,7 +198,7 @@ def test_save_to_json_string_is_parsed(llm_config, space):
             chat_response(text="结果: 成功"),
         ]
     )
-    space.write(space._current, "this/conn", Conn(), "object")
+    space.write(space._current, "this/conn", Conn(), "generics")
     ctx = _ctx(llm_config, space, transport, engine)
     node = ActionNode(
         description="执行命令 NewParam.home_list:str",

@@ -124,9 +124,9 @@ def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | No
             if value is None:
                 return description, f"变量未定义: {var}"
             var_type = getattr(frame, "declared", {}).get(var) or infer_type(value)
-            if var_type in ("str", "int", "float", "bool"):
+            if var_type in ("str", "int", "float", "bool", "array", "object"):
                 replaced = replaced.replace(match.group(0), str(value))
-            # object/page_ref：保留 Param.xxx，由变量表让 LLM 理解对象
+            # generics/page_ref：保留 Param.xxx，由变量表让 LLM 理解对象
         out.append(replaced)
     return "".join(out), None
 

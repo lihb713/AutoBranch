@@ -390,7 +390,7 @@ n14:
   args: [Param.a, 2]          # 位置实参：本帧变量或字面量，按序对应函数参数
   kwargs:                     # 命名可选参数：跳过中间可选参数时使用
     jump: {host: jump.internal, user: ops}
-  returns: {total: object}   # 接收名；类型取自函数 returns 声明（只读）
+  returns: {total: float}    # 接收名；类型取自函数 returns 声明（只读）
 ```
 
 - 函数不存在 / 实参少于必填或超过全部参数 / 引用仅 LLM 函数 → 保存校验 422 拒绝；可选参数可省略。可选参数推荐用 `kwargs` 按参数名传入，避免为了靠后的参数补一堆前置占位。
@@ -420,7 +420,7 @@ n15:
 ```yaml
 tree: 订单
 inputs:
-  user: str          # 入参：名 → 类型（str/int/float/bool/page_ref/object/array）
+  user: str          # 入参：名 → 类型（str/int/float/bool/array/object/generics/page_ref）
   amount: int
 outputs:
   result: str        # 出参：名称 → 类型（执行后对外返回）
@@ -429,14 +429,14 @@ nodes: ...
 
 - **入参**：执行时由外部提供（前端弹框填写或 API 传入）；叶子用 `Param.user` 读取。
 - **出参**：执行结束后引擎读根帧，报告页/执行列表展示。
-- **不可由文本构造的入参类型**（如 `page_ref`）：前端不显示"执行"按钮，该树**只能被其他树 `ref` 调用**（调用方在运行期提供页面对象）。
+- **不可由文本构造的入参类型**（仅 `page_ref`）：前端不显示"执行"按钮，该树**只能被其他树 `ref` 调用**（调用方在运行期提供页面对象）。`array`/`object` 用 JSON 文本（`[...]` / `{...}`）传入，`generics` 原样传入。
 
 ### 6.6 一个完整可执行示例
 
 ```yaml
 tree: 表格求和演示
 outputs:
-  total: object
+  total: float
 nodes:
   n1: {type: Root, name: 根, body: n2}
   n2: {type: Sequence, name: 主流程, actions: [n3, n5]}
@@ -499,7 +499,7 @@ root: n1
 
 「行为树管理」页有「导入文档」（选择 `.yaml/.yml/.md/.txt` 文件，自动解析树名）与「新建行为树」；每行提供「导出」按钮，将当前完整文档下载为 `<行为树名>.yaml`（草稿/正式版均可导出）。也可直接在列表行点「编辑」进入已有树。
 
-调度管理中新建调度时，选择目标行为树后会自动加载其 `inputs` 声明并渲染入参表单（str/int/float/bool），无需手写 JSON；含 `page_ref`/`object` 等不可构造入参的树不会出现在目标下拉中。
+调度管理中新建调度时，选择目标行为树后会自动加载其 `inputs` 声明并渲染入参表单（str/int/float/bool/array/object/generics，array/object 填 JSON），无需手写 YAML；仅含 `page_ref` 等不可构造入参的树不会出现在目标下拉中。
 
 ---
 
@@ -515,7 +515,7 @@ n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
 
 - 读取的变量必须是：文档 `inputs` 声明、文档内某处 `NewParam.x` 写入声明、`ref`/`FunctionCall` 的 `returns` 目标、或 `Define` 声明的变量。否则清晰度校验报 `scope.get_undeclared`。
 - 未定义的读取 → 该叶子直接 FAILURE（程序错误）。
-- **基本类型**（str/int/float/bool）会替换成真实值；**对象类型**（`object`/`page_ref`）保留 `Param.x` 原文，同时在用户消息的「当前变量表」中展示对象类型与值，供 LLM 在函数参数中引用。
+- **基本类型**（str/int/float/bool/array/object）会替换成真实值；**不确定/引用类型**（`generics`/`page_ref`）保留 `Param.x` 原文，同时在用户消息的「当前变量表」中展示类型与值，供 LLM 在函数参数中引用。
 
 ### 8.2 写入：`NewParam.x[:类型]`（仅 Action 描述）
 
@@ -525,7 +525,7 @@ n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
 n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
 ```
 
-- 类型 token：`str` / `int` / `float` / `bool` / `page_ref` / `object`（可省略，按动作推断）。
+- 类型 token：`str` / `int` / `float` / `bool` / `array` / `object` / `generics` / `page_ref`（可省略，按动作推断）。
 - 产出型工具的目标必须在 `NewParam.` 声明集内，否则拒绝写入。
 - `NewParam.` **只能出现在 Action 的 `description`**；Condition 描述只能读取，不能声明写入。
 - **对象变量**：工具参数可以直接写 `Param.x` 引用变量中的对象（如 `session="Param.ssh_conn"`、`page="Param.tab"`），引擎调用前会解析为实际对象。
@@ -562,8 +562,12 @@ n15:
 | token | 含义 |
 |---|---|
 | `str` / `int` / `float` / `bool` | 基础标量 |
-| `page_ref` | 页签引用（只能由引擎 `open` 产生，不能由文本构造） |
-| `object` | 泛型对象（页面对象/会话/文件句柄等插件对象） |
+| `array` | 列表（JSON 数组文本可构造） |
+| `object` | 字典（JSON 对象文本可构造） |
+| `generics` | 不确定类型（页面对象/会话/文件句柄等任意值） |
+| `page_ref` | 自定义页签引用（不能由文本构造；浏览器 `open` 当前返回 `PageObject`，声明为 `generics`） |
+
+> 旧树迁移：原来用 `object` 承载页面对象/SSH 会话/文件句柄的声明请改为 `generics`；承载 Python list 的声明请改为 `array`；真正承载 dict 的继续用 `object`。
 
 ### 8.5 变量从哪里来
 
@@ -637,7 +641,7 @@ n15:
 
 ### 10.1 浏览器插件 `browser`
 
-页面对象用 `open` 返回（泛型 `object` 可存变量），元素引用 `ref`（如 `[1]`）来自最近一次 `semantic_graph`（**每次语义图生成后旧 ref 失效**，需重新获取）。
+页面对象用 `open` 返回（`generics` 类型可存变量），元素引用 `ref`（如 `[1]`）来自最近一次 `semantic_graph`（**每次语义图生成后旧 ref 失效**，需重新获取）。
 
 | 函数 | 可见性 | 参数 | 说明 |
 |---|---|---|---|
@@ -699,7 +703,7 @@ n15:
 | `compare` | `a`、`b`、`op`（可选，默认 gt） | 比较结果（gt/ge/lt/le/eq/ne） |
 | `sort` | `data`（列表）、`desc`（可选） | 排序后的列表 |
 
-FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: object}`。接收名默认自动生成（如 `n3_total`），类型取函数声明、用户不可编辑。
+FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: float}`。接收名默认自动生成（如 `n3_total`），类型取函数声明、用户不可编辑。数组/对象字面量参数写 JSON，执行时按函数参数类型构造。
 
 ### 10.2b 数据变换插件 `transform`
 
@@ -805,7 +809,7 @@ class Demo(PluginBase):
         name="double",
         description="翻倍",
         parameters={"type": "object", "properties": {"x": {"type": "number"}}, "required": ["x"]},
-        returns={"result": "object"},
+        returns={"result": "float"},
     )
     def double(self, x: float) -> float:
         return x * 2
@@ -814,7 +818,7 @@ plugin = Demo()
 ```
 
 - **只有 `@engine_function` / `@llm_function` 标注的函数才注册**，键 = 全名 `demo.double`。
-- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/page_ref/object/array`）。
+- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/array/object/generics/page_ref`）。不确定类型用 `generics`，不要用 `object` 兜底。
   `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
 - 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
 - 产出型函数：`output_param` 声明变量目标参数（如 `extract` 的 `target`、SSH 的 `save_to`），引擎落笔写变量；`save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值）。
@@ -934,7 +938,7 @@ autobranch/plugins/browser/proxy.config.json
 
 - **节点类型**：`Root` `Sequence` `Step` `IfThenElse` `Branch` `Retry` `LoopUntil` `ForEach` `Action` `ref` `FunctionCall` `Define`
 - **变量**：`Param.x`（读） / `NewParam.x[:type]`（写，仅 Action 描述） / `returns` 键为裸 ASCII 名 / `Define` 声明变量 / 变量名仅 ASCII
-- **类型 token**：`str` `int` `float` `bool` `page_ref` `object`
+- **类型 token**：`str` `int` `float` `bool` `array` `object` `generics` `page_ref`
 - **主配置**：`autobranch.config.json`（llm / browser / run / max_concurrent_runs / scheduler_tick_seconds / timezone / experience_*）
 - **代理配置**：`autobranch/plugins/browser/proxy.config.json`
 - **内置插件**：`browser` `compute` `ssh` `file` `http` `vars` `transform`；函数全名 `插件名.函数名`

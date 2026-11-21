@@ -169,12 +169,12 @@
 #### Scenario: args 与函数签名对齐
 - **WHEN** `args` 数量 / 类型与函数入参声明不匹配
 - **THEN** 清晰度校验判定参数不匹配，报告指明问题
-### Requirement: 泛型对象类型
+### Requirement: 容器类型与泛型类型
 
-文档级 `inputs` / `outputs` 与 `returns` 的类型 token SHALL 支持泛型对象类型 `object`（除 `str` / `int` / `float` / `bool` 外）。`object` 用于承载插件对象（页面对象 / 会话 / 文件句柄…），解析层对其不做具体类型校验。
+文档级 `inputs` / `outputs` 与 `returns` 的类型 token SHALL 支持基本容器类型 `array`（list）、`object`（dict）、不确定类型 `generics` 与自定义 `page_ref`（除 `str` / `int` / `float` / `bool` 外）。`generics` 用于承载页面对象/会话/文件句柄等无法归类的值，解析层只校验 token 已登记。
 
-#### Scenario: 声明 object 类型参数
-- **WHEN** 文档声明 `inputs: {会话: object}` 或 `returns: {会话: object}`
+#### Scenario: 声明容器与泛型类型参数
+- **WHEN** 文档声明 `inputs: {items: array, payload: object, 会话: generics}`
 - **THEN** 解析通过，类型 token 合法
 
 

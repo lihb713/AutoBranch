@@ -1,4 +1,4 @@
-> **模块重编号**：原 **M3 schema 命名空间** 重编号为 **M2**。类型系统新增泛型 `object`。
+> **模块重编号**：原 **M3 schema 命名空间** 重编号为 **M2**。类型系统含基本容器类型 `array`/`object`、不确定类型 `generics` 与自定义 `page_ref`。
 
 # M3 · schema 命名空间 Spec
 
@@ -101,15 +101,19 @@ TYPE_REGISTRY = {
     "int":      TypeSpec("int", int,       _to_int),            # 真整数（排除 bool）
     "float":    TypeSpec("float", float,   _to_float),          # 数字/金额
     "bool":     TypeSpec("bool", bool,     _to_bool),           # 布尔
-    "page_ref": TypeSpec("page_ref", PageRef, None),            # 页签引用，仅引擎 open() 产生
-    "object":   TypeSpec("object", object, _to_object),         # 泛型对象；JSON 文本可解析
-    "array":    TypeSpec("array", list,    _to_array),          # 列表；JSON 数组文本可解析
+    "array":    TypeSpec("array", list,    _to_array),          # 基本类型：列表；JSON 数组文本可解析
+    "object":   TypeSpec("object", dict,   _to_object),         # 基本类型：字典；JSON 对象文本可解析
+    "generics": TypeSpec("generics", object, _identity),        # 不确定类型：任意值，不校验
+    "page_ref": TypeSpec("page_ref", PageRef, None),            # 自定义类型：页签引用，仅引擎 open() 产生
 }
 ```
 
-- **类型即真实存储类型**：`set` 标注驱动的 `coerce(token, raw)` 把网页 str 转成声明的 Python 类型后存储；`cast is None`（仅 page_ref）拒绝文本转换，只能由引擎函数产生。
-- `object` 的文本入参按 JSON 解析（失败则保留原字符串）；`array` 的文本入参必须解析为 JSON 数组。
-- `infer_type`：list → `array`，dict → `object`，其余按标量推断。
+- **基本类型**：`str/int/float/bool/array/object`。`array` 存 Python `list`，`object` 存 Python `dict`。
+- **不确定类型**：`generics`，用于插件返回的页面对象/会话/文件句柄等无法归入基本类型的值；任意值原样存储、不校验。
+- **自定义类型**：`page_ref`（PageRef），不允许文本构造；浏览器插件当前以 `generics` 承载 `PageObject`。
+- **类型即真实存储类型**：`coerce(token, raw)` 只把用户输入文本转成声明的 Python 类型；函数返回值本来就是 list/dict 时原样写入，不重复转换。
+- `array` / `object` 文本入参必须是 JSON 数组 / JSON 对象；`generics` 原样保留。
+- `infer_type`：list → `array`，dict → `object`，标量按对应 token，其他对象 → `generics`。
 - 校验统一 `isinstance`（`autobranch/schema/types.py` 的 `check_type`），`bool` 是 `int` 子类须排除。
 - 类型不匹配 / 转换失败 → `SchemaTypeError` 断言失败并终止（§5.3.5），M7 捕获基类 `SchemaError` 沿树传播。
 - `validate_type_name`：未登记类型 token → 断言失败；`infer_type`：按值推断英文 token（无声明时的后备，配置参数用）。
@@ -163,8 +167,11 @@ TYPE_REGISTRY = {
 - 测试总数：63 项（M3），`pytest` 全绿、`ruff check .` 无告警。
 
 
-## 8. 泛型对象类型 object（能力插件化新增，已实现）
+## 8. 基本容器类型与泛型（已实现）
 
-`TYPE_REGISTRY` 新增 `object` token：**泛型对象类型**——接受任意对象值（不校验），呈现用 `str(value)`（由对象的 `__str__` 定义），用于承载插件对象（页面对象 / 会话 / 文件句柄…）；`coerce("object", "{\"a\":1}")` 解析为 dict，非 JSON 文本原样返回；`check_type("object", v)` 恒通过。另新增 `array` token（Python `list`），文本入参必须为 JSON 数组。
+- `array`：Python `list`，用户文本必须是 JSON 数组，如 `[1, 2]`。
+- `object`：Python `dict`，用户文本必须是 JSON 对象，如 `{"host": "x"}`。
+- `generics`：不确定类型，接受任意 Python 值（页面对象 / SSH 会话 / 文件句柄等），不校验、不转换。
+- `page_ref`：保留的自定义页签引用类型，不能由文本构造；浏览器插件当前 `open()` 返回 `PageObject`，声明为 `generics`。
 
-`page_ref` 泛型化为浏览器插件的对象（`PageObject`）；引擎核心不再有 `page_ref` / 页面变量概念（页面对象作为 `object` 值在变量中存储与传递）。
+函数返回值保存到黑板时保留原始 Python 类型：返回 list 就是 `array`，返回 dict 就是 `object`，返回插件对象则声明为 `generics`。文本→类型的转换只发生在用户输入/行为树字面量边界。

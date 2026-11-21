@@ -111,17 +111,22 @@
 - **THEN** 读取返回空值，不产生祖先帧的值
 ### Requirement: 类型契约
 
-创建变量 SHALL 声明类型（`TYPE_REGISTRY` token 之一：`str`、`int`、`float`、`bool`、`object`）；类型即真实存储类型，`set` 标注驱动的 `coerce` SHALL 把网页提取值转成声明类型后存储；写入与提取时系统 SHALL 强校验类型（`isinstance`），类型不匹配或转换失败导致断言失败并终止流程。`object` 为**泛型对象类型**——不校验（任意对象值），呈现用 `str(value)`（由对象类型的 `__str__` 定义），用于承载插件对象（页面对象 / 会话 / 文件句柄…）；引擎 SHALL 记录其实际类型（来自产出函数声明的返回类型）供黑板/报告展示。`object` SHALL 接受任意对象值（不校验具体类型）；对象在报告 / 黑板中按 `repr` 截断展示（防超长）。语义类型（金额/订单号/URL/日期 等）不占类型位，本质为 str/float 等基础类型。
+创建变量 SHALL 声明类型（`TYPE_REGISTRY` token 之一：`str`、`int`、`float`、`bool`、`array`、`object`、`generics`、`page_ref`）。`array`/`object` 为基本类型，分别对应 Python `list`/`dict`；`generics` 为不确定类型（任意值，不校验）；`page_ref` 为自定义页签引用类型。类型即真实存储类型，用户文本经 `coerce` 转成声明类型后存储；函数返回值已是 list/dict 时原样保存，不重复转换。写入与提取时系统 SHALL 强校验类型（`isinstance`），类型不匹配或转换失败导致断言失败并终止流程。`generics`/`page_ref` 在报告 / 黑板中按 `repr` 截断展示。语义类型（金额/订单号/URL/日期 等）不占类型位，本质为 str/float 等基础类型。
 
 #### Scenario: 合法类型值写入成功
 
 - **WHEN** 块声明变量类型为 `float` 并写入合法数值
 - **THEN** 写入成功且校验通过
 
-#### Scenario: 泛型对象值写入
+#### Scenario: 泛型值写入
 
-- **WHEN** 块声明变量类型为 `object` 并写入插件对象（页面对象 / 会话 / 文件句柄）
-- **THEN** 写入成功（不校验具体类型），黑板/报告以 `str(value)` 呈现，并记录实际类型
+- **WHEN** 块声明变量类型为 `generics` 并写入插件对象（页面对象 / 会话 / 文件句柄）
+- **THEN** 写入成功（不校验具体类型），黑板/报告以 `repr` 截断呈现
+
+#### Scenario: 字典写入 object
+
+- **WHEN** 块声明变量类型为 `object` 并写入 Python dict
+- **THEN** 写入成功；写入非 dict 值被拒绝
 
 #### Scenario: 非法类型值写入被拒绝
 
@@ -151,10 +156,14 @@
 - **WHEN** Ref 帧挂载 root
 - **THEN** 不能读取调用方行为树帧的局部变量
 
-### Requirement: 对象与数组文本构造
+### Requirement: 数组与对象文本构造
 
-类型系统 SHALL 支持 `object` 与 `array` 作为树入参/变量/返回值类型；`object` 文本按 JSON 解析（失败保留原字符串），`array` 文本必须是 JSON 数组；只有 `page_ref` 不可由文本构造。
+类型系统 SHALL 将 `array` 与 `object` 作为基本类型；`object` 文本必须是 JSON 对象，`array` 文本必须是 JSON 数组；`generics` 为不确定类型（任意值原样保留）；只有 `page_ref` 不可由文本构造。文本→类型转换仅发生在用户输入/字面量边界，函数返回的 list/dict 直接保存。
 
 #### Scenario: JSON 文本入参
 - **WHEN** 树声明 `payload: object` 或 `items: array` 并传入 JSON 文本
 - **THEN** 运行时构造为 dict / list，而不是 422 拒绝
+
+#### Scenario: 函数返回数组直接入黑板
+- **WHEN** 插件返回 Python list 并保存到变量
+- **THEN** 变量类型为 array，值为原 list，不转成字符串

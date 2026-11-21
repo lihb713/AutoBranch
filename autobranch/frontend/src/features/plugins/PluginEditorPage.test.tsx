@@ -99,7 +99,7 @@ describe("PluginEditorPage", () => {
         plugin: "browser",
         name: "open",
         description: "打开页面",
-        returns: { page: "object" },
+        returns: { page: "generics" },
         parameters: {
           type: "object",
           properties: { url: { type: "string", description: "URL" } },

@@ -131,7 +131,7 @@ GET    /api/runs/{id}                 执行详情含关联调度摘要（规则
 - 目标树必须存在且为 `published`；依赖树必须存在；目标不能依赖自身。
 - 依赖图不得成环。
 - `interval` 必须提供数值+单位；`cron` 必须提供周期+时间；week 必须提供星期。
-- 静态入参通过 `validate_run_inputs`：`page_ref` 等不可构造类型 / 缺少必填入参 → 422（与手动执行一致）；`object`/`array` 支持 JSON 文本。
+- 静态入参通过 `validate_run_inputs`：`page_ref` 不可构造 / 缺少必填入参 → 422（与手动执行一致）；`array`/`object` 支持 JSON 数组/对象文本，`generics` 原样接收。
 
 ## 6. 前端
 

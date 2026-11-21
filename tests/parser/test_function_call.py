@@ -1,11 +1,14 @@
-"""FunctionCall 节点解析 / 函数引用校验 / 泛型 object 类型（组 3）。"""
+"""FunctionCall 节点解析 / 函数引用校验 / 泛型与对象类型（组 3）。"""
 
 from __future__ import annotations
 
 import types
 
+import pytest
+
 from autobranch.parser import parse
 from autobranch.parser.models import DocumentSource, FunctionCallNode, SequenceNode
+from autobranch.schema.errors import SchemaTypeError
 from autobranch.schema.types import check_type, coerce, validate_type_name
 
 
@@ -47,7 +50,7 @@ def _doc(
         id="t",
         data={
             "tree": "t",
-            "inputs": {"session": "object"},
+            "inputs": {"session": "generics"},
             "nodes": {
                 "r": {"type": "Root", "body": "n1"},
                 "n1": node,
@@ -215,14 +218,21 @@ def test_function_call_missing_function_field():
 
 def test_object_type_token_declared():
     result = parse(_doc(), None, function_registry=FakeRegistry())
-    assert result.decl_inputs == {"session": "object"}
+    assert result.decl_inputs == {"session": "generics"}
     assert result.checks.ok
 
 
 def test_object_type_coerce_and_check():
     validate_type_name("object")
+    assert coerce("object", '{"host": "x"}') == {"host": "x"}
+    check_type("object", {"host": "x"})
+    with pytest.raises(SchemaTypeError):
+        check_type("object", "任何值")
+
+
+def test_generics_type_accepts_any_value():
+    validate_type_name("generics")
     page = types.SimpleNamespace(id="p1", url="http://x")
-    assert coerce("object", page) is page
-    check_type("object", page)
-    check_type("object", "任何值")
-    assert coerce("object", "str 也原样")
+    assert coerce("generics", page) is page
+    check_type("generics", page)
+    check_type("generics", "任何值")

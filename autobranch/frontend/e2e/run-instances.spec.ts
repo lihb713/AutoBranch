@@ -21,7 +21,7 @@ inputs:
   a: int
   b: int
 outputs:
-  total: object
+  total: int
 nodes:
   n1:
     type: Root
@@ -33,6 +33,38 @@ nodes:
     function: compute.add
     args: [Param.a, Param.b]
     returns: {total: int}
+root: n1
+`;
+
+const COMPLEX_NAME = `容器入参${Date.now()}`;
+const COMPLEX_YAML = `tree: ${COMPLEX_NAME}
+inputs:
+  items: array
+  payload: object
+outputs:
+  joined: str
+  url: str
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Sequence
+    name: 串联
+    actions: [n3, n4]
+  n3:
+    type: FunctionCall
+    name: 拼接列表
+    function: transform.join
+    args: [Param.items, ","]
+    returns: {joined: str}
+  n4:
+    type: FunctionCall
+    name: 格式化 URL
+    function: transform.format
+    args: ["http://{host}:{port}/api", Param.payload]
+    returns: {url: str}
 root: n1
 `;
 
@@ -55,6 +87,7 @@ root: n1
 test.beforeAll(async () => {
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
   await createTree(api, COMPUTE_NAME, COMPUTE_YAML);
+  await createTree(api, COMPLEX_NAME, COMPLEX_YAML);
   await createTree(api, PAGE_REF_NAME, PAGE_REF_YAML);
   await api.dispose();
 });
@@ -109,6 +142,25 @@ test("带入参执行 → 报告出参 → 执行列表展示 → 重试", async
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText('{"a":2,"b":3}');
   await expect(rows.last()).toContainText('{"a":2,"b":3}');
+});
+
+test("array/object 入参按 JSON 构造并执行", async ({ page }) => {
+  await page.goto("/");
+  const row = page.locator('[data-testid^="tree-row-"]', { hasText: COMPLEX_NAME });
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "执行" }).click();
+
+  const dialog = page.getByTestId("run-input-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId("input-value-items").fill("[1,2,3]");
+  await dialog.getByTestId("input-value-payload").fill('{"host":"example.test","port":8080}');
+  await dialog.getByTestId("run-dialog-confirm").click();
+  await page.waitForURL(/\/runs\/\d+/);
+
+  const outputs = page.getByTestId("outputs-section");
+  await expect(outputs).toBeVisible({ timeout: 120_000 });
+  await expect(outputs).toContainText('"joined": "1,2,3"');
+  await expect(outputs).toContainText('"url": "http://example.test:8080/api"');
 });
 
 test("含不可构造入参（page_ref）的树不渲染执行按钮", async ({ page }) => {

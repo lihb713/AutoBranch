@@ -71,8 +71,10 @@ beforeEach(() => {
     { token: "int", constructible: true },
     { token: "float", constructible: true },
     { token: "bool", constructible: true },
+    { token: "array", constructible: true },
+    { token: "object", constructible: true },
+    { token: "generics", constructible: true },
     { token: "page_ref", constructible: false },
-    { token: "object", constructible: false },
   ]);
 });
 

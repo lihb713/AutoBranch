@@ -57,7 +57,7 @@ ref 节点的「目标文档」下拉 SHALL 支持输入过滤（行为树文档
 
 ### Requirement: 复杂值编辑
 
-树编辑器 SHALL 支持 `array` 类型 token；FunctionCall 必填参数若由 `kwargs` 提供，属性面板入参区 SHALL 回显其值并标注命名参数；Define 的 object/array 值 SHALL 以 JSON 文本编辑并与 YAML dict/list 无损往返。
+树编辑器 SHALL 支持 `array`/`object`/`generics`/`page_ref` 类型 token；FunctionCall 必填参数若由 `kwargs` 提供，属性面板入参区 SHALL 回显其值并标注命名参数；Define 的 object/array 值 SHALL 以 JSON 文本编辑并与 YAML dict/list 无损往返。
 
 #### Scenario: 必填 kwargs 回显
 - **WHEN** 节点 args 为空、kwargs 含必填参数

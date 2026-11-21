@@ -52,7 +52,7 @@
 - `FunctionCall` 默认接收类型 = `spec.returns[name]`。
 - `ref` 默认接收类型 = 目标文档 `outputs[name]`。
 - 节点 `returns` 仍存 `{接收名: 类型}`，类型只读、自动刷新。
-- 泛型/多态返回使用合法类型 token `object`（如页面对象、列表、int|float）。
+- 多态/不确定返回使用合法类型 token `generics`；列表用 `array`、字典用 `object`、页面对象用 `generics`。
 
 ### D4. 默认名与冲突
 

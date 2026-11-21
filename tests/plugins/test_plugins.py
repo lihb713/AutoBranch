@@ -550,7 +550,7 @@ def test_ssh_functions_declare_save_to():
     reg.register(SSHPlugin())
     create = reg.function("ssh.create_session")
     assert create.output_param == "save_to"
-    assert create.returns == {"session": "object"}
+    assert create.returns == {"session": "generics"}
     exec_spec = reg.function("ssh.ssh_exec")
     assert exec_spec.output_param == "save_to"
     assert exec_spec.returns == {

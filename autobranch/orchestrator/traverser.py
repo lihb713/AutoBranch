@@ -312,8 +312,12 @@ class Traverser:
                 for name, value in values.items():
                     item = value[index] if name in list_names else value
                     value_type = (
-                        "object"
-                        if item is None or isinstance(item, (list, dict, tuple))
+                        "generics"
+                        if item is None
+                        else "array"
+                        if isinstance(item, list)
+                        else "object"
+                        if isinstance(item, dict)
                         else infer_type(item)
                     )
                     space.write(frame, f"this/{name}", item, value_type)
@@ -364,6 +368,16 @@ class Traverser:
 
     # ------------------------------------------------------------ 叶子触发
 
+    @staticmethod
+    def _coerce_function_arg(
+        name: str, value: object, property_defs: dict
+    ) -> object:
+        """用户填写的 array/object 字面量按函数参数类型构造为 list/dict。"""
+        type_name = (property_defs.get(name) or {}).get("type")
+        if type_name in ("array", "object"):
+            return coerce(type_name, value)
+        return value
+
     def _tick_function_call(self, node: FunctionCallNode) -> NodeStatus:
         """FunctionCall 节点：确定性调用插件函数（不经 LLM），回收返回值。"""
         meta = self._meta_stack[-1] if self._meta_stack else {}
@@ -386,7 +400,8 @@ class Traverser:
             )
         frame = self.ctx.current_frame
         required = list((spec.parameters or {}).get("required", []))
-        properties = list((spec.parameters or {}).get("properties", {}))
+        property_defs = dict((spec.parameters or {}).get("properties", {}))
+        properties = list(property_defs)
         param_names = properties or required
         if len(node.args) > len(param_names):
             return (
@@ -402,7 +417,13 @@ class Traverser:
             val = self._eval_arg(frame, expr)
             if val is _MISSING:
                 return self._note_failure(node, f"实参 '{expr}' 求值失败（变量未定义）") or FAILURE
-            args[name] = val
+            try:
+                args[name] = self._coerce_function_arg(name, val, property_defs)
+            except SchemaError as exc:
+                return (
+                    self._note_failure(node, f"实参 {name} 类型转换失败: {exc}")
+                    or FAILURE
+                )
         for name, raw in node.kwargs or ():
             if name not in param_names or name in args:
                 return self._note_failure(node, f"命名参数非法或重复: {name}") or FAILURE
@@ -414,7 +435,13 @@ class Traverser:
                     )
                     or FAILURE
                 )
-            args[name] = val
+            try:
+                args[name] = self._coerce_function_arg(name, val, property_defs)
+            except SchemaError as exc:
+                return (
+                    self._note_failure(node, f"命名参数 {name} 类型转换失败: {exc}")
+                    or FAILURE
+                )
         missing = [name for name in required if name not in args]
         if missing:
             return (

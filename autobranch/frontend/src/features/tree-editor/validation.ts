@@ -64,7 +64,7 @@ function literalMatches(typ: string, value: string): boolean {
   return true;
 }
 
-const SET_TMPL = /(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|page_ref|object|array))?/g;
+const SET_TMPL = /(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::(str|int|float|bool|array|object|generics|page_ref))?/g;
 
 const DEPRECATED_RX = /\[\[\s*(?:get|set)\s*:|(?<![\w$])this\//;
 const INVALID_NAME_RX = /(?<![A-Za-z0-9_])(?:Param|NewParam)\.(\d)/;

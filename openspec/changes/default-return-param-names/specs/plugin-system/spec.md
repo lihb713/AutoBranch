@@ -5,7 +5,7 @@
 插件函数声明多返回值时，`FunctionDef.returns` SHALL 为 `{返回参数名: 类型}` 映射：
 
 - 返回参数名必须是裸 ASCII 标识符 `[A-Za-z_][A-Za-z0-9_]*`；
-- 类型必须是 `TYPE_REGISTRY` 合法 token（如 `str/int/float/bool/page_ref/object`）。
+- 类型必须是 `TYPE_REGISTRY` 合法 token（如 `str/int/float/bool/array/object/generics/page_ref`）。
 
 注册或校验插件遇到非法返回声明 MUST 拒绝（注册报 `PluginError`，插件校验接口返回可定位错误），且不注册该函数/插件。
 

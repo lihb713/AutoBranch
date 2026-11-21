@@ -60,7 +60,7 @@
 
 ### Requirement: 不可构造入参禁直接执行
 
-系统 SHALL 在触发直接执行时校验该树全部入参类型是否**可由文本构造**（标量 str/int/float/bool 可构造；page_ref/object 不可构造）；含不可构造入参时 SHALL 拒绝直接执行（422 并说明原因），该树仅能经 `ref` 由其他树在运行期提供变量值调用。
+系统 SHALL 在触发直接执行时校验该树全部入参类型是否**可由文本构造**（str/int/float/bool/array/object/generics 可构造；仅 page_ref 不可构造，其中 array/object 要求 JSON 数组/对象文本）；含不可构造入参时 SHALL 拒绝直接执行（422 并说明原因），该树仅能经 `ref` 由其他树在运行期提供变量值调用。
 
 #### Scenario: 含不可构造入参拒绝直接执行
 
@@ -79,7 +79,7 @@
 #### Scenario: 查询类型可构造性
 
 - **WHEN** 前端请求 `GET /api/types`
-- **THEN** 返回内建类型清单（str/int/float/bool 可构造，page_ref/object 不可构造）与可构造标志
+- **THEN** 返回类型清单（str/int/float/bool/array/object/generics 可构造，page_ref 不可构造）与可构造标志
 
 #### Scenario: 前端按可构造性渲染入参表单
 

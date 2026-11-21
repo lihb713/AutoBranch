@@ -2,12 +2,12 @@
 
 ## Purpose
 
-SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等；会话对象作为泛型对象值在变量中传递。
+SSH 能力插件：创建 / 关闭远程会话、在远程主机执行命令等；会话对象作为 `generics` 值在变量中传递。
 
 ## Requirements
 ### Requirement: SSH 会话与远程执行
 
-系统 SHALL 通过 SSH 插件提供：创建会话、关闭会话、在远程主机执行命令等函数；会话对象 SHALL 作为泛型对象值存储与传递，函数只返回值、不写变量。会话创建 SHALL 支持端口、密码/密钥、连接超时、SOCKS5 代理与 SSH 跳板机；有跳板机时 proxy 仅用于连接跳板机；跳板机到目标机 SHALL 在跳板机 PTY shell 中执行 `ssh` 命令（不使用 `direct-tcpip`，以兼容禁止通道转发的环境），目标认证 SHALL 使用密码 `pwd`。
+系统 SHALL 通过 SSH 插件提供：创建会话、关闭会话、在远程主机执行命令等函数；会话对象 SHALL 作为 `generics` 值存储与传递，函数只返回值、不写变量。会话创建 SHALL 支持端口、密码/密钥、连接超时、SOCKS5 代理与 SSH 跳板机；有跳板机时 proxy 仅用于连接跳板机；跳板机到目标机 SHALL 在跳板机 PTY shell 中执行 `ssh` 命令（不使用 `direct-tcpip`，以兼容禁止通道转发的环境），目标认证 SHALL 使用密码 `pwd`。
 
 `ssh_exec` 默认 SHALL 以非交互模式流式读取 stdout/stderr，等待 SSH 通道 exit-status 后返回 stdout/stderr/exit_code，非零退出码作为失败；交互模式（`interactive=true`）SHALL 使用 PTY，idle 超时后返回当前输出与 `channel_id`，并通过 `ssh_send`/`ssh_read`/`ssh_close_channel` 持续交互。
 

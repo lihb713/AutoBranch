@@ -29,7 +29,7 @@ class _Reporter:
 def _context(leaf):
     space = SchemaSpace()
     frame = space.enter_frame("t", None)
-    space.write(frame, "env_ids", ["a", "b", "c"], "object")
+    space.write(frame, "env_ids", ["a", "b", "c"], "array")
     ctx = RunContext(
         config=RunConfig(),
         space=space,
@@ -91,7 +91,7 @@ def test_foreach_continue_and_abort():
 def test_foreach_collect_results_with_transform_append():
     space = SchemaSpace()
     frame = space.enter_frame("t", None)
-    space.write(frame, "items", ["a", "b"], "object")
+    space.write(frame, "items", ["a", "b"], "array")
     space.write(frame, "results", "", "str")
     reg = PluginRegistry()
     reg.register(TransformPlugin())
@@ -119,7 +119,7 @@ def test_foreach_collect_results_with_transform_append():
 def test_foreach_mismatched_list_lengths_fails():
     ctx, space = _context(lambda _n, _t: LeafResult(status="success"))
     frame = space._current
-    space.write(frame, "other", ["x"], "object")
+    space.write(frame, "other", ["x"], "array")
     node = ForEachNode(
         variables=(("a", "Param.env_ids"), ("b", "Param.other")),
         body=ActionNode(description="处理"),

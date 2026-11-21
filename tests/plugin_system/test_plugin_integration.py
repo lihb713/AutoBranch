@@ -83,10 +83,42 @@ def test_function_call_substitutes_embedded_param_text():
     node = FunctionCallNode(
         function="transform.split",
         args=("Param.prefix,a", ","),
-        returns=(("parts", "object"),),
+        returns=(("parts", "array"),),
     )
     assert Traverser(ctx).tick(node) == "success"
     assert space.read(frame, "parts") == ["x", "a"]
+
+
+def test_function_call_json_literals_coerced_by_param_type():
+    from autobranch.plugins.transform import TransformPlugin
+
+    reg = PluginRegistry()
+    reg.register(TransformPlugin())
+    space = SchemaSpace()
+    frame = space.enter_frame("t", None)
+    ctx = RunContext(
+        config=RunConfig(),
+        space=space,
+        reporter=_FakeReporter(),
+        browser=None,
+        leaf_executor=lambda n, t: None,
+        registry=reg,
+        runtime=PluginRuntime(),
+    )
+    arr = FunctionCallNode(
+        function="transform.join",
+        args=("[1,2]", ","),
+        returns=(("text", "str"),),
+    )
+    obj = FunctionCallNode(
+        function="transform.format",
+        args=("http://{host}:{port}", '{"host":"x","port":81}'),
+        returns=(("url", "str"),),
+    )
+    assert Traverser(ctx).tick(arr) == "success"
+    assert space.read(frame, "text") == "1,2"
+    assert Traverser(ctx).tick(obj) == "success"
+    assert space.read(frame, "url") == "http://x:81"
 
 
 def test_function_call_node_passes_optional_args():

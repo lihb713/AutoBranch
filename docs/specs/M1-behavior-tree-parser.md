@@ -152,7 +152,7 @@ class RefNode(Node):
 
 - 统一槽位模型下，分支目标不支持裸字符串 = `ref: <文档名>` 简写（旧 §4.3.2「分支目标 = 文档引用」写法已废除）——`Branch.branches[].action` 与 `otherwise` 均为槽位字段，值为子树根 id；跨文档复用由分支子树里的 `ref` 节点承担。
 - 配置参数覆盖在文档顶层识别（`timeout`/`retry`/`browser` 标量），未声明不要求用户书写（§4.2/§5.7.5）。
-- 变量作用域校验（§5.3.2）：语法 `Param.变量`（读取：Action/Condition 描述、ref/FunctionCall 的 args）/`NewParam.变量[:类型]`（写入声明，**仅 Action 的 description**）——**ASCII 裸变量名**（作用于当前文档执行帧），无层级；接收 `ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（含 `.` 如 `NewParam.x`/非 ASCII → `syntax.invalid_return_name`）；旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已废弃（解析到 → `syntax.deprecated`）。跨帧传参经 ref args/returns。**读取已定义校验**：`Param.x` 的 x 必须是本文档 inputs 声明、文档内 `NewParam.` 写入声明、ref/FunctionCall returns 目标或 `Define` 声明变量，否则 `scope.get_undeclared`（output 声明不构成读取源）。`ActionNode.set_targets` 记录动作的 `NewParam.` 可写集（裸变量名）；`ActionNode.set_decls` 记录类型标注 `NewParam.pageRef:page_ref`（存页签引用 PageRef）与 `NewParam.url:str`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/page_ref/object/array），type 为空串时按动作推断；`DefineNode.vars` 记录 `(名, 类型, 值表达式)`，值为字面量或 `Param.x`，声明变量计入已定义；`Param.x` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
+- 变量作用域校验（§5.3.2）：语法 `Param.变量`（读取：Action/Condition 描述、ref/FunctionCall 的 args）/`NewParam.变量[:类型]`（写入声明，**仅 Action 的 description**）——**ASCII 裸变量名**（作用于当前文档执行帧），无层级；接收 `ref`/`FunctionCall` 的 `returns` 键为**裸 ASCII 名**（含 `.` 如 `NewParam.x`/非 ASCII → `syntax.invalid_return_name`）；旧语法 `[[get:...]]`/`[[set:...]]`/`this/名` 已废弃（解析到 → `syntax.deprecated`）。跨帧传参经 ref args/returns。**读取已定义校验**：`Param.x` 的 x 必须是本文档 inputs 声明、文档内 `NewParam.` 写入声明、ref/FunctionCall returns 目标或 `Define` 声明变量，否则 `scope.get_undeclared`（output 声明不构成读取源）。`ActionNode.set_targets` 记录动作的 `NewParam.` 可写集（裸变量名）；`ActionNode.set_decls` 记录类型标注 `NewParam.pageRef:page_ref`（存页签引用 PageRef）与 `NewParam.url:str`（存文本），type ∈ TYPE_REGISTRY token（str/int/float/bool/array/object/generics/page_ref），type 为空串时按动作推断；`DefineNode.vars` 记录 `(名, 类型, 值表达式)`，值为字面量或 `Param.x`，声明变量计入已定义；`Param.x` 运行时由引擎替换（M6 职责），M2 仅作用域与已定义校验。
 - 引用处参数契约（§5.7.3）：被引文档声明的 `inputs` 须由 ref `args` 按数量/类型对应，`outputs` 由 `returns` 按数量对应；不一致 → `ref.args_mismatch` / `ref.returns_mismatch` / `ref.name_conflict`。
 
 ## 6. 验收标准
@@ -181,7 +181,7 @@ class RefNode(Node):
 - 解析器测试在 `autobranch` conda 环境内随 `pytest` 全量运行。
 
 
-## 8. FunctionCall 节点与泛型 object（能力插件化新增，已实现）
+## 8. FunctionCall 节点与容器/泛型类型（能力插件化新增，已实现）
 
 ### 8.1 FunctionCall 节点解析
 
@@ -196,9 +196,9 @@ class RefNode(Node):
 - 未提供注册表时跳过（运行期 FunctionCall 失败兜底为节点 FAILURE，与编排器一致）。
 - 节点 id、`inputs` 键、`outputs` 键、`returns` 接收名必须为裸 ASCII 标识符；`outputs` 为 `{名: 类型}` 映射。
 
-### 8.3 泛型 object 类型 token
+### 8.3 容器类型与泛型 token
 
-文档级 `inputs` / `outputs` / `returns` 支持 `object` 类型 token（承载页面对象 / 会话 / 文件句柄等插件对象），解析层对其不做具体类型校验。
+文档级 `inputs` / `outputs` / `returns` 支持 `array`（Python list）、`object`（Python dict）、`generics`（任意值，承载页面对象/会话/文件句柄等）与自定义 `page_ref`。解析层只校验 token 已登记，不做具体值校验。
 
 ### 8.4 Define 节点解析
 

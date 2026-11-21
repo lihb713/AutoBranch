@@ -80,7 +80,7 @@ GET    /api/reports/{path}            # 截图/报告文件（白名单防目录
 GET    /api/types                     # 类型可构造性（TypeInfoOut：token + constructible = cast is not None；page_ref 不可构造）
 ```
 
-- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（仅 `page_ref`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 / 缺少声明的必填入参 → 422。`object`/`array` 入参可由 JSON 文本构造。统一入口 `POST /api/runs` 与树入口共用 `RunService.start_tree` 的归一化/校验/快照逻辑。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
+- 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（仅 `page_ref`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 / 缺少声明的必填入参 → 422。`array`/`object` 入参可由 JSON 数组/对象文本构造，`generics` 原样接收。统一入口 `POST /api/runs` 与树入口共用 `RunService.start_tree` 的归一化/校验/快照逻辑。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
 - **执行实例快照**：触发时刻冻结 `content_snapshot`（行为树 yaml 全文）/ `tree_name_snapshot` / `tree_content_hash`（执行结构指纹）/ `inputs`（原始入参）。执行与重试一律基于快照，不读实时树内容；树被删除后历史实例仍可回看/重试（自包含）。
 - **执行来源（M10）**：`RunService.start(..., source="manual"|"schedule"|"dependency", schedule_id=...)`；`runs` 保存来源，`GET /api/runs?schedule_id=&source=` 过滤；详情返回 `schedule` 摘要（规则名/调度方式）；`RunService.set_on_run_complete(callback)` 在执行终态通知 M10 调度引擎。
 - **队列调度**：去掉 D8 同树并发 409 去重，改为**全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列**——`pending` 即排队中（列表显示序号）；`start` 与每次执行结束触发 `_drain()`，先置 running 占位再提交到 `ThreadPoolExecutor(max_workers=N)`；重启恢复沿用 `mark_interrupted`（pending/running → interrupted）。
@@ -123,7 +123,7 @@ class ExecStateOut:
     variables: list[dict]    # blackboard 变量快照 [{path, type, value}]（§5.3 扩展，供前端变量黑板）
 ```
 
-- **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），避免 `SSHConnection` 等 object 变量导致 `/state` 500。
+- **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），避免 `SSHConnection` 等 generics 变量导致 `/state` 500。
 - `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path（LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
   - `trees`：id、name(unique)、content(Text)、created_at/updated_at

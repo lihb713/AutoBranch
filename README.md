@@ -29,7 +29,7 @@ autobranch/
   config.py                引擎统一配置（LLM/浏览器等）
   llm/                     M0 LLM 客户端（OpenAI 兼容，重试/预算/流式）
   parser/                  M1 行为树解析 + 清晰度校验
-  schema/                  M2 变量空间 / 类型契约（str/int/float/bool/page_ref/object）
+  schema/                  M2 变量空间 / 类型契约（str/int/float/bool/array/object/generics/page_ref）
   plugin_system/           M3 插件框架（注册表/懒装配/能力选择/分发/报告）
   leaf_agent/              M4 叶子 Agent（Action/Condition 执行）
   orchestrator/            M5 编排器（遍历/FunctionCall/超时/会话）
@@ -230,7 +230,7 @@ root: n1
 |---|---|
 | M0 LLM | OpenAI 兼容客户端：多轮工具调用 / 重试 / token 预算 / 流式 |
 | M1 解析 | 行为树解析 + 清晰度校验（结构/引用/循环/变量契约/FunctionCall 校验） |
-| M2 变量空间 | 帧命名空间 / 严格作用域 / 类型契约（含泛型 `object`） |
+| M2 变量空间 | 帧命名空间 / 严格作用域 / 类型契约（array/object 基本类型 + generics 泛型 + page_ref 自定义） |
 | M3 插件框架 | 注册表（全名）/ 懒装配 / `use_capability` 两级能力选择 / 统一分发 / 报告接口 |
 | M4 叶子 Agent | Action / Condition 的 LLM agent 式执行 + 变量落笔 |
 | M5 编排器 | 遍历语义 / 超时 / 会话初始化 / FunctionCall·Define 确定性执行 |

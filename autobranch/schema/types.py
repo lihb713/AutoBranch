@@ -1,12 +1,14 @@
 """M3 schema 命名空间：类型契约（契约 §5.3.5，收敛版）。
 
 ``TYPE_REGISTRY`` 把 DSL token 映射到**真实 Python 类型**，校验统一
-``isinstance``；``coerce`` 把网页提取的 str 转成目标真实类型。类型即
-存储类型——声明 ``int`` 的变量存的就是 Python ``int``。
+``isinstance``；``coerce`` 把用户输入的文本转成目标真实类型。类型即
+存储类型——声明 ``int`` 的变量存的就是 Python ``int``，声明 ``array`` /
+``object`` 的变量分别存 Python ``list`` / ``dict``。
 
-自定义类型扩展 = 注册表加一行（token + Python 类 + 可选 cast）。当前
-唯一自定义类型是 ``page_ref``（页签引用，无 cast，只能由引擎 open()
-产生）。校验失败触发 ``SchemaTypeError``（断言失败语义），由 M7 捕获。
+基本类型：str/int/float/bool/array/object。``generics`` 表示不确定类型
+（类似泛型，任意值），``page_ref`` 是唯一自定义类型（无 cast，只能由
+引擎 open() 产生）。校验失败触发 ``SchemaTypeError``（断言失败语义），
+由 M7 捕获。
 """
 
 from __future__ import annotations
@@ -23,9 +25,9 @@ from autobranch.schema.models import PageRef, Value
 class TypeSpec:
     """类型注册项：DSL token → 真实 Python 类型 + 可选 cast。
 
-    :param token: DSL 引用名（str/int/float/bool/page_ref）。
+    :param token: DSL 引用名（str/int/float/bool/array/object/generics/page_ref）。
     :param py_type: 真实 Python 类型（isinstance 校验目标）。
-    :param cast: 网页 str → 该类型的转换；None = 不可由文本产生
+    :param cast: 用户文本 → 该类型的转换；None = 不可由文本产生
       （如 page_ref，只能由引擎函数生成）。
     """
 
@@ -63,13 +65,17 @@ def _to_bool(value: Value) -> bool:
     raise SchemaTypeError(f"无法转成 bool: {value!r}")
 
 
-def _to_object(value: Value) -> Value:
-    if not isinstance(value, str):
+def _to_object(value: Value) -> dict:
+    if isinstance(value, dict):
         return value
-    try:
-        return json.loads(value)
-    except (TypeError, ValueError):
-        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError) as exc:
+            raise SchemaTypeError(f"无法转成 object（需要 JSON 对象）: {value!r}") from exc
+        if isinstance(parsed, dict):
+            return parsed
+    raise SchemaTypeError(f"无法转成 object（需要 JSON 对象）: {value!r}")
 
 
 def _to_array(value: Value) -> list:
@@ -85,14 +91,19 @@ def _to_array(value: Value) -> list:
     raise SchemaTypeError(f"无法转成 array（需要 JSON 数组）: {value!r}")
 
 
+def _identity(value: Value) -> Value:
+    return value
+
+
 TYPE_REGISTRY: dict[str, TypeSpec] = {
     "str": TypeSpec("str", str, lambda v: str(v)),
     "int": TypeSpec("int", int, _to_int),
     "float": TypeSpec("float", float, _to_float),
     "bool": TypeSpec("bool", bool, _to_bool),
-    "page_ref": TypeSpec("page_ref", PageRef, None),
-    "object": TypeSpec("object", object, _to_object),
     "array": TypeSpec("array", list, _to_array),
+    "object": TypeSpec("object", dict, _to_object),
+    "generics": TypeSpec("generics", object, _identity),
+    "page_ref": TypeSpec("page_ref", PageRef, None),
 }
 
 
@@ -106,15 +117,13 @@ def validate_type_name(token: str) -> None:
 def check_type(token: str, value: Value) -> None:
     """强校验值是否是该 token 对应 Python 类型的实例（契约 §5.3.5）。
 
-    ``object`` 为泛型对象类型：不校验具体类型（任意对象值）。
+    ``generics`` 为不确定类型：不校验具体类型（任意值）。
     """
     spec = TYPE_REGISTRY.get(token)
     if spec is None:
         raise SchemaTypeError(f"不支持的变量类型: {token!r}")
-    if token == "object":
+    if token == "generics":
         return
-    if token == "array" and not isinstance(value, list):
-        raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 'array'")
     if token == "int" and isinstance(value, bool):
         raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 'int'（排除布尔）")
     if not isinstance(value, spec.py_type):
@@ -122,13 +131,14 @@ def check_type(token: str, value: Value) -> None:
 
 
 def coerce(token: str, raw: Value) -> Value:
-    """按 token 把值转成真实存储类型（set 标注驱动；网页值→Python 类型）。
+    """按 token 把用户文本转成真实存储类型。
 
-    ``object`` 泛型对象类型：任意值原样存储（不转换、不校验）。
+    ``array`` / ``object`` 接受 JSON 数组/对象文本；已经是 ``list`` / ``dict``
+    的值原样保留（函数返回值等运行时值不重复转换）。``generics`` 原样返回。
     ``cast is None``（如 page_ref）拒绝文本转换——只能由引擎函数产生。
     """
-    if token == "object":
-        return _to_object(raw)
+    if token == "generics":
+        return raw
     spec = TYPE_REGISTRY.get(token)
     if spec is None:
         raise SchemaTypeError(f"不支持的变量类型: {token!r}")
@@ -151,10 +161,12 @@ def infer_type(value: Value) -> str:
         return "int"
     if isinstance(value, float):
         return "float"
+    if isinstance(value, str):
+        return "str"
     if isinstance(value, PageRef):
         return "page_ref"
     if isinstance(value, list):
         return "array"
     if isinstance(value, dict):
         return "object"
-    return "str"
+    return "generics"
