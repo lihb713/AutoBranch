@@ -31,7 +31,7 @@ export function TreeCanvas({
   onSelectPreview,
 }: TreeCanvasProps) {
   const [zoom, setZoom] = useState(1);
-  const canvasRef = useRef<HTMLElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const minimapRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const minimapDragRef = useRef<{ x: number; y: number } | null>(null);
@@ -230,20 +230,21 @@ export function TreeCanvas({
   }, [minimapDragging, zoom, contentW, contentH, viewport.width, viewport.height]);
 
   return (
-    <main
-      className={`canvas${dragging ? " canvas--dragging" : ""}`}
-      data-testid="tree-canvas"
-      ref={canvasRef}
-      onMouseDown={onCanvasMouseDown}
-      onScroll={updateViewport}
-    >
+    <main className="canvas canvas--shell" data-testid="tree-canvas">
       {hasRoot ? (
         <>
           <div
-            className="canvas__scroll"
-            data-testid="canvas-scroll"
-            style={{ width: contentW * zoom, height: contentH * zoom }}
+            className={`canvas__scroller${dragging ? " canvas__scroller--dragging" : ""}`}
+            data-testid="canvas-scroller"
+            ref={canvasRef}
+            onMouseDown={onCanvasMouseDown}
+            onScroll={updateViewport}
           >
+            <div
+              className="canvas__scroll"
+              data-testid="canvas-scroll"
+              style={{ width: contentW * zoom, height: contentH * zoom }}
+            >
             <div
               className="canvas__zoom"
               style={{ transform: `scale(${zoom})`, transformOrigin: "0 0" }}
@@ -314,6 +315,7 @@ export function TreeCanvas({
               </div>
             );
           })}
+            </div>
             </div>
           </div>
           {contentW > 0 && contentH > 0 ? (

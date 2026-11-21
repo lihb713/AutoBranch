@@ -1014,11 +1014,22 @@ input[type="radio"] {
 
 /* ---------- 画布拖拽与缩略图 ---------- */
 
-.canvas {
+.canvas--shell {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+}
+
+.canvas__scroller {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3);
   cursor: grab;
 }
 
-.canvas--dragging {
+.canvas__scroller--dragging {
   cursor: grabbing;
   user-select: none;
 }

@@ -212,9 +212,9 @@ describe("TreeCanvas", () => {
 describe("TreeCanvas 平移与缩略图", () => {
   it("画布空白处鼠标拖动可平移滚动位置", () => {
     renderCanvas();
-    const canvas = screen.getByTestId("tree-canvas");
+    const canvas = screen.getByTestId("canvas-scroller");
     fireEvent.mouseDown(canvas, { button: 0, clientX: 120, clientY: 120 });
-    expect(canvas.className).toContain("canvas--dragging");
+    expect(canvas.className).toContain("canvas__scroller--dragging");
     fireEvent.mouseMove(window, { clientX: 80, clientY: 70 });
     expect(canvas.scrollLeft).toBe(40);
     expect(canvas.scrollTop).toBe(50);
@@ -224,13 +224,18 @@ describe("TreeCanvas 平移与缩略图", () => {
 
   it("渲染左下角缩略图与当前视图框", () => {
     renderCanvas();
-    expect(screen.getByTestId("canvas-minimap")).toBeInTheDocument();
+    const scroller = screen.getByTestId("canvas-scroller");
+    const minimap = screen.getByTestId("canvas-minimap");
+    expect(minimap).toBeInTheDocument();
     expect(screen.getByTestId("canvas-minimap-viewport")).toBeInTheDocument();
+    // 缩略图和缩放条必须悬浮在滚动容器外，滚动时不会跟随内容移出视口。
+    expect(scroller.contains(minimap)).toBe(false);
+    expect(scroller.contains(screen.getByTestId("canvas-zoombar"))).toBe(false);
   });
 
   it("缩略图拖动更新画布滚动位置", () => {
     renderCanvas();
-    const canvas = screen.getByTestId("tree-canvas");
+    const canvas = screen.getByTestId("canvas-scroller");
     const svg = screen.getByTestId("canvas-minimap-svg");
     svg.getBoundingClientRect = () =>
       ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
