@@ -5,9 +5,14 @@ export async function createTree(
   api: APIRequestContext,
   name: string,
   content: string,
-  { publish = true }: { publish?: boolean } = {},
+  {
+    publish = true,
+    description,
+  }: { publish?: boolean; description?: string } = {},
 ) {
-  const resp = await api.post("/api/trees", { data: { name, content } });
+  const resp = await api.post("/api/trees", {
+    data: { name, content, ...(description ? { description } : {}) },
+  });
   if (!resp.ok()) throw new Error(`创建行为树失败: ${resp.status()} ${await resp.text()}`);
   const tree = await resp.json();
   if (!publish) return tree;

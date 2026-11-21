@@ -63,6 +63,7 @@ class TreeService:
             created_at=tree.created_at,
             updated_at=tree.updated_at,
             status=tree.status,
+            description=tree.description or "",
             inputs=self._declared_inputs(tree.content),
         )
 
@@ -91,6 +92,7 @@ class TreeService:
             created_at=out.created_at,
             updated_at=out.updated_at,
             status=out.status,
+            description=out.description,
             inputs=out.inputs,
             content=tree.content,
         )
@@ -122,7 +124,12 @@ class TreeService:
     def create(self, payload: TreeCreate) -> TreeOut:
         """API 直接创建（导入）：生成草稿，允许未通过校验。"""
         content = self._normalize(payload.content)
-        tree = Tree(name=payload.name, content=content, status=STATUS_DRAFT)
+        tree = Tree(
+            name=payload.name,
+            content=content,
+            description=payload.description,
+            status=STATUS_DRAFT,
+        )
         self.db.add(tree)
         self._commit_or_conflict()
         self.db.refresh(tree)
@@ -132,7 +139,7 @@ class TreeService:
         """编辑器新建：临时名称 + 空树，状态 draft。"""
         name = self._temp_name()
         content = tree_doc.empty_document(name)
-        tree = Tree(name=name, content=content, status=STATUS_DRAFT)
+        tree = Tree(name=name, content=content, description="", status=STATUS_DRAFT)
         self.db.add(tree)
         self._commit_or_conflict()
         self.db.refresh(tree)
@@ -143,11 +150,15 @@ class TreeService:
         tree = self.get(tree_id)
         new_name = payload.name if payload.name is not None else tree.name
         new_content = payload.content if payload.content is not None else tree.content
+        new_description = (
+            payload.description if payload.description is not None else tree.description
+        )
         new_content = self._normalize(new_content)
         if new_name != tree.name:
             new_content = self._rename_content(new_content, new_name)
         tree.name = new_name
         tree.content = new_content
+        tree.description = new_description
         tree.status = STATUS_DRAFT
         self._commit_or_conflict()
         self.db.refresh(tree)
@@ -173,16 +184,25 @@ class TreeService:
         self.db.refresh(tree)
         return self.get_detail(tree_id), created_id
 
-    def save(self, tree_id: int, name: str | None = None) -> TreeDetailOut:
-        """保存：归一化 + 完整校验 + 改名 + 转正式。失败保持草稿。"""
+    def save(
+        self,
+        tree_id: int,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> TreeDetailOut:
+        """保存：归一化 + 完整校验 + 改名/描述 + 转正式。失败保持草稿。"""
         tree = self.get(tree_id)
         target_name = (name or tree.name).strip()
+        target_description = (
+            description if description is not None else tree.description
+        )
         content = self._normalize(tree.content)
         content = self._rename_content(content, target_name)
         # 校验使用即将发布的内容（由本服务注入 resolver；ref 目标需正式版）
         validate_document(content, target_name, registry=self.registry)
         tree.name = target_name
         tree.content = content
+        tree.description = target_description
         tree.status = STATUS_PUBLISHED
         self._commit_or_conflict()
         self.db.refresh(tree)

@@ -49,13 +49,13 @@ AutoBranch 的后端服务：行为树文档 CRUD API、清晰度校验（复用
 
 ```
 GET    /api/trees              # 列表（200，含 status；?published_only=true 仅正式版）
-POST   /api/trees              # 直接创建（201，草稿；导入用）
+POST   /api/trees              # 直接创建（201，草稿；body: name/content/description?；导入用）
 POST   /api/trees/drafts       # 新建草稿（201，临时名 + 空树）
 GET    /api/trees/by-name/{name}  # 按文档名查（仅 published；ref 参数加载）
 GET    /api/trees/{id}         # 查看（200，含 status/content）
 PUT    /api/trees/{id}         # 整文档更新（200，转草稿；兼容旧 API）
 POST   /api/trees/{id}/commands # 命令式编辑（add_node/delete_node/update_node/update_doc/set_slot/detach_slot；返回完整文档）
-POST   /api/trees/{id}/save    # 保存发布（校验 + 改名 + status=published；失败 422 保持 draft）
+POST   /api/trees/{id}/save    # 保存发布（校验 + 改名/描述 + status=published；失败 422 保持 draft）
 DELETE /api/trees/{id}         # 删除（204；草稿/正式版同一记录；保留执行历史，run.tree_id 置空）
 POST   /api/trees/{id}/check   # 清晰度校验（200，CheckReport：ok + issues 错误清单，不落库）
 ```
@@ -80,6 +80,7 @@ GET    /api/reports/{path}            # 截图/报告文件（白名单防目录
 GET    /api/types                     # 类型信息（TypeInfoOut：token/constructible/owner/custom/description；含插件自定义类型）
 ```
 
+- **行为树描述**：`trees.description` 为可选的自由文本元数据（不进入 YAML 内容）；`TreeCreate` / `TreeUpdate` / `TreeSaveIn` 均可携带 `description`，`TreeOut` / `TreeDetailOut` 返回该字段。旧库启动时自动补列。
 - **插件自定义类型暴露**：`GET /api/plugins` / manifest 的 `custom_types` 返回 `{token, class_name, description, constructible=false}`；`GET /api/types` 返回全部核心与插件类型（`owner`/`custom` 标识来源）。
 - 执行前校验（§12.5）：触发 `run` 前复用 M2 校验，失败 422 且不产生 run_id；同时校验**入参**（`validate_run_inputs`）：声明含不可由文本构造类型（仅 `page_ref`）→ 422（该树仅支持 ref 调用）；未声明入参 / 类型不匹配 / 缺少声明的必填入参 → 422。`array`/`object` 入参可由 JSON 数组/对象文本构造，`generics` 原样接收。统一入口 `POST /api/runs` 与树入口共用 `RunService.start_tree` 的归一化/校验/快照逻辑。以树名（name）作为 doc_id 校验（`validate_document(tree.content, tree.name)`），帧 doc_id 取解析出的树名。
 - **执行实例快照**：触发时刻冻结 `content_snapshot`（行为树 yaml 全文）/ `tree_name_snapshot` / `tree_content_hash`（执行结构指纹）/ `inputs`（原始入参）。执行与重试一律基于快照，不读实时树内容；树被删除后历史实例仍可回看/重试（自包含）。

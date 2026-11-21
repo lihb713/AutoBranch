@@ -37,6 +37,7 @@ const TREES: TreeOut[] = [
   {
     id: 1,
     name: "登录流程",
+    description: "登录流程的详细说明，包含前置条件与业务背景，内容较长时列表中应截断显示。",
     status: "published",
     created_at: "2026-01-01T00:00:00",
     updated_at: "2026-01-01T00:00:00",
@@ -87,6 +88,19 @@ describe("TreeListPage", () => {
     });
     expect(screen.getByText("下单流程")).toBeInTheDocument();
     expect(screen.getByText("登录流程").closest("tr")).toBeInTheDocument();
+  });
+
+  it("展示描述并悬浮显示完整气泡", async () => {
+    mocks.listTrees.mockResolvedValue(TREES);
+    renderList();
+    const desc = await screen.findByTestId("tree-description-1");
+    expect(desc).toHaveTextContent("登录流程的详细说明");
+    fireEvent.mouseEnter(desc);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "登录流程的详细说明，包含前置条件与业务背景，内容较长时列表中应截断显示。",
+    );
+    fireEvent.mouseLeave(desc);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
 
   it("空列表显示空状态", async () => {

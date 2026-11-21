@@ -24,6 +24,7 @@ class Tree(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=STATUS_PUBLISHED, server_default=STATUS_PUBLISHED
     )

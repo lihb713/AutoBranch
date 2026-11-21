@@ -33,10 +33,10 @@ export const treesApi = {
       body: JSON.stringify({ commands }),
     }),
 
-  saveTree: (id: number, name?: string) =>
+  saveTree: (id: number, name?: string, description?: string) =>
     request<TreeDetailOut>(`/trees/${id}/save`, {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, description }),
     }),
 
   deleteTree: (id: number) => request<void>(`/trees/${id}`, { method: "DELETE" }),

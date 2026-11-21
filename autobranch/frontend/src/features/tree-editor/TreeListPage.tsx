@@ -7,6 +7,7 @@ import { typesApi } from "../../api/types";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
+import { HoverTooltip } from "../../components/HoverTooltip";
 import type { TreeOut } from "../../types/tree";
 import { RunInputDialog } from "../runs/RunInputDialog";
 import { parseDoc } from "./treeModel";
@@ -220,6 +221,7 @@ export function TreeListPage() {
           <thead>
             <tr>
               <th>名称</th>
+              <th>描述</th>
               <th>状态</th>
               <th>更新时间</th>
               <th>操作</th>
@@ -234,6 +236,19 @@ export function TreeListPage() {
                 onClick={() => navigate(`/editor/${tree.id}`)}
               >
                 <td>{tree.name}</td>
+                <td className="tree-table__desc">
+                  {tree.description?.trim() ? (
+                    <HoverTooltip
+                      content={tree.description}
+                      className="tree-description"
+                      dataTestid={`tree-description-${tree.id}`}
+                    >
+                      {tree.description}
+                    </HoverTooltip>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
                 <td>
                   <span
                     className={`tree-status tree-status--${tree.status}`}

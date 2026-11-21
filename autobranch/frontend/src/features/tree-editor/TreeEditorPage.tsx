@@ -7,6 +7,7 @@ import { typesApi } from "../../api/types";
 import { Button } from "../../components/Button";
 import { EmptyState } from "../../components/EmptyState";
 import { ErrorMessage } from "../../components/ErrorMessage";
+import { TextAreaField } from "../../components/TextAreaField";
 import { TextField } from "../../components/TextField";
 import type { CheckIssue } from "../../types/check";
 import { NodePalette } from "./NodePalette";
@@ -34,6 +35,7 @@ export function TreeEditorPage() {
 
   const [doc, setDoc] = useState<TreeDoc | null>(null);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [status, setStatus] = useState<TreeStatus>("draft");
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -86,6 +88,7 @@ export function TreeEditorPage() {
   const applyDetail = useCallback((tree: TreeDetailOut) => {
     setDoc(parseDoc(tree.content));
     setName(tree.name);
+    setDescription(tree.description ?? "");
     setStatus(tree.status);
   }, []);
 
@@ -343,7 +346,7 @@ export function TreeEditorPage() {
     setSaving(true);
     try {
       await flushPendingPatches();
-      const detail = await treesApi.saveTree(treeId, name.trim());
+      const detail = await treesApi.saveTree(treeId, name.trim(), description.trim());
       applyDetail(detail);
       navigate("/");
     } catch (err) {
@@ -359,7 +362,7 @@ export function TreeEditorPage() {
     } finally {
       setSaving(false);
     }
-  }, [applyDetail, doc, flushPendingPatches, name, navigate, treeId]);
+  }, [applyDetail, description, doc, flushPendingPatches, name, navigate, treeId]);
 
   const handleRun = useCallback(async () => {
     if (treeId === null) return;
@@ -530,6 +533,14 @@ export function TreeEditorPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="如：登录流程"
+                  />
+                  <TextAreaField
+                    label="行为树描述（选填）"
+                    value={description}
+                    rows={4}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="说明这棵行为树的业务目标、适用场景与前置条件"
+                    data-testid="tree-description-input"
                   />
                   <DocInterfaceEditor
                     doc={doc}

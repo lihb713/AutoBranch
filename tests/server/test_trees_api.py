@@ -202,3 +202,39 @@ def test_check_endpoint_invalid(client, session):
 def test_check_missing_tree_404(client):
     resp = client.post("/api/trees/999/check")
     assert resp.status_code == 404
+
+
+def test_tree_description_create_update_save(client):
+    resp = client.post(
+        "/api/trees",
+        json={
+            "name": "带描述流程",
+            "content": make_tree_yaml("带描述流程"),
+            "description": "用于测试行为树描述字段",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    tree = resp.json()
+    assert tree["description"] == "用于测试行为树描述字段"
+
+    listed = next(t for t in client.get("/api/trees").json() if t["id"] == tree["id"])
+    assert listed["description"] == "用于测试行为树描述字段"
+
+    updated = client.put(
+        f"/api/trees/{tree['id']}", json={"description": "更新后的描述"}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["description"] == "更新后的描述"
+
+    saved = client.post(
+        f"/api/trees/{tree['id']}/save",
+        json={"description": "保存后的描述"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["description"] == "保存后的描述"
+    assert client.get(f"/api/trees/{tree['id']}").json()["description"] == "保存后的描述"
+
+
+def test_tree_description_optional(client):
+    tree = create_tree(client)
+    assert tree["description"] == ""

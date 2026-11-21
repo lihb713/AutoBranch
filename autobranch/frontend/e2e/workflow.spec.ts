@@ -41,7 +41,9 @@ root: n1
 test.beforeAll(async () => {
   // 经前端代理预置行为树（避免编辑器拖拽，编辑器由组件测试覆盖）
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
-  const tree = await createTree(api, TREE_NAME, TREE_YAML);
+  const tree = await createTree(api, TREE_NAME, TREE_YAML, {
+    description: "行为树描述端到端测试：说明业务目标、适用场景与前置条件。",
+  });
   TREE_ID = tree.id;
   await api.dispose();
 });
@@ -77,6 +79,24 @@ test("前端执行行为树并查看执行结果", async ({ page }) => {
   await page.getByRole("button", { name: "回溯报告" }).click();
   await expect(panel.locator("pre")).toContainText("回溯报告");
 });
+test("行为树描述在列表悬浮展示并在编辑器回显", async ({ page }) => {
+  await page.goto("/");
+  const desc = page.getByTestId(`tree-description-${TREE_ID}`);
+  await expect(desc).toBeVisible();
+  await expect(desc).toContainText("行为树描述端到端测试");
+  await desc.hover();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "说明业务目标、适用场景与前置条件",
+  );
+
+  await page.goto(`/editor/${TREE_ID}`);
+  await expect(page.getByTestId("tree-canvas")).toBeVisible();
+  await page.getByTestId("side-tab-tree").click();
+  await expect(page.getByTestId("tree-description-input")).toHaveValue(
+    "行为树描述端到端测试：说明业务目标、适用场景与前置条件。",
+  );
+});
+
 test("编辑器画布展示缩略图与缩放控件", async ({ page }) => {
   await page.goto(`/editor/${TREE_ID}`);
   await expect(page.getByTestId("tree-canvas")).toBeVisible();

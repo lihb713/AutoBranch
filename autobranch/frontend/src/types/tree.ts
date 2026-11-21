@@ -4,6 +4,7 @@ export type TreeOut = {
   id: number;
   name: string;
   status: TreeStatus;
+  description?: string;
   created_at: string;
   updated_at: string;
   inputs: Record<string, string>;
@@ -16,11 +17,13 @@ export type TreeDetailOut = TreeOut & {
 export type TreeCreate = {
   name: string;
   content: string;
+  description?: string;
 };
 
 export type TreeUpdate = {
   name?: string;
   content?: string;
+  description?: string;
 };
 
 export type TreeCommand = {

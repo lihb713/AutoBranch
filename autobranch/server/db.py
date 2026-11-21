@@ -41,6 +41,7 @@ def configure_database(db_path: str | Path) -> None:
     _session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     Base.metadata.create_all(bind=engine)
     _ensure_tree_status_column(engine)
+    _ensure_tree_description_column(engine)
     _ensure_plugin_config_column(engine)
     _ensure_run_source_columns(engine)
     _migrate_timestamps_to_local(engine)
@@ -145,6 +146,20 @@ def _ensure_tree_status_column(engine: Engine) -> None:
                 "ALTER TABLE trees ADD COLUMN status VARCHAR(20) "
                 "NOT NULL DEFAULT 'published'"
             )
+        )
+
+
+def _ensure_tree_description_column(engine: Engine) -> None:
+    """轻量迁移：旧库 ``trees`` 无 description 列时补列（默认空串）。"""
+    insp = inspect(engine)
+    if "trees" not in insp.get_table_names():
+        return
+    columns = {col["name"] for col in insp.get_columns("trees")}
+    if "description" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(
+            text("ALTER TABLE trees ADD COLUMN description TEXT NOT NULL DEFAULT ''")
         )
 
 

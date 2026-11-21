@@ -58,6 +58,7 @@ root: n1
 const TREE = {
   id: 1,
   name: "冒烟流程",
+  description: "冒烟测试流程描述",
   status: "published",
   created_at: "2026-01-01T00:00:00",
   updated_at: "2026-01-01T00:00:00",
@@ -116,6 +117,19 @@ describe("TreeEditorPage（后端权威编辑）", () => {
     expect(screen.getByTestId("field-n3-expect-text")).toHaveValue('出现"工作台"');
   });
 
+  it("树信息展示并可编辑描述", async () => {
+    renderEditor("/editor/1");
+    await waitFor(() => expect(screen.getByTestId("node-card-n1")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("side-tab-tree"));
+    const input = screen.getByTestId("tree-description-input") as HTMLTextAreaElement;
+    expect(input.value).toBe("冒烟测试流程描述");
+    fireEvent.change(input, { target: { value: "新的描述" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(mocks.saveTree).toHaveBeenCalledWith(1, "冒烟流程", "新的描述"),
+    );
+  });
+
   it("字段编辑通过 update_node 命令提交", async () => {
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
@@ -136,7 +150,9 @@ describe("TreeEditorPage（后端权威编辑）", () => {
     renderEditor("/editor/1");
     await waitFor(() => expect(screen.getByTestId("node-card-n4")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(mocks.saveTree).toHaveBeenCalledWith(1, "冒烟流程"));
+    await waitFor(() =>
+      expect(mocks.saveTree).toHaveBeenCalledWith(1, "冒烟流程", "冒烟测试流程描述"),
+    );
     expect(await screen.findByText("列表页占位")).toBeInTheDocument();
   });
 

@@ -15,16 +15,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class TreeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200, description="行为树名称（唯一）")
     content: str = Field(description="行为树文档 yaml 文本")
+    description: str = Field(default="", max_length=10000, description="行为树描述（选填）")
 
 
 class TreeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = None
+    description: str | None = Field(default=None, max_length=10000)
 
     @model_validator(mode="after")
     def _require_at_least_one(self) -> TreeUpdate:
-        if self.name is None and self.content is None:
-            raise ValueError("至少提供一个变更字段（name 或 content）")
+        if self.name is None and self.content is None and self.description is None:
+            raise ValueError("至少提供一个变更字段（name、content 或 description）")
         return self
 
 
@@ -37,6 +39,7 @@ class TreeOut(BaseModel):
     updated_at: datetime
     #: 草稿/正式状态：``draft`` | ``published``。
     status: str = "published"
+    description: str = ""
     #: 文档级入参声明（名 -> 类型），派生自 content（前端执行按钮约束/入参对话框用）。
     inputs: dict[str, str] = {}
 
@@ -76,6 +79,7 @@ class TreeCommandsIn(BaseModel):
 
 class TreeSaveIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
 
 
 class TreeCommandsOut(BaseModel):

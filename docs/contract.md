@@ -2449,7 +2449,8 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 **草稿 / 正式版与后端权威编辑（default-return-param-names 已实现）：**
 - `trees.status ∈ {draft, published}`，同一棵树只有一份文档，不存在“正式版+草稿副本”。
 - `POST /api/trees/drafts` 新建草稿（临时名 `未命名-<时间戳>` + 空树）；首次
-  `POST /api/trees/{id}/save` 校验、改名并转 `published`。
+  `POST /api/trees/{id}/save` 校验、改名/描述并转 `published`。
+- 行为树元数据：除 `name` 外支持可选 `description`（自由文本，不进入 YAML）；列表/详情返回，编辑器「树信息」可编辑，保存时持久化。
 - 对 `published` 的任何编辑命令立即把同一条记录转为 `draft`；`draft` 不可执行（409）。
 - `ref` 只允许引用 `published` 文档；目标为 draft 时校验失败（`ref.missing_doc`，提示尚未保存为正式版）。
 - 命令式编辑：`POST /api/trees/{id}/commands`，支持 `add_node` / `delete_node` /

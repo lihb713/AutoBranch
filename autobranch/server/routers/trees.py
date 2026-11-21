@@ -77,7 +77,11 @@ def apply_commands(tree_id: int, payload: TreeCommandsIn, service: TreeServiceDe
 @router.post("/{tree_id}/save", response_model=TreeDetailOut)
 def save_tree(tree_id: int, service: TreeServiceDep, payload: TreeSaveIn | None = None):
     """保存：完整校验 + 改名 + 转正式。"""
-    return service.save(tree_id, payload.name if payload else None)
+    return service.save(
+        tree_id,
+        payload.name if payload else None,
+        payload.description if payload else None,
+    )
 
 
 @router.delete("/{tree_id}", status_code=status.HTTP_204_NO_CONTENT)
