@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { freeRoots, slotFields, type TreeDoc } from "./treeModel";
 import { layoutDocument, prefixTree, NODE_H, NODE_W } from "./layout";
 import { NodeCard } from "./NodeCard";
@@ -32,6 +32,12 @@ export function TreeCanvas({
 }: TreeCanvasProps) {
   const [zoom, setZoom] = useState(1);
   const canvasRef = useRef<HTMLElement | null>(null);
+  const minimapRef = useRef<SVGSVGElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const minimapDragRef = useRef<{ x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [minimapDragging, setMinimapDragging] = useState(false);
+  const [viewport, setViewport] = useState({ left: 0, top: 0, width: 0, height: 0 });
   const free = freeRoots(doc);
   // 预览子树并入主树布局（ref → 预览根 视作子节点，向下生长避免重叠）
   const layout = layoutDocument(doc.root, free, doc.nodes, refPreviews);
@@ -97,12 +103,145 @@ export function TreeCanvas({
   const contentW = layout.width + 40;
   const contentH = layout.height + 40;
 
+  const updateViewport = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    setViewport({
+      left: el.scrollLeft / zoom,
+      top: el.scrollTop / zoom,
+      width: el.clientWidth / zoom,
+      height: el.clientHeight / zoom,
+    });
+  }, [zoom]);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    updateViewport();
+    el.addEventListener("scroll", updateViewport, { passive: true });
+    window.addEventListener("resize", updateViewport);
+    const observer =
+      typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateViewport) : null;
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateViewport);
+      window.removeEventListener("resize", updateViewport);
+      observer?.disconnect();
+    };
+  }, [updateViewport, layout.width, layout.height]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (event: MouseEvent) => {
+      const el = canvasRef.current;
+      const state = dragRef.current;
+      if (!el || !state) return;
+      el.scrollLeft = state.left - (event.clientX - state.x);
+      el.scrollTop = state.top - (event.clientY - state.y);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragging]);
+
+  const onCanvasMouseDown = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (
+      target.closest(
+        "button, a, input, textarea, select, .node-card, .canvas__zoombar, .canvas-minimap",
+      )
+    ) {
+      return;
+    }
+    const el = canvasRef.current;
+    if (!el) return;
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      left: el.scrollLeft,
+      top: el.scrollTop,
+    };
+    setDragging(true);
+    event.preventDefault();
+  };
+
+  const minimapMaxW = 180;
+  const minimapMaxH = 120;
+  const minimapScale = Math.min(minimapMaxW / contentW, minimapMaxH / contentH);
+  const minimapW = Math.max(60, Math.round(contentW * minimapScale));
+  const minimapH = Math.max(40, Math.round(contentH * minimapScale));
+  const viewLeft = Math.max(0, Math.min(viewport.left, contentW));
+  const viewTop = Math.max(0, Math.min(viewport.top, contentH));
+  const viewWidth = Math.max(0, Math.min(viewport.width, contentW - viewLeft));
+  const viewHeight = Math.max(0, Math.min(viewport.height, contentH - viewTop));
+
+  const onMinimapMouseDown = (event: React.MouseEvent<SVGSVGElement>) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const svg = minimapRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = ((event.clientX - rect.left) / rect.width) * contentW;
+    const y = ((event.clientY - rect.top) / rect.height) * contentH;
+    const inside =
+      x >= viewLeft && x <= viewLeft + viewWidth && y >= viewTop && y <= viewTop + viewHeight;
+    minimapDragRef.current = {
+      x: inside ? x - viewLeft : viewWidth / 2,
+      y: inside ? y - viewTop : viewHeight / 2,
+    };
+    setMinimapDragging(true);
+  };
+
+  useEffect(() => {
+    if (!minimapDragging) return;
+    const onMove = (event: MouseEvent) => {
+      const el = canvasRef.current;
+      const svg = minimapRef.current;
+      const state = minimapDragRef.current;
+      if (!el || !svg || !state) return;
+      const rect = svg.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const x = ((event.clientX - rect.left) / rect.width) * contentW;
+      const y = ((event.clientY - rect.top) / rect.height) * contentH;
+      const left = Math.max(0, Math.min(x - state.x, contentW - viewport.width));
+      const top = Math.max(0, Math.min(y - state.y, contentH - viewport.height));
+      el.scrollLeft = left * zoom;
+      el.scrollTop = top * zoom;
+    };
+    const onUp = () => {
+      minimapDragRef.current = null;
+      setMinimapDragging(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [minimapDragging, zoom, contentW, contentH, viewport.width, viewport.height]);
+
   return (
-    <main className="canvas" data-testid="tree-canvas" ref={canvasRef}>
+    <main
+      className={`canvas${dragging ? " canvas--dragging" : ""}`}
+      data-testid="tree-canvas"
+      ref={canvasRef}
+      onMouseDown={onCanvasMouseDown}
+      onScroll={updateViewport}
+    >
       {hasRoot ? (
         <>
           <div
             className="canvas__scroll"
+            data-testid="canvas-scroll"
             style={{ width: contentW * zoom, height: contentH * zoom }}
           >
             <div
@@ -177,6 +316,39 @@ export function TreeCanvas({
           })}
             </div>
           </div>
+          {contentW > 0 && contentH > 0 ? (
+            <div className="canvas-minimap" data-testid="canvas-minimap">
+              <svg
+                ref={minimapRef}
+                width={minimapW}
+                height={minimapH}
+                viewBox={`0 0 ${contentW} ${contentH}`}
+                preserveAspectRatio="xMidYMid meet"
+                onMouseDown={onMinimapMouseDown}
+                data-testid="canvas-minimap-svg"
+              >
+                {[...layout.boxes.values()].map((box, index) => (
+                  <rect
+                    key={`mini-${index}`}
+                    x={box.x}
+                    y={box.y}
+                    width={NODE_W}
+                    height={NODE_H}
+                    rx={4}
+                    className="canvas-minimap__node"
+                  />
+                ))}
+                <rect
+                  x={viewLeft}
+                  y={viewTop}
+                  width={viewWidth}
+                  height={viewHeight}
+                  className={`canvas-minimap__viewport${minimapDragging ? " canvas-minimap__viewport--dragging" : ""}`}
+                  data-testid="canvas-minimap-viewport"
+                />
+              </svg>
+            </div>
+          ) : null}
           <div className="canvas__zoombar" data-testid="canvas-zoombar">
             <button
               type="button"

@@ -209,3 +209,34 @@ describe("TreeCanvas", () => {
     expect(screen.queryByTestId("canvas-zoombar")).not.toBeInTheDocument();
   });
 });
+describe("TreeCanvas 平移与缩略图", () => {
+  it("画布空白处鼠标拖动可平移滚动位置", () => {
+    renderCanvas();
+    const canvas = screen.getByTestId("tree-canvas");
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 120, clientY: 120 });
+    expect(canvas.className).toContain("canvas--dragging");
+    fireEvent.mouseMove(window, { clientX: 80, clientY: 70 });
+    expect(canvas.scrollLeft).toBe(40);
+    expect(canvas.scrollTop).toBe(50);
+    fireEvent.mouseUp(window);
+    expect(canvas.className).not.toContain("canvas--dragging");
+  });
+
+  it("渲染左下角缩略图与当前视图框", () => {
+    renderCanvas();
+    expect(screen.getByTestId("canvas-minimap")).toBeInTheDocument();
+    expect(screen.getByTestId("canvas-minimap-viewport")).toBeInTheDocument();
+  });
+
+  it("缩略图拖动更新画布滚动位置", () => {
+    renderCanvas();
+    const canvas = screen.getByTestId("tree-canvas");
+    const svg = screen.getByTestId("canvas-minimap-svg");
+    svg.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    fireEvent.mouseDown(svg, { clientX: 10, clientY: 10, button: 0 });
+    fireEvent.mouseMove(window, { clientX: 90, clientY: 90 });
+    expect(canvas.scrollLeft).toBeGreaterThanOrEqual(0);
+    fireEvent.mouseUp(window);
+  });
+});

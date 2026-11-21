@@ -1011,3 +1011,48 @@ input[type="radio"] {
   border-radius: var(--radius-md);
   background: var(--color-bg);
 }
+
+/* ---------- 画布拖拽与缩略图 ---------- */
+
+.canvas {
+  cursor: grab;
+}
+
+.canvas--dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.canvas-minimap {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 5;
+  padding: 4px;
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  opacity: 0.92;
+}
+
+.canvas-minimap svg {
+  display: block;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.canvas-minimap__node {
+  fill: var(--color-border);
+}
+
+.canvas-minimap__viewport {
+  fill: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  stroke: var(--color-primary);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.canvas-minimap__viewport--dragging {
+  fill: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}

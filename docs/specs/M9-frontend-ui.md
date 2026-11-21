@@ -153,3 +153,8 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - 谓词叶子复用 FunctionCall 参数编辑规则；
 - 条件对象写入 `mode`，旧字符串按 natural 兼容；
 - `Step.expect` / `IfThenElse.if` / `LoopUntil.until` 内联编辑；`Branch.when` 使用摘要 + 弹窗，避免分支行过长。
+
+
+### 画布平移与缩略图
+
+行为树画布 SHALL 支持鼠标拖拽平移：在画布空白处按住左键拖动时，滚动位置随鼠标移动（不通过滚动条）。左下角 SHALL 提供全局缩略图，显示完整树布局和当前视口框；拖动视口框 SHALL 平移画布。右下角保留缩放控件。拖拽不得拦截节点点击、按钮和缩放控件。

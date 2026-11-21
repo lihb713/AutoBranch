@@ -18,6 +18,7 @@ import { createTree } from "./helpers";
  */
 
 const TREE_NAME = `e2e执行${Date.now()}`;
+let TREE_ID = 0;
 // 行为树（一文档一树，统一槽位）：打开本地测试页并断言页面出现「登录」
 const TREE_YAML = `tree: ${TREE_NAME}
 nodes:
@@ -40,7 +41,8 @@ root: n1
 test.beforeAll(async () => {
   // 经前端代理预置行为树（避免编辑器拖拽，编辑器由组件测试覆盖）
   const api = await apiRequest.newContext({ baseURL: "http://localhost:5174" });
-  await createTree(api, TREE_NAME, TREE_YAML);
+  const tree = await createTree(api, TREE_NAME, TREE_YAML);
+  TREE_ID = tree.id;
   await api.dispose();
 });
 
@@ -75,6 +77,14 @@ test("前端执行行为树并查看执行结果", async ({ page }) => {
   await page.getByRole("button", { name: "回溯报告" }).click();
   await expect(panel.locator("pre")).toContainText("回溯报告");
 });
+test("编辑器画布展示缩略图与缩放控件", async ({ page }) => {
+  await page.goto(`/editor/${TREE_ID}`);
+  await expect(page.getByTestId("tree-canvas")).toBeVisible();
+  await expect(page.getByTestId("canvas-minimap")).toBeVisible();
+  await expect(page.getByTestId("canvas-minimap-viewport")).toBeVisible();
+  await expect(page.getByTestId("canvas-zoombar")).toBeVisible();
+});
+
 test("新建行为树立即创建草稿，列表标识草稿且不可执行", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("new-tree").click();
