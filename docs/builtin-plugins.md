@@ -126,7 +126,7 @@ n4:
 | 函数 | 参数 | 返回 |
 |---|---|---|
 | `browser.semantic_graph` | `scope: str`, `lod: int` | `graph: object` |
-| `browser.activate` | `page` | `page: page_object` |
+| `browser.activate` | `page: page_object` | `page: page_object` |
 | `browser.list_tabs` | — | — |
 | `browser.switch_tab` | `tab_id: str` | — |
 
@@ -334,22 +334,22 @@ SSH 不是一次性的命令字符串，而是有生命周期的会话：
 |---|---|---|
 | `ssh_session` | `SSHConnection` | SSH 会话对象；不可文本构造 |
 
-`create_session` 返回 `session: ssh_session`，后续用 `Param.session` 传递。
+`create_session` 返回 `session: ssh_session`，后续用 `Param.session` 传递。函数参数中的 `session` 在 API 里保留标准 JSON Schema `type=string`，并用 `x-autobranch-type=ssh_session` 标注真实类型；前端会显示为 `ssh_session`，执行时按 `SSHConnection` 校验。
 
 ### 5.2 函数
 
 | 函数 | 参数 | 返回 |
 |---|---|---|
 | `ssh.create_session` | `host`, `port?`, `user?`, `pwd?`, `key?`, `timeout?`, `proxy?`, `jump?` | `session: ssh_session`（产出型） |
-| `ssh.close_session` | `session` | — |
-| `ssh.ssh_exec` | `session`, `command`, `timeout?`, `stdin?`, `interactive?`, `idle_timeout?` | `stdout/stderr/exit_code/channel_id/exited` |
-| `ssh.ssh_send` | `session`, `channel_id`, `data`, `newline?` | — |
-| `ssh.ssh_read` | `session`, `channel_id`, `idle_timeout?` | `stdout/stderr/exit_code/exited` |
-| `ssh.ssh_close_channel` | `session`, `channel_id` | — |
-| `ssh.upload_file` | `session`, `file_path`, `remote_path`, `timeout?` | `size/path` |
-| `ssh.download_file` | `session`, `remote_path`, `file_path?`, `timeout?` | `size/path` |
-| `ssh.upload_dir` | `session`, `dir_path`, `remote_dir`, `timeout?` | `files/path` |
-| `ssh.download_dir` | `session`, `remote_dir`, `dir_path?`, `timeout?` | `files/path` |
+| `ssh.close_session` | `session: ssh_session` | — |
+| `ssh.ssh_exec` | `session: ssh_session`, `command`, `timeout?`, `stdin?`, `interactive?`, `idle_timeout?` | `stdout/stderr/exit_code/channel_id/exited` |
+| `ssh.ssh_send` | `session: ssh_session`, `channel_id`, `data`, `newline?` | — |
+| `ssh.ssh_read` | `session: ssh_session`, `channel_id`, `idle_timeout?` | `stdout/stderr/exit_code/exited` |
+| `ssh.ssh_close_channel` | `session: ssh_session`, `channel_id` | — |
+| `ssh.upload_file` | `session: ssh_session`, `file_path`, `remote_path`, `timeout?` | `size/path` |
+| `ssh.download_file` | `session: ssh_session`, `remote_path`, `file_path?`, `timeout?` | `size/path` |
+| `ssh.upload_dir` | `session: ssh_session`, `dir_path`, `remote_dir`, `timeout?` | `files/path` |
+| `ssh.download_dir` | `session: ssh_session`, `remote_dir`, `dir_path?`, `timeout?` | `files/path` |
 
 ### 5.3 示例
 

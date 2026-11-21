@@ -27,6 +27,24 @@ class PluginError(Exception):
     """插件框架错误（注册 / 加载 / 分发）。"""
 
 
+#: 函数参数上的 AutoBranch 类型扩展键（JSON Schema 标准 type 仍保留 string/object 等）。
+AUTOBRANCH_TYPE_KEY = "x-autobranch-type"
+
+
+def custom_type_param(token: str, description: str = "") -> dict[str, Any]:
+    """声明“参数值是插件自定义类型”的参数 schema。
+
+    JSON Schema 的 ``type`` 使用 ``string`` 以兼容 LLM 工具 schema；
+    ``x-autobranch-type`` 供 AutoBranch 前端/执行器展示与校验自定义类型。
+    发送给 LLM 的 tool schema 会自动剥离该扩展键。
+    """
+    return {
+        "type": "string",
+        AUTOBRANCH_TYPE_KEY: token,
+        "description": description,
+    }
+
+
 @dataclass
 class FunctionResult:
     """插件函数返回值：业务值 + 报告附加信息（引擎落笔）。
@@ -112,11 +130,15 @@ class FunctionDef:
         """转为 M0 工具 schema（可选追加参数，如产出型工具的 target）。
 
         工具名 = ``tool_name``（全名的 API 安全转义），跨插件同名工具不歧义。
+        AutoBranch 自定义类型扩展（``x-autobranch-type``）只用于前端/引擎，
+        不发送给 LLM，避免非标准 JSON Schema 关键字被供应商拒绝。
         """
-        params = dict(self.parameters) if self.parameters else {
-            "type": "object",
-            "properties": {},
-        }
+        params = _strip_type_markers(
+            dict(self.parameters) if self.parameters else {
+                "type": "object",
+                "properties": {},
+            }
+        )
         if extra_params:
             props = dict(params.get("properties", {}))
             props.update(extra_params)
@@ -197,6 +219,19 @@ def llm_function(
         returns=returns,
         output_param=output_param,
     )
+
+
+def _strip_type_markers(value: Any) -> Any:
+    """递归移除 AutoBranch 类型扩展键，生成标准 JSON Schema。"""
+    if isinstance(value, dict):
+        return {
+            key: _strip_type_markers(item)
+            for key, item in value.items()
+            if key != AUTOBRANCH_TYPE_KEY
+        }
+    if isinstance(value, list):
+        return [_strip_type_markers(item) for item in value]
+    return value
 
 
 def _wrap_result(raw: Any) -> FunctionResult:
@@ -301,6 +336,8 @@ class PluginBase:
 __all__ = [
     "PluginError",
     "FunctionResult",
+    "AUTOBRANCH_TYPE_KEY",
+    "custom_type_param",
     "FunctionDef",
     "engine_function",
     "llm_function",

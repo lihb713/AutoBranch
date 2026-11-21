@@ -5,10 +5,12 @@
 """
 
 from autobranch.plugin_system.defs import (
+    AUTOBRANCH_TYPE_KEY,
     FunctionDef,
     FunctionResult,
     PluginBase,
     PluginError,
+    custom_type_param,
     engine_function,
     llm_function,
 )
@@ -23,6 +25,8 @@ from autobranch.plugin_system.reporting import collect_report_entries
 from autobranch.plugin_system.runtime import PluginRuntime
 
 __all__ = [
+    "AUTOBRANCH_TYPE_KEY",
+    "custom_type_param",
     "PluginError",
     "FunctionDef",
     "FunctionResult",

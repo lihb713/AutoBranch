@@ -75,6 +75,33 @@ def test_registration_only_marked_functions():
     assert reg.function("demo.greet").is_producing
 
 
+def test_tool_spec_strips_custom_type_marker():
+    from autobranch.plugin_system import custom_type_param
+
+    class MarkerPlugin(PluginBase):
+        name = "marker"
+
+        @engine_function(
+            name="use",
+            parameters={
+                "type": "object",
+                "properties": {"session": custom_type_param("marker_session", "会话")},
+                "required": ["session"],
+            },
+        )
+        def use(self, session):
+            return session
+
+    reg = PluginRegistry()
+    reg.register(MarkerPlugin())
+    spec = reg.function("marker.use")
+    assert spec.parameters["properties"]["session"]["x-autobranch-type"] == "marker_session"
+    tool = spec.to_tool_spec()
+    assert "x-autobranch-type" not in str(tool.parameters)
+    assert tool.parameters["properties"]["session"]["type"] == "string"
+    reg.unregister("marker")
+
+
 def test_user_visible_and_llm_only_functions():
     class Scoped(PluginBase):
         name = "scoped"

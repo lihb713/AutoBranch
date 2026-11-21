@@ -17,7 +17,13 @@ import tempfile
 import time
 from typing import Any
 
-from autobranch.plugin_system import FunctionResult, PluginBase, engine_function, llm_function
+from autobranch.plugin_system import (
+    FunctionResult,
+    PluginBase,
+    custom_type_param,
+    engine_function,
+    llm_function,
+)
 from autobranch.plugins.browser.driver import BrowserDriver, ElementRef
 from autobranch.plugins.browser.driver.models import PageRef as BrowserPageRef
 from autobranch.plugins.browser.probe import EngineProbe
@@ -137,7 +143,7 @@ class BrowserPlugin(PluginBase):
             "把已打开的页签设为当前活动页（切换焦点，不新建）；"
             "page 使用 Param.变量名 引用 open 保存的页面对象"
         ),
-        parameters=_props(("page",), page={"type": "string", "description": _PAGE_DESC}),
+        parameters=_props(("page",), page=custom_type_param("page_object", _PAGE_DESC)),
         returns={"page": "page_object"},
     )
     def activate(self, page: PageObject) -> FunctionResult:

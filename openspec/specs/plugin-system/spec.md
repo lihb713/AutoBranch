@@ -113,3 +113,10 @@
 #### Scenario: 类型冲突拒绝
 - **WHEN** 两个插件声明同一个自定义类型 token
 - **THEN** 后注册的插件失败并报告冲突
+
+
+#### Scenario: 自定义类型参数标注
+
+- **WHEN** 插件函数参数值是自定义类型对象
+- **THEN** JSON Schema `type` 保持标准值（如 `string`），并用 `x-autobranch-type` 标注真实类型
+- **AND** API/前端显示自定义类型，发送给 LLM 的 tool schema 自动剥离该扩展键

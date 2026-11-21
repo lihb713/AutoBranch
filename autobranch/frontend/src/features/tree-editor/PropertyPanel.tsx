@@ -262,7 +262,10 @@ export function PropertyPanel({
       ? functions.find((f) => f.full_name === node.function)
       : undefined;
   const schema = (selectedFunc?.parameters ?? {}) as {
-    properties?: Record<string, { type?: string }>;
+    properties?: Record<
+      string,
+      { type?: string; "x-autobranch-type"?: string }
+    >;
     required?: string[];
   };
   const allParams = Object.keys(schema.properties ?? {});
@@ -612,12 +615,14 @@ export function PropertyPanel({
         ) : (
           requiredParams.map((p) => {
             const named = Boolean(node.kwargs && p in node.kwargs);
+            const prop = schema.properties?.[p];
             return (
               <HighlightedField
                 key={`fc-in-${p}`}
-                label={`入参 ${p}（${schemaTypeToToken(schema.properties?.[p]?.type)}${
-                  named ? "，命名参数" : ""
-                }）`}
+                label={`入参 ${p}（${schemaTypeToToken(
+                  prop?.type,
+                  prop?.["x-autobranch-type"],
+                )}${named ? "，命名参数" : ""}）`}
                 value={requiredValue(p, paramIndex(p))}
                 placeholder="变量名或字面量"
                 disabled={readonly}
@@ -627,7 +632,7 @@ export function PropertyPanel({
                     p,
                     paramIndex(p),
                     e.target.value,
-                    schema.properties?.[p]?.type,
+                    prop?.type,
                   )
                 }
               />
@@ -641,13 +646,15 @@ export function PropertyPanel({
           <p className="property-panel__hint">该函数没有可选参数</p>
         ) : (
           optionalParams.map((p) => {
-            const type = schema.properties?.[p]?.type;
+            const prop = schema.properties?.[p];
+            const type = prop?.type;
+            const token = schemaTypeToToken(type, prop?.["x-autobranch-type"]);
             const value = optionalValue(p);
             if (type === "object" || type === "array") {
               return (
                 <TextAreaField
                   key={`fc-kw-${p}`}
-                  label={`可选参数 ${p}（${schemaTypeToToken(type)}，JSON）`}
+                  label={`可选参数 ${p}（${token}，JSON）`}
                   rows={2}
                   disabled={readonly}
                   data-testid={`fc-kwarg-${node.id}-${p}`}
@@ -662,7 +669,7 @@ export function PropertyPanel({
             return (
               <HighlightedField
                 key={`fc-kw-${p}`}
-                label={`可选参数 ${p}（${schemaTypeToToken(type)}）`}
+                label={`可选参数 ${p}（${token}）`}
                 value={typeof value === "string" ? value : value == null ? "" : String(value)}
                 placeholder="留空则不传"
                 disabled={readonly}

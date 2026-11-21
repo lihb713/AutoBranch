@@ -23,7 +23,12 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from autobranch.plugin_system import FunctionResult, PluginBase, engine_function
+from autobranch.plugin_system import (
+    FunctionResult,
+    PluginBase,
+    custom_type_param,
+    engine_function,
+)
 
 _ANSI_RE = re.compile(
     r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
@@ -230,10 +235,9 @@ class SSHPlugin(PluginBase):
         description="关闭远程 SSH 会话（同时关闭跳板机连接与交互通道）",
         parameters=_params(
             ("session",),
-            session={
-                "type": "string",
-                "description": "SSH 会话对象，使用 Param.变量名 引用",
-            },
+            session=custom_type_param(
+                "ssh_session", "SSH 会话对象，使用 Param.变量名 引用"
+            ),
         ),
     )
     def close_session(self, session: SSHConnection) -> FunctionResult:
@@ -255,10 +259,9 @@ class SSHPlugin(PluginBase):
         ),
         parameters=_params(
             ("session", "command"),
-            session={
-                "type": "string",
-                "description": "SSH 会话对象，使用 Param.变量名 引用",
-            },
+            session=custom_type_param(
+                "ssh_session", "SSH 会话对象，使用 Param.变量名 引用"
+            ),
             command={"type": "string", "description": "要执行的命令"},
             timeout={"type": "number", "description": "非交互命令总超时（默认 30 秒）"},
             stdin={"type": "string", "description": "启动后立即写入的标准输入"},
@@ -369,7 +372,7 @@ class SSHPlugin(PluginBase):
         description="向交互式命令通道写入标准输入（newline=true 自动追加换行）",
         parameters=_params(
             ("session", "channel_id", "data"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             channel_id={
                 "type": "string",
                 "description": "ssh_exec(interactive=true) 返回的通道 ID",
@@ -414,7 +417,7 @@ class SSHPlugin(PluginBase):
         ),
         parameters=_params(
             ("session", "channel_id"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             channel_id={"type": "string", "description": "交互通道 ID"},
             idle_timeout={"type": "number", "description": "无输出等待秒数（默认 1）"},
         ),
@@ -467,7 +470,7 @@ class SSHPlugin(PluginBase):
         description="关闭交互式命令通道（不关闭 SSH 会话）",
         parameters=_params(
             ("session", "channel_id"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             channel_id={"type": "string", "description": "交互通道 ID"},
         ),
     )
@@ -497,7 +500,7 @@ class SSHPlugin(PluginBase):
         ),
         parameters=_params(
             ("session", "file_path", "remote_path"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             file_path={"type": "string", "description": "文件管理平台中的文件路径"},
             remote_path={
                 "type": "string",
@@ -543,7 +546,7 @@ class SSHPlugin(PluginBase):
         ),
         parameters=_params(
             ("session", "remote_path"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             remote_path={"type": "string", "description": "远程文件路径"},
             file_path={
                 "type": "string",
@@ -590,7 +593,7 @@ class SSHPlugin(PluginBase):
         ),
         parameters=_params(
             ("session", "dir_path", "remote_dir"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             dir_path={"type": "string", "description": "文件管理平台目录路径"},
             remote_dir={"type": "string", "description": "远程目标目录"},
             timeout={"type": "number", "description": "单文件传输超时秒数（默认 60）"},
@@ -654,7 +657,7 @@ class SSHPlugin(PluginBase):
         ),
         parameters=_params(
             ("session", "remote_dir"),
-            session={"type": "string", "description": "SSH 会话对象"},
+            session=custom_type_param("ssh_session", "SSH 会话对象"),
             remote_dir={"type": "string", "description": "远程目录路径"},
             dir_path={
                 "type": "string",

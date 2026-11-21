@@ -235,7 +235,42 @@ parameters={
 | `object` | `object` | `dict` |
 | 不写 `type` | `generics` | 任意值 |
 
-> 自定义类型主要用于**函数返回类型**和**行为树接口类型**。如果参数是插件内部对象，建议用描述说明，不要依赖 JSON Schema 的自定义 type。
+### 5.1 函数参数里的自定义类型
+
+LLM 工具 schema 必须是标准 JSON Schema，因此插件对象参数不能把 `type` 写成 `ssh_session` 这种非标准值。正确做法是：
+
+- JSON Schema `type` 保留标准值（通常是 `string`）；
+- 用扩展键 `x-autobranch-type` 标注真实 AutoBranch 类型；
+- 该扩展只用于前端显示和引擎校验，发送给 LLM 时会自动剥离。
+
+```python
+parameters={
+    "type": "object",
+    "properties": {
+        "session": {
+            "type": "string",
+            "x-autobranch-type": "ssh_session",
+            "description": "SSH 会话对象，使用 Param.session 引用",
+        }
+    },
+    "required": ["session"],
+}
+```
+
+也可以使用内置 helper（预置插件可用）：
+
+```python
+from autobranch.plugin_system import custom_type_param
+
+session=custom_type_param("ssh_session", "SSH 会话对象")
+```
+
+这样：
+
+- LLM 看到的仍是合法 JSON Schema；
+- 前端属性面板显示 `ssh_session`；
+- 引擎会按 `SSHConnection` 做 isinstance 校验；
+- 用户必须传 `Param.session`，不能随便传字符串。
 
 ## 6. 返回值与类型
 

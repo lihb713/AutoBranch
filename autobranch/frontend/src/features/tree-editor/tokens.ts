@@ -13,7 +13,11 @@ export const TYPE_TOKENS = [
 ] as const;
 
 /** 后端函数参数 JSON Schema 类型 → 前端类型 token。 */
-export function schemaTypeToToken(t: string | undefined): string {
+export function schemaTypeToToken(
+  t: string | undefined,
+  customType?: string,
+): string {
+  if (customType) return customType;
   switch (t) {
     case "string":
       return "str";

@@ -16,6 +16,7 @@ from autobranch.plugin_system import (
     PluginBase,
     PluginRegistry,
     PluginRuntime,
+    custom_type_param,
     engine_function,
 )
 from autobranch.plugins.compute import ComputePlugin
@@ -61,6 +62,54 @@ def test_function_call_node_tick_compute():
     assert report.arguments == {"a": 2, "b": 3}
     assert report.returns == {"结果": 6}
     assert report.duration is not None
+
+
+def test_function_call_validates_custom_type_parameter():
+    class Widget:
+        pass
+
+    class WidgetPlugin(PluginBase):
+        name = "widget"
+
+        @property
+        def custom_types(self):
+            return {"widget_obj": Widget}
+
+        @engine_function(
+            name="use",
+            parameters={
+                "type": "object",
+                "properties": {"w": custom_type_param("widget_obj", "对象")},
+                "required": ["w"],
+            },
+            returns={"ok": "bool"},
+        )
+        def use(self, w):
+            return True
+
+    reg = PluginRegistry()
+    reg.register(WidgetPlugin())
+    space = SchemaSpace()
+    frame = space.enter_frame("t", None)
+    ctx = RunContext(
+        config=RunConfig(),
+        space=space,
+        reporter=_FakeReporter(),
+        browser=None,
+        leaf_executor=lambda n, t: None,
+        registry=reg,
+        runtime=PluginRuntime(),
+    )
+    bad = FunctionCallNode(
+        function="widget.use", args=("not-a-widget",), returns=(("ok", "bool"),)
+    )
+    assert Traverser(ctx).tick(bad) == "failure"
+    space.write(frame, "obj", Widget(), "widget_obj")
+    good = FunctionCallNode(
+        function="widget.use", args=("Param.obj",), returns=(("ok", "bool"),)
+    )
+    assert Traverser(ctx).tick(good) == "success"
+    reg.unregister("widget")
 
 
 def test_function_call_substitutes_embedded_param_text():

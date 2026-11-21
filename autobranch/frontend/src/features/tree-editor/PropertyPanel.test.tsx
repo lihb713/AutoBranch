@@ -471,6 +471,56 @@ describe("PropertyPanel", () => {
     expect(next.nodes.fc2.args).toEqual(["x"]);
   });
 
+  it("FunctionCall：自定义类型参数显示 x-autobranch-type", async () => {
+    functionMocks.listFunctions.mockResolvedValue([
+      {
+        full_name: "ssh.ssh_exec",
+        plugin: "ssh",
+        name: "ssh_exec",
+        description: "执行命令",
+        returns: { stdout: "str" },
+        parameters: {
+          type: "object",
+          properties: {
+            session: {
+              type: "string",
+              "x-autobranch-type": "ssh_session",
+              description: "SSH 会话",
+            },
+            command: { type: "string" },
+          },
+          required: ["session", "command"],
+        },
+      },
+    ]);
+    const fc: TreeNode = {
+      id: "fc5",
+      type: "FunctionCall",
+      name: "执行命令",
+      fields: {},
+      function: "ssh.ssh_exec",
+      args: [],
+      kwargs: {},
+      returns: {},
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: {},
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "fc5" },
+        fc5: fc,
+      },
+    };
+    renderPanel(doc, fc);
+    await waitFor(() =>
+      expect(screen.getByTestId("fc-arg-fc5-0")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("入参 session（ssh_session）")).toBeInTheDocument();
+  });
+
   it("FunctionCall：可选参数按命名传入，可跳过中间参数", async () => {
     functionMocks.listFunctions.mockResolvedValue([
       {

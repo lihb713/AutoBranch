@@ -102,6 +102,12 @@ def test_register_browser_plugin_exposes_functions():
     } <= names
     assert reg.function("browser.extract").is_producing  # output_param target
     assert reg.function("browser.open").returns == {"page": "page_object"}
+    assert (
+        reg.function("browser.activate").parameters["properties"]["page"][
+            "x-autobranch-type"
+        ]
+        == "page_object"
+    )
     # 用户可见 / LLM-only 分层：技术性接口不进入 FunctionCall 清单
     user_names = set(reg.user_functions())
     assert {"browser.open", "browser.get_url"} <= user_names

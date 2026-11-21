@@ -34,10 +34,11 @@ from autobranch.parser.models import (
     SelectorNode,
     SequenceNode,
 )
+from autobranch.plugin_system.defs import AUTOBRANCH_TYPE_KEY
 from autobranch.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
 from autobranch.schema import FrameDecl
 from autobranch.schema.errors import SchemaError
-from autobranch.schema.types import coerce, infer_type
+from autobranch.schema.types import TYPE_REGISTRY, check_type, coerce, infer_type
 from autobranch.timeutil import now_local_naive
 
 logger = logging.getLogger(__name__)
@@ -372,10 +373,14 @@ class Traverser:
     def _coerce_function_arg(
         name: str, value: object, property_defs: dict
     ) -> object:
-        """用户填写的 array/object 字面量按函数参数类型构造为 list/dict。"""
-        type_name = (property_defs.get(name) or {}).get("type")
+        """按参数声明转换/校验：array/object 构造，插件自定义类型做 isinstance 校验。"""
+        prop = property_defs.get(name) or {}
+        type_name = prop.get(AUTOBRANCH_TYPE_KEY) or prop.get("type")
         if type_name in ("array", "object"):
             return coerce(type_name, value)
+        spec = TYPE_REGISTRY.get(type_name) if isinstance(type_name, str) else None
+        if spec is not None and spec.custom:
+            check_type(type_name, value)
         return value
 
     def _tick_function_call(self, node: FunctionCallNode) -> NodeStatus:
