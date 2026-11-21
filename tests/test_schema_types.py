@@ -8,6 +8,7 @@ from autobranch.schema.types import (
     check_type,
     coerce,
     infer_type,
+    is_fully_basic,
     validate_type_name,
 )
 
@@ -96,6 +97,14 @@ def test_coerce_int_failure(raw):
 def test_coerce_page_ref_rejected():
     with pytest.raises(SchemaTypeError):
         coerce("page_ref", "http://x")  # 页签引用不能由文本产生
+
+
+def test_is_fully_basic_recurses_containers():
+    assert is_fully_basic("x")
+    assert is_fully_basic({"a": [1, True, None]})
+    assert not is_fully_basic([PageRef(page_id="p1")])
+    assert not is_fully_basic({"page": PageRef(page_id="p1")})
+    assert not is_fully_basic((1, 2))
 
 
 def test_infer_type_english():

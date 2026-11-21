@@ -175,3 +175,5 @@ TYPE_REGISTRY = {
 - `page_ref`：保留的自定义页签引用类型，不能由文本构造；浏览器插件当前 `open()` 返回 `PageObject`，声明为 `generics`。
 
 函数返回值保存到黑板时保留原始 Python 类型：返回 list 就是 `array`，返回 dict 就是 `object`，返回插件对象则声明为 `generics`。文本→类型的转换只发生在用户输入/行为树字面量边界。
+
+判断 array/object 能否作为文本提供给 LLM 时，系统递归检查容器元素：仅当所有元素均为 str/int/float/bool/None 或由这些基本值组成的 list/dict 时才替换；含 PageRef/插件对象等自定义值时按不确定类型处理（保留 `Param.x`，变量表用 repr）。

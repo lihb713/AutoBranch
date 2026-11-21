@@ -474,8 +474,8 @@ n9:
 **机制**：
 - **读取（Param.）确定性**：`Param.xxx` 出现在叶子描述中，引擎在叶子执行前从
   blackboard 读取：
-  - 基本类型（str/int/float/bool/array/object）：替换为真实值文本；
-  - 不确定/引用类型（generics/page_ref）：**保留 `Param.xxx` 原文**，并在用户消息的「当前变量表」中展示变量名/类型/对象 repr，供 LLM 在函数参数中用 `Param.xxx` 引用。
+  - 基本类型（str/int/float/bool/array/object）：替换为真实值文本；array/object 需递归检查，**所有元素均为基本值**才替换；
+  - 不确定/引用类型（generics/page_ref），以及**包含自定义值的 list/dict**：**保留 `Param.xxx` 原文**，并在用户消息的「当前变量表」中展示变量名/类型/对象 repr，供 LLM 在函数参数中用 `Param.xxx` 引用。
   读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
 - **对象参数解析**：LLM 调用插件函数时，字符串参数值若完整匹配 `Param.xxx`，引擎从当前帧读取实际对象后传给插件
   （如 `ssh.ssh_exec(session="Param.ssh_conn", ...)`、`browser.activate(page="Param.tab")`）。

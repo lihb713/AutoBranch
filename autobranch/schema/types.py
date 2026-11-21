@@ -153,6 +153,24 @@ def coerce(token: str, raw: Value) -> Value:
     return spec.cast(raw)
 
 
+def is_fully_basic(value: Value) -> bool:
+    """值是否完全由基本标量/容器构成（不含 generics/page_ref 等自定义值）。
+
+    list/dict 递归检查全部元素；None 视为可文本化的基本值；其他对象
+    （PageRef、插件对象等）返回 False。
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    if isinstance(value, list):
+        return all(is_fully_basic(item) for item in value)
+    if isinstance(value, dict):
+        return all(
+            is_fully_basic(key) and is_fully_basic(item)
+            for key, item in value.items()
+        )
+    return False
+
+
 def infer_type(value: Value) -> str:
     """按 Python 值类型推断 token（用于缺省声明类型）。"""
     if isinstance(value, bool):

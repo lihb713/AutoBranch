@@ -57,7 +57,7 @@ from autobranch.plugin_system.capability import (
 )
 from autobranch.reporting.models import LeafTrace
 from autobranch.schema.errors import SchemaError
-from autobranch.schema.types import coerce, infer_type
+from autobranch.schema.types import coerce, infer_type, is_fully_basic
 
 
 @dataclass
@@ -124,9 +124,12 @@ def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | No
             if value is None:
                 return description, f"变量未定义: {var}"
             var_type = getattr(frame, "declared", {}).get(var) or infer_type(value)
-            if var_type in ("str", "int", "float", "bool", "array", "object"):
+            basic = var_type in ("str", "int", "float", "bool") or (
+                var_type in ("array", "object") and is_fully_basic(value)
+            )
+            if basic:
                 replaced = replaced.replace(match.group(0), str(value))
-            # generics/page_ref：保留 Param.xxx，由变量表让 LLM 理解对象
+            # generics/page_ref / 含自定义值的容器：保留 Param.xxx，由变量表让 LLM 理解对象
         out.append(replaced)
     return "".join(out), None
 

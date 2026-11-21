@@ -11,7 +11,7 @@ from autobranch.leaf_agent.models import LeafContext
 from autobranch.llm import LLMConfig, LLMSession
 from autobranch.parser.models import ActionNode
 from autobranch.plugin_system import FunctionResult
-from autobranch.schema import SchemaSpace
+from autobranch.schema import PageRef, SchemaSpace
 
 
 class Conn:
@@ -208,3 +208,37 @@ def test_save_to_json_string_is_parsed(llm_config, space):
     result = execute_leaf(node, ctx)
     assert result.status == "success"
     assert space.read(space._current, "this/home_list") == "out"
+
+
+def test_basic_containers_are_substituted_in_description(llm_config, space):
+    space.write(space._current, "this/items", ["a", "b"], "array")
+    space.write(space._current, "this/payload", {"x": 1}, "object")
+    transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
+    ctx = _ctx(llm_config, space, transport, MockRegistry())
+    node = ActionNode(description="处理 Param.items 与 Param.payload")
+    result = execute_leaf(node, ctx)
+    assert result.status == "success"
+    user_text = " ".join(
+        m["content"] for m in transport.last_request.json()["messages"] if m["role"] == "user"
+    )
+    assert "['a', 'b']" in user_text
+    assert "{'x': 1}" in user_text
+
+
+def test_containers_with_custom_values_keep_param_reference(llm_config, space):
+    space.write(
+        space._current,
+        "this/items",
+        [PageRef(page_id="p1")],
+        "array",
+    )
+    space.write(space._current, "this/payload", {"conn": Conn()}, "object")
+    transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
+    ctx = _ctx(llm_config, space, transport, MockRegistry())
+    node = ActionNode(description="处理 Param.items 与 Param.payload")
+    result = execute_leaf(node, ctx)
+    assert result.status == "success"
+    user_text = " ".join(
+        m["content"] for m in transport.last_request.json()["messages"] if m["role"] == "user"
+    )
+    assert "处理 Param.items 与 Param.payload" in user_text

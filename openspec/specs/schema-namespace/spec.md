@@ -156,6 +156,18 @@
 - **WHEN** Ref 帧挂载 root
 - **THEN** 不能读取调用方行为树帧的局部变量
 
+### Requirement: 容器自定义值递归判定
+
+系统 SHALL 递归判断 `array`/`object` 是否完全由基本值构成；仅当所有元素均为基本值时才可作为文本替换 `Param.x` 提供给 LLM。容器内含 `generics`/`page_ref` 等自定义值时 SHALL 按不确定类型处理（保留 `Param.x`，变量表使用 repr）。
+
+#### Scenario: 基本容器可文本化
+- **WHEN** array 仅含字符串/数字或 object 仅含基本值
+- **THEN** 描述中的 `Param.x` 被替换为实际值文本
+
+#### Scenario: 含 PageRef 的容器保留引用
+- **WHEN** array 中包含 PageRef 或 object 中包含插件对象
+- **THEN** 描述中保留 `Param.x`，不把容器整体转成字符串
+
 ### Requirement: 数组与对象文本构造
 
 类型系统 SHALL 将 `array` 与 `object` 作为基本类型；`object` 文本必须是 JSON 对象，`array` 文本必须是 JSON 数组；`generics` 为不确定类型（任意值原样保留）；只有 `page_ref` 不可由文本构造。文本→类型转换仅发生在用户输入/字面量边界，函数返回的 list/dict 直接保存。

@@ -515,7 +515,7 @@ n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
 
 - 读取的变量必须是：文档 `inputs` 声明、文档内某处 `NewParam.x` 写入声明、`ref`/`FunctionCall` 的 `returns` 目标、或 `Define` 声明的变量。否则清晰度校验报 `scope.get_undeclared`。
 - 未定义的读取 → 该叶子直接 FAILURE（程序错误）。
-- **基本类型**（str/int/float/bool/array/object）会替换成真实值；**不确定/引用类型**（`generics`/`page_ref`）保留 `Param.x` 原文，同时在用户消息的「当前变量表」中展示类型与值，供 LLM 在函数参数中引用。
+- **基本类型**（str/int/float/bool/array/object）会替换成真实值，但 array/object 会**递归检查**：仅当容器内所有元素都是基本值时才替换；容器内含 `generics`/`page_ref` 等自定义值时，与不确定类型一样保留 `Param.x` 原文，并在「当前变量表」中展示 repr，供 LLM 在函数参数中引用。
 
 ### 8.2 写入：`NewParam.x[:类型]`（仅 Action 描述）
 
