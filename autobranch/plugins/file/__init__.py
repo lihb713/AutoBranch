@@ -241,7 +241,7 @@ class FilePlugin(PluginBase):
 
     @engine_function(
         name="read",
-        description="读取文件内容（UTF-8；相对路径以引擎工作目录为基址）",
+        description="读取文件内容（UTF-8；相对文件管理根目录的路径）",
         parameters=_params(("path",), path={"type": "string", "description": "文件路径"}),
         returns={"content": "str"},
     )

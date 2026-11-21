@@ -4,6 +4,14 @@
 >
 > 快速上手（一页版）见 `README.md`；行为树语言契约与模块设计见 `docs/contract.md` / `docs/specs/`。
 
+## 专题文档
+
+本文保留安装、配置、界面、执行、报告、代理与排障等内容。以下主题已拆分为独立文档，建议按需阅读：
+
+- [行为树指南](behavior-tree-guide.md)：基本概念、节点、变量黑板、入参出参、ref、FunctionCall、完整示例
+- [插件开发指南](plugin-development-guide.md)：插件结构、save_to、自定义类型、配置与前端扩展
+- [内置插件介绍](builtin-plugins.md)：browser / compute / transform / SSH / file / HTTP / vars 的函数与示例
+
 ---
 
 ## 目录
@@ -13,12 +21,12 @@
 3. [安装与部署](#3-安装与部署)
 4. [配置](#4-配置)
 5. [前端界面导航](#5-前端界面导航)
-6. [行为树文档语法（直接书写）](#6-行为树文档语法直接书写)
+6. [行为树指南](behavior-tree-guide.md)
 7. [前端编辑器：可视化构建行为树](#7-前端编辑器可视化构建行为树)
-8. [变量详解](#8-变量详解)
+8. [行为树指南：变量与黑板](behavior-tree-guide.md#6-变量与黑板)
 9. [执行与报告](#9-执行与报告)
-10. [内置插件与函数详解](#10-内置插件与函数详解)
-11. [自定义插件开发](#11-自定义插件开发)
+10. [内置插件介绍](builtin-plugins.md)
+11. [插件开发指南](plugin-development-guide.md)
 12. [浏览器代理路由配置（详解）](#12-浏览器代理路由配置详解)
 13. [经验回灌](#13-经验回灌)
 14. [常见问题与排查](#14-常见问题与排查)
@@ -44,11 +52,11 @@ AutoBranch 是一个**自然语言驱动的行为树自动化工具**。你不�
 
 | 概念 | 一句话 | 详细 |
 |---|---|---|
-| 行为树文档 | 一份 YAML 文本，`tree/nodes/root` 三段式 | §6 |
-| 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall/Define） | §6.1 |
-| 变量 | `Param.x` 读、`NewParam.x[:类型]` 写（仅 Action 描述）、`returns` 裸名接收、`Define` 声明 | §8 |
-| 入参/出参 | 文档级 `inputs`（外部传入）、`outputs`（对外返回） | §6.5 |
-| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/自定义），函数以 `插件名.函数名` 标识；文件/SSH/浏览器共享文件管理平台路径 | §10/§11 |
+| 行为树文档 | 一份 YAML 文本，`tree/nodes/root` 三段式 | [行为树指南](behavior-tree-guide.md) |
+| 节点 | 组合节点（流转）或叶子（Action/Condition/ref/FunctionCall/Define） | [行为树指南](behavior-tree-guide.md) |
+| 变量 | `Param.x` 读、`NewParam.x[:类型]` 写（仅 Action 描述）、`returns` 裸名接收、`Define` 声明 | [变量与黑板](behavior-tree-guide.md#6-变量与黑板) |
+| 入参/出参 | 文档级 `inputs`（外部传入）、`outputs`（对外返回） | [行为树指南](behavior-tree-guide.md) |
+| 插件 | 能力集合（浏览器/计算/SSH/文件/HTTP/变量/数据变换/自定义），函数以 `插件名.函数名` 标识 | [内置插件](builtin-plugins.md) / [插件开发](plugin-development-guide.md) |
 | 执行实例 | 一次执行 = 自包含实例（快照 + 入参 + 出参） | §9 |
 | 报告 | 执行报告（节点结果+截图）/ 回溯报告（含 LLM 推理） | §9.5 |
 
@@ -263,198 +271,11 @@ browser: chromium  # 浏览器类型
 
 ---
 
-## 6. 行为树文档语法（直接书写）
+## 6. 行为树文档语法
 
-行为树是 YAML，**一文档一树**。三段式：
+行为树的基本概念、节点类型、变量黑板、ref、FunctionCall、Define、ForEach 与完整示例，已整理到独立文档：
 
-```yaml
-tree: 文档名          # 必须 = 保存时的树名
-nodes:                # 节点对象池：所有节点按 id 平铺
-  n1: {...}
-  n2: {...}
-root: n1              # 根节点引用（必须指向 type: Root）
-```
-
-可选顶层键：`inputs`（入参声明）、`outputs`（出参声明 `{名称: 类型}`）、`timeout`/`retry`/`browser`（配置覆盖）。
-
-### 6.1 节点类型与字段
-
-| 节点 | 干什么 | 槽位字段（挂子树） | 自有字段 |
-|---|---|---|---|
-| `Root` | 树的根，执行其主体 | `body`（1） | — |
-| `Sequence` | 顺序执行，任一失败则整体失败 | `actions`（列表，有序） | — |
-| `Step` | 做一步并验证（操作 + 条件） | `action`（1） | `expect`（条件文本） |
-| `IfThenElse` | 按条件分流 | `then`（1）、`else`（1） | `if`（条件文本） |
-| `Branch` | 先做前置操作，再按条件分流 | `action`（1）、`branches[].action` | `branches`（见下） |
-| `Retry` | 失败则重试，直到成功或到上限 | `body`（1） | `max`（最多轮数） |
-| `LoopUntil` | 每轮先判条件，满足则退出，否则执行循环体 | `action`（1） | `until`（条件）、`max` |
-| `ForEach` | 遍历列表变量逐轮执行子树 | `body`（1） | `variables`（名→值/JSON 数组）、`on_failure`（continue/abort） |
-| `Action` | 叶子：LLM 执行一个自然语言操作 | — | `description` |
-| `ref` | 叶子：调用另一份行为树文档 | — | `target`/`args`/`returns` |
-| `FunctionCall` | 叶子：确定性调用插件函数（不经 LLM） | — | `function`/`args`/`kwargs`/`returns` |
-
-**条件（Condition）没有独立类型**，内嵌为字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。条件也是 LLM 叶子（判断真/假）。
-
-**ForEach 示例**：
-
-```yaml
-n_foreach:
-  type: ForEach
-  name: 遍历环境
-  variables:
-    env_id: Param.env_ids      # 列表变量（JSON 数组字符串或数组值）
-    label: "固定值"             # 非列表变量，每轮同值
-  body: n_body
-  on_failure: continue         # continue 跳过失败轮；abort 立即失败
-
-n_collect:
-  type: FunctionCall
-  function: transform.append
-  args: [Param.results, Param.env_id]
-  returns: {results: str}
-```
-
-- ForEach 子帧中的 item 变量可被 body 内的 `Param.env_id` 读取。
-- `transform.append` 返回追加后的 JSON 数组字符串，用 `returns: {results: str}` 写回 `results`，可在循环中累积结果。
-
-**Branch 的 `branches` 写法**：
-
-```yaml
-n3:
-  type: Branch
-  action: n4                  # 先执行的前置操作（如提取金额）
-  branches:
-    - when: 金额大于100        # 条件为真 → 执行 n5
-      action: n5
-    - otherwise: n6            # 都不满足 → 执行 n6
-```
-
-### 6.2 各种节点示例
-
-```yaml
-# Sequence 顺序执行
-n2: {type: Sequence, actions: [n3, n4, n5]}
-
-# Step：操作 + 验证
-n3: {type: Step, action: n4, expect: 页面出现"登录成功"}
-n4: {type: Action, description: 输入用户名 admin}
-
-# IfThenElse：按条件分流
-n5: {type: IfThenElse, if: 页面有"已批准", then: n6, else: n7}
-
-# Retry：失败重试，最多 2 次
-n8: {type: Retry, body: n9, max: 2}
-
-# LoopUntil：循环直到条件成立，最多 3 轮
-n10: {type: LoopUntil, action: n11, until: 出现"下一页"按钮, max: 3}
-
-# Action 叶子（LLM 执行）
-n12: {type: Action, description: 打开页面 "https://example.com"，点击"登录"按钮}
-
-# ref 跨文档调用
-n13: {type: ref, target: 登录文档, args: [Param.user, Param.pass],
-      returns: {loginOk: bool}}
-
-# FunctionCall 确定性调用
-n14: {type: FunctionCall, function: compute.add, args: [Param.a, 2],
-      returns: {total: int}}
-
-# Define 声明变量（确定性叶子）
-n15: {type: Define, vars: {baseUrl: {type: str, value: "https://example.com"}, retries: {type: int, value: "3"}}}
-```
-
-### 6.3 `ref` 跨文档调用（把另一份树当子程序）
-
-`ref` 在运行期动态加载**另一份行为树文档**并执行：
-
-```yaml
-n13:
-  type: ref
-  target: 登录文档          # 被调用的文档名（须存在）
-  args: [Param.user, "admin"]   # 实参，按序对应被调文档的 inputs；可为变量或字面量
-  returns: {loginOk: bool}      # 接收名；类型取自目标 outputs（自动生成、只读）
-```
-
-- 被调文档的 `inputs` 数量/顺序 与 `args` 必须一致；`outputs` 与 `returns` 一致。
-- `returns` 键 = 本树新建变量（未填写时自动生成 `<节点id>_<输出名>`；含 `.`/非 ASCII → 校验报错）。
-- 类型由目标文档 `outputs` 决定，用户不可编辑；被引目标必须是**正式版**。
-
-### 6.4 `FunctionCall` 确定性调用（不经 LLM）
-
-直接调用插件函数，结果确定、速度快：
-
-```yaml
-n14:
-  type: FunctionCall
-  function: compute.add       # 全名：插件名.函数名
-  args: [Param.a, 2]          # 位置实参：本帧变量或字面量，按序对应函数参数
-  kwargs:                     # 命名可选参数：跳过中间可选参数时使用
-    jump: {host: jump.internal, user: ops}
-  returns: {total: float}    # 接收名；类型取自函数 returns 声明（只读）
-```
-
-- 函数不存在 / 实参少于必填或超过全部参数 / 引用仅 LLM 函数 → 保存校验 422 拒绝；可选参数可省略。可选参数推荐用 `kwargs` 按参数名传入，避免为了靠后的参数补一堆前置占位。
-- `args`/`kwargs` 的字符串若完整匹配 `Param.x`，传入变量原值；若为嵌入文本（如 `stat /tmp/Param.filename`），则把 `Param.x` 替换为变量值文本。
-- 未填写接收名时自动生成 `<节点id>_<函数返回参数名>`；类型取函数声明，用户只改名称。
-- 常用函数见 §10。
-
-### 6.4b `Define` 声明变量（确定性叶子）
-
-不调用 LLM，直接在当前文档帧创建变量，供后续节点 `Param.x` 读取：
-
-```yaml
-n15:
-  type: Define
-  vars:
-    baseUrl: {type: str, value: "https://example.com"}   # 字面量
-    retries: {type: int, value: "3"}
-    alias:   {type: str, value: "Param.baseUrl"}          # 从本帧拷贝/重命名
-```
-
-- `vars` 个数不固定；变量名为裸 ASCII 标识符，`type` 为类型 token。
-- `value` 为字面量或 `Param.<名>`；按 `type` coerce 后写入本帧。求值/coerce 失败 → 节点失败。
-- 与 ref/FunctionCall 的 `returns` 一样，声明即在本帧创建变量。
-
-### 6.5 文档级入参 / 出参
-
-```yaml
-tree: 订单
-inputs:
-  user: str          # 入参：名 → 类型（str/int/float/bool/array/object/generics/page_ref）
-  amount: int
-outputs:
-  result: str        # 出参：名称 → 类型（执行后对外返回）
-nodes: ...
-```
-
-- **入参**：执行时由外部提供（前端弹框填写或 API 传入）；叶子用 `Param.user` 读取。
-- **出参**：执行结束后引擎读根帧，报告页/执行列表展示。
-- **不可由文本构造的入参类型**（仅 `page_ref`）：前端不显示"执行"按钮，该树**只能被其他树 `ref` 调用**（调用方在运行期提供页面对象）。`array`/`object` 用 JSON 文本（`[...]` / `{...}`）传入，`generics` 原样传入。
-
-### 6.6 一个完整可执行示例
-
-```yaml
-tree: 表格求和演示
-outputs:
-  total: float
-nodes:
-  n1: {type: Root, name: 根, body: n2}
-  n2: {type: Sequence, name: 主流程, actions: [n3, n5]}
-  n3: {type: Step, name: 登录, action: n4, expect: 页面出现"销售数据表"}
-  n4:
-    type: Action
-    name: 打开登录
-    description: 打开页面 "http://127.0.0.1:8123/index.html"，输入 admin/secret，点击"登录"按钮
-  n5:
-    type: FunctionCall
-    name: 求和
-    function: compute.add
-    args: [1, 2]
-    returns: {total: int}
-root: n1
-```
-
----
+- **[行为树指南](behavior-tree-guide.md)**
 
 ## 7. 前端编辑器：可视化构建行为树
 
@@ -505,79 +326,9 @@ root: n1
 
 ## 8. 变量详解
 
-### 8.1 读取：`Param.x`
+变量、黑板、类型系统与作用域的完整说明，见：
 
-写在叶子描述中，引擎在执行前从帧内读取真实值替换后注入 LLM：
-
-```yaml
-n3: {type: Action, description: 在搜索框输入 Param.keyword 并回车}
-```
-
-- 读取的变量必须是：文档 `inputs` 声明、文档内某处 `NewParam.x` 写入声明、`ref`/`FunctionCall` 的 `returns` 目标、或 `Define` 声明的变量。否则清晰度校验报 `scope.get_undeclared`。
-- 未定义的读取 → 该叶子直接 FAILURE（程序错误）。
-- **基本类型**（str/int/float/bool/array/object）会替换成真实值，但 array/object 会**递归检查**：仅当容器内所有元素都是基本值时才替换；容器内含 `generics`/`page_ref` 等自定义值时，与不确定类型一样保留 `Param.x` 原文，并在「当前变量表」中展示 repr，供 LLM 在函数参数中引用。
-
-### 8.2 写入：`NewParam.x[:类型]`（仅 Action 描述）
-
-声明"本动作会把结果存到变量 x"（LLM 决定何时调用 extract/产出型工具）：
-
-```yaml
-n5: {type: Action, description: 从表中提取金额写入 NewParam.amount:int}
-```
-
-- 类型 token：核心 `str` / `int` / `float` / `bool` / `array` / `object` / `generics` / `page_ref`，以及插件已注册的自定义类型（如 `ssh_session`、`page_object`）；可省略，按动作推断。
-- 产出型工具的目标必须在 `NewParam.` 声明集内，否则拒绝写入。
-- `NewParam.` **只能出现在 Action 的 `description`**；Condition 描述只能读取，不能声明写入。
-- **对象变量**：工具参数可以直接写 `Param.x` 引用变量中的对象（如 `session="Param.ssh_conn"`、`page="Param.tab"`），引擎调用前会解析为实际对象。
-- **save_to 多返回值**：单返回值函数写 `save_to="变量名"`；多返回值函数写 `save_to={"返回参数名": "变量名", ...}`，可只保存部分返回值。例如：
-  ```yaml
-  n4: {type: Action, description: 在SSH会话 Param.ssh_conn 上执行 ls /home 并保存输出 NewParam.home_list:str}
-  # LLM 可调用 ssh.ssh_exec(session="Param.ssh_conn", command="ls /home", save_to="home_list")
-  # 或 ssh.ssh_exec(..., save_to={"stdout": "home_list", "exit_code": "code"})
-  ```
-
-### 8.2b 声明：`Define` 节点
-
-确定性创建变量（不经 LLM）：
-
-```yaml
-n15:
-  type: Define
-  vars:
-    token: {type: str, value: "abc"}          # 字面量
-    alias: {type: str, value: "Param.token"}  # 从本帧拷贝/重命名
-```
-
-- 变量名裸 ASCII，`type` 为类型 token；`value` 为字面量或 `Param.<名>`。
-- 按 `type` coerce 后写入本帧；声明的变量可被后续 `Param.x` 读取。
-
-### 8.3 命名规则（强制）
-
-- 变量名 **ASCII 标识符** `[A-Za-z_][A-Za-z0-9_]*`，**不支持中文/点号**。
-- `ref` / `FunctionCall` 的 `returns` 接收名必须是**裸 ASCII 名**（含 `.` 如 `NewParam.x` → 校验错误 `syntax.invalid_return_name`）。
-- `args` 实参可为变量或字面量，不强制 Param。
-
-### 8.4 类型
-
-| token | 含义 |
-|---|---|
-| `str` / `int` / `float` / `bool` | 基础标量 |
-| `array` | 列表（JSON 数组文本可构造） |
-| `object` | 字典（JSON 对象文本可构造） |
-| `generics` | 不确定类型（页面对象/会话/文件句柄等任意值） |
-| `page_ref` | 自定义页签引用（不能由文本构造；浏览器 `open` 当前返回 `PageObject`，声明为 `generics`） |
-
-> 旧树迁移：原来用 `object` 承载页面对象/SSH 会话/文件句柄的声明请改为 `generics`；承载 Python list 的声明请改为 `array`；真正承载 dict 的继续用 `object`。
-
-### 8.5 变量从哪里来
-
-- **入参**：文档 `inputs` 声明 → 执行时由外部提供 → 叶子 `Param.x` 读取。
-- **叶子产出**：`NewParam.x[:类型]` 声明 → LLM 调产出型工具（如 `extract`）写入。
-- **ref 回收**：被调文档的 `outputs` 经 `returns`（裸 ASCII 名）写入本帧。
-- **FunctionCall 回收**：插件函数多返回值经 `returns`（接收名）写入。
-- **Define 声明**：`Define` 节点 `vars` 确定性创建（字面量或 `Param.x` 拷贝）。
-
----
+- **[行为树指南：变量与黑板](behavior-tree-guide.md#6-变量与黑板)**
 
 ## 9. 执行与报告
 
@@ -637,200 +388,15 @@ n15:
 
 ## 10. 内置插件与函数详解
 
-插件通过 **`use_capability("插件名")`** 由 LLM 加载（能力概览在叶子系统提示中），或由 FunctionCall 直接以全名调用。函数标识 = `插件名.函数名`。
+浏览器、计算、数据变换、SSH、文件、HTTP、变量插件的函数清单与示例，见：
 
-### 10.1 浏览器插件 `browser`
-
-页面对象用 `open` 返回（`generics` 类型可存变量），元素引用 `ref`（如 `[1]`）来自最近一次 `semantic_graph`（**每次语义图生成后旧 ref 失效**，需重新获取）。
-
-| 函数 | 可见性 | 参数 | 说明 |
-|---|---|---|---|
-| `open` | 用户+LLM | `url`（可 `save_to` 存页面对象） | 打开 URL 新建页签并设为当前活动页 |
-| `get_url` | 用户+LLM | （产出型，`save_to`） | 取当前活动页 URL 字符串 |
-| `scroll` | 用户+LLM | `direction`（up/down/left/right/top/bottom） | 滚动页面 |
-| `wait` | 用户+LLM | `condition`（`selector: <CSS>` / `text: <文本>` / `url: <子串>`） | 等待条件满足 |
-| `http.request` | 用户+LLM | `method`、`url`、可选 `headers` / `params` / `body` / `json` / `timeout` | 独立 HTTP 请求，返回 `status` / `body` / `headers`（`http` 插件） |
-| `upload_from_platform` | 仅 LLM | `ref`、`file_path` | 从文件管理平台取文件上传到页面控件 |
-| `download_to_platform` | 仅 LLM | `ref`、`file_path`（可选） | 页面下载后保存到文件管理平台 |
-| `activate` | 仅 LLM | `page`（页面对象） | 切换已有页签为活动页 |
-| `semantic_graph` | 仅 LLM | `scope`（full 或区域 id）、`lod`（0~3） | 生成当前页语义图（"看页面"），同时截图 |
-| `click` | 仅 LLM | `ref` | 点击元素 |
-| `type` | 仅 LLM | `ref`、`text` | 向输入框输入文本（替换现有值） |
-| `press` | 仅 LLM | `ref`、`key` | 向元素发送按键 |
-| `select` | 仅 LLM | `ref`、`option` | 下拉选择（优先文本匹配，其次 value） |
-| `check` / `uncheck` | 仅 LLM | `ref` | 勾选/取消勾选 checkbox/radio |
-| `extract` | 仅 LLM | `ref`（产出型，`target`） | 提取元素值并写入目标变量 |
-| `download` | 仅 LLM | `ref` | 触发下载并保存 |
-| `upload` | 仅 LLM | `ref`、`path` | 上传本地文件到文件控件 |
-| `get_response` | 仅 LLM | `method`、`url_pattern`（`*` 通配） | 读页面已发生的匹配请求响应 |
-| `list_requests` | 仅 LLM | — | 列出页面请求清单（method/url/status） |
-| `get_responses` | 仅 LLM | （产出型，`save_to`） | 批量读取全部响应 body |
-| `page_request` | 仅 LLM | `method`、`url`、`headers?`、`body?` | 页面上下文 fetch（自动携带 cookie），产出 body |
-| `get_request_headers` | 仅 LLM | — | 分析最近 API 请求头（Cookie/CSRF/Authorization） |
-| `list_tabs` / `switch_tab` | 仅 LLM | — / `tab_id` | 列出/切换标签页 |
-| `click_capture` / `type_capture` / `press_capture` / `select_capture` / `check_capture` / `uncheck_capture` / `scroll_capture` / `upload_capture` | 仅 LLM | 同对应操作 | 操作并捕获触发的全部 API 响应 |
-| `clear_requests` | 仅 LLM | — | 清空页面请求记录 |
-
-> **可见性**：用户可见 = 可被 FunctionCall 引用、出现在函数选择器与 `GET /api/functions`；
-> 仅 LLM = agent 内部能力，用户侧不可见。依赖 `ref` / 页面上下文的操作对直接写函数调用的用户不友好，
-> 因此仅对 LLM 开放；LLM 的工具集始终是全量的。
-
-**LLM 叶子怎么用浏览器**：你只需在 `description` 里用自然语言说"打开页面 X，点击登录，输入 admin"——LLM 会自动：`semantic_graph` 看页面 → 用 `ref` 定位 → 调 `click`/`type`。不用手写函数调用。
-
-**浏览器代理配置**：见 §12。
-
-### 10.1b 独立请求插件 `http` 与变量插件 `vars`
-
-- `http.request(method, url, headers?, params?, body?, json?, timeout?)`：独立 HTTP 请求，返回 `status/body/headers`，认证由 headers 显式提供。
-- `vars.set(value1, value2?, value3?)`：原样返回输入值，配合 `save_to` 把 LLM 推理产出的文本写入变量。例如：
-  ```yaml
-  n8: {type: Action, description: 从 Param.resp 提取虚拟机信息并保存 NewParam.vm_info:str}
-  # LLM 可调用 vars.set(value1="格式化文本", save_to={"value1": "vm_info"})
-  ```
-
-### 10.2 计算插件 `compute`
-
-| 函数 | 参数 | 返回 |
-|---|---|---|
-| `add` | `a`、`b` | 两数之和 |
-| `multiply` | `a`、`b` | 两数之积 |
-| `subtract` | `a`、`b` | 减法 |
-| `divide` / `floor_divide` / `modulo` | `a`、`b` | 除法/整除/取余（除数为 0 失败） |
-| `power` / `sqrt` | `a`、`b` / `value` | 幂/平方根（负数开方失败） |
-| `abs_value` / `negate` / `round_value` | `value`、`digits?` | 绝对值/相反数/四舍五入 |
-| `sum` / `average` / `min_values` / `max_values` | `values`（列表） | 聚合计算 |
-| `clamp` / `percentage` / `increment` / `decrement` | `value`、`low`/`high` 等 | 区间限制/百分比/增减 |
-| `compare` | `a`、`b`、`op`（可选，默认 gt） | 比较结果（gt/ge/lt/le/eq/ne） |
-| `sort` | `data`（列表）、`desc`（可选） | 排序后的列表 |
-
-FunctionCall 示例：`function: compute.add, args: [Param.a, 2], returns: {total: float}`。接收名默认自动生成（如 `n3_total`），类型取函数声明、用户不可编辑。数组/对象字面量参数写 JSON，执行时按函数参数类型构造。
-
-### 10.2b 数据变换插件 `transform`
-
-| 函数 | 说明 |
-|---|---|
-| `get_path` / `get_index` / `get_key` | 按路径/索引/键读取嵌套值 |
-| `split` / `join` / `contains` / `index_of` / `replace` / `strip` | 字符串处理 |
-| `length` / `slice` / `keys` / `values` | 容器处理 |
-| `to_string` / `to_int` / `to_number` / `to_bool` | 类型转换 |
-| `json_parse` / `json_dumps` | JSON 转换 |
-| `regex_match` / `regex_extract` / `regex_findall` | 正则 |
-| `compare` | 通用比较 |
-| `append` / `dict_set` | 向列表追加 / 向字典设置 KV（ForEach 收集结果用） |
-
-> **ForEach 累积结果**：`transform.append` / `dict_set` 是产出型函数，返回完整 JSON 字符串；ForEach 成功轮会把 body 写入的变量回写父帧，因此可跨轮累积。
-
-### 10.3 SSH 插件 `ssh`
-
-| 函数 | 参数 | 说明 |
-|---|---|---|
-| `create_session` | `host`、`port`、`user`、`pwd`/`key`、`timeout`、`proxy`、`jump` | 直连/SOCKS5/SSH 跳板机会话（返回会话对象） |
-| `ssh_exec` | `session`、`command`、`timeout`、`stdin`、`interactive`、`idle_timeout` | 非交互命令流式读取并判断退出码；交互模式返回 `channel_id` |
-| `ssh_send` | `session`、`channel_id`、`data`、`newline` | 向交互命令写入输入 |
-| `ssh_read` | `session`、`channel_id`、`idle_timeout` | 读取交互命令的新输出 |
-| `ssh_close_channel` | `session`、`channel_id` | 关闭交互通道 |
-| `upload_file` | `session`、`file_path`、`remote_path` | 从文件管理平台上传单文件到远程 |
-| `download_file` | `session`、`remote_path`、`file_path` | 从远程下载单文件到文件管理平台 |
-| `upload_dir` | `session`、`dir_path`、`remote_dir` | 递归上传平台目录到远程目录 |
-| `download_dir` | `session`、`remote_dir`、`dir_path` | 递归下载远程目录到平台目录 |
-| `close_session` | `session` | 关闭会话（含跳板机与所有通道） |
-
-- **代理/跳板**：`proxy={host, port, user?, pwd?}` 为 SOCKS5；`jump={host, port?, user?, pwd?, key?, proxy?}`。有 jump 时 proxy 只用于连跳板机；跳板机到目标机改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁止 direct-tcpip 的环境），因此目标认证需提供 `pwd`。
-- **跳板交互**：非交互命令通过唯一标记分割输出并解析退出码；交互命令返回 `channel_id="jump-shell"`，`ssh_send`/`ssh_read` 直接操作目标 shell。
-- **ANSI 过滤**：SSH 输出会移除颜色/控制转义序列；跳板 shell 非交互命令输出会剔除末尾命令提示符行；文件传输使用平台路径（直连 SFTP，跳板模式 base64）。
-- **非交互**：自动等待 exit-status，能判断命令结束与退出码；非零退出码为失败。
-- **交互**：`interactive=true` 使用 PTY，`ssh_exec` 在 idle_timeout 无输出后返回当前输出和 `channel_id`；随后用 `ssh_send`/`ssh_read` 像终端一样交互，由使用方判断何时结束。
-- 依赖 `paramiko` + `PySocks`（`pip install -e .` 会安装；未安装时调用返回明确错误）。
-
-### 10.3b 数据变换插件 `transform`
-
-| 函数 | 说明 |
-|---|---|
-| `get_path` | 按点路径取嵌套值，如 `0.a.b.1`、`a[0].b[-1]`；可设 `required=false` + `default` |
-| `get_index` / `get_key` | 取列表索引 / 字典键值 |
-| `split` / `join` | 字符串按分隔符切分为列表 / 列表拼接为字符串 |
-| `contains` / `index_of` / `replace` / `strip` | 字符串搜索、位置、替换、去空白 |
-| `length` / `slice` / `keys` / `values` | 容器长度、切片、字典键/值 |
-| `compare` | 通用比较：eq/ne/gt/ge/lt/le/contains/startswith/endswith |
-| `to_string` / `to_int` / `to_number` / `to_bool` | 类型转换 |
-| `json_parse` / `json_dumps` | JSON 文本 ↔ 对象 |
-| `regex_match` / `regex_extract` / `regex_findall` | 正则匹配 / 提取 / 全部匹配 |
-
-示例：`transform.get_path(data=Param.resp, path="data.items.0.name")`；`transform.split(text=Param.line, separator=",")`。
-
-### 10.4 文件插件 `file`
-
-**工作区文件函数**（路径相对文件管理根目录 `autobranch/plugins/file/data/`，禁止绝对路径与 `..` 越界）：
-
-| 函数 | 参数 | 说明 |
-|---|---|---|
-| `read` | `path` | 读文件内容（UTF-8，>10MB 拒绝） |
-| `write` | `path`、`content` | 写文件（覆盖） |
-| `diff` | `file_a`、`file_b` | 对比两个文件，返回是否相同与差异 |
-| `md5` | `path` | 计算文件 MD5 |
-
-**文件管理平台目录函数**（路径相对平台根）：
-
-| 函数 | 参数 | 说明 |
-|---|---|---|
-| `list_dir` | `path` | 列出目录直接子目录/文件 |
-| `mkdir` | `path` | 创建目录（自动创建父目录） |
-| `rmdir` | `path`、`recursive` | 删除目录（默认递归） |
-| `mvdir` | `path`、`new_path` | 重命名/移动目录并同步文件路径 |
-
-文件管理页支持目录导航、新建/重命名/递归删除目录、上传文件、上传目录（保留相对路径）、下载文件或目录 ZIP；文件列表展示 MD5。所有文件/目录使用路径表示，如 `reports/2026/a.txt`。
-
-### 10.5 函数清单查看
-
-`GET http://localhost:8001/api/functions` 返回**用户可见**函数（全名 + 结构化定义），前端函数选择器也据此渲染；`@llm_function` 注册的仅 LLM 接口不会出现。
-
----
+- **[内置插件介绍](builtin-plugins.md)**
 
 ## 11. 自定义插件开发
 
-### 11.1 写在哪里
+插件结构、函数注册、save_to、自定义类型与调试方式，见：
 
-前端「插件管理」页 → 「新增插件」→ CodeMirror 编辑器写 Python 源码 → 保存即校验并生效。
-
-### 11.2 约束
-
-- **仅用 Python 标准库**（不得 import 三方库、其他插件、`common`）。
-- 不得直接写变量空间（返回值由引擎落笔）。
-- 插件名唯一（不得与内置插件同名）。
-
-### 11.3 基本结构
-
-```python
-class Demo(PluginBase):
-    name = "demo"
-    description = "演示插件"
-
-    @engine_function(
-        name="double",
-        description="翻倍",
-        parameters={"type": "object", "properties": {"x": {"type": "number"}}, "required": ["x"]},
-        returns={"result": "float"},
-    )
-    def double(self, x: float) -> float:
-        return x * 2
-
-plugin = Demo()
-```
-
-- **只有 `@engine_function` / `@llm_function` 标注的函数才注册**，键 = 全名 `demo.double`。
-- `returns` 必须为 `{返回参数名: 类型}` 映射；名称 ASCII、类型合法（`str/int/float/bool/array/object/generics/page_ref`）。不确定类型用 `generics`，不要用 `object` 兜底。
-  `@engine_function` 用户与 LLM 均可见；`@llm_function` 仅 LLM 可见（不出现在 FunctionCall / 函数清单）。
-- 函数返回普通值，或 `FunctionResult`（可带 `values` / `report` 附加信息）。
-- 产出型函数：`output_param` 声明变量目标参数（如 `extract` 的 `target`、SSH 的 `save_to`），引擎落笔写变量；`save_to` 支持字符串（单返回值）或 `{返回参数名: 变量名}` 映射（多返回值）。
-- 自定义类型：实现 `custom_types` 属性返回 `{token: Python 类}`（如 SSH 的 `ssh_session`、浏览器 `page_object`），注册后自动进入 `/api/types`、编辑器类型下拉和插件管理页；该类型不可文本构造。
-- `init(runtime)` 可选：初始化插件公共资源；`release()` 释放（运行结束统一调用）。
-- 可依赖 `common` 共享库（预置插件；自定义插件不允许）。
-
-### 11.4 删除插件
-
-删除插件时若被行为树引用，前端弹窗提示，并**把引用其函数的行为树 FunctionCall 引用置空**。
-
----
+- **[插件开发指南](plugin-development-guide.md)**
 
 ## 12. 浏览器代理路由配置（详解）
 

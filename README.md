@@ -4,7 +4,17 @@
 
 它**不限于 Web 自动化**：除了浏览器，还内置计算、SSH、文件等能力，且支持用户编写自定义插件——因此从最初的"网页自动化"演变为通用的自动化执行平台。
 
-> **完整用户手册**：安装部署、参数配置、行为树文档语法、前端编辑器、变量、执行与报告、插件开发、内置插件用法与常见问题，见 **[`docs/user-guide.md`](docs/user-guide.md)**。本 README 为快速入门。
+> **完整用户手册**：安装部署、参数配置、前端编辑器、执行与报告、调度、代理与常见问题，见 **[`docs/user-guide.md`](docs/user-guide.md)**。
+
+## 文档导航
+
+| 文档 | 适合谁 | 内容 |
+|---|---|---|
+| [行为树指南](docs/behavior-tree-guide.md) | 行为树使用者 | 基本概念、节点、变量黑板、入参出参、ref、FunctionCall、完整示例 |
+| [插件开发指南](docs/plugin-development-guide.md) | 插件开发者 | 插件结构、函数注册、save_to、自定义类型、配置与调试 |
+| [内置插件介绍](docs/builtin-plugins.md) | 所有使用者 | browser / compute / transform / SSH / file / HTTP / vars 函数与示例 |
+| [完整用户手册](docs/user-guide.md) | 部署与运维 | 安装配置、前端界面、执行报告、调度、代理、排障 |
+| [行为树契约](docs/contract.md) | 深入开发者 | 语言契约、类型系统、API 与模块设计 |
 
 ## 核心特性
 
