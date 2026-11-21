@@ -71,6 +71,7 @@ export type TreeNode = {
   vars?: DefineVar[];
   variables?: Record<string, string>;
   onFailure?: string;
+  breakOnSuccess?: boolean;
 };
 
 /** 一份行为树文档（自包含：tree/nodes/root + 文档级接口与配置）。 */
@@ -274,6 +275,7 @@ export function parseDoc(yamlText: string): TreeDoc {
         ? Object.fromEntries(Object.entries(body["variables"]).map(([k, v]) => [k, String(v)]))
         : {};
       node.onFailure = typeof body["on_failure"] === "string" ? body["on_failure"] : "continue";
+      node.breakOnSuccess = body["break_on_success"] === true;
     }
     if (type === "Define") {
       node.vars = isRecord(body["vars"])
@@ -350,6 +352,7 @@ export function serializeDoc(doc: TreeDoc): string {
     if (node.type === "ForEach") {
       body["variables"] = node.variables ?? {};
       body["on_failure"] = node.onFailure ?? "continue";
+      if (node.breakOnSuccess) body["break_on_success"] = true;
     }
     if (node.type === "Define") {
       const vars: Record<string, { type: string; value: unknown }> = {};

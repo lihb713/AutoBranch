@@ -259,3 +259,6 @@ class RunConfig:
 - 谓词函数异常、参数错误、非 bool 返回值均视为条件执行错误，**不等于 false**；
 - 条件错误在 Selector/Branch/IfThenElse/LoopUntil 中直接让节点失败，不进入 else/下一分支；
 - 节点报告 details 记录表达式、每个谓词参数/结果、短路与最终结果。
+
+
+`ForEach` 的 `break_on_success=True` 在 body 成功后终止循环；`Param.x.y` 在 FunctionCall/ref/Define 参数中按 dict/list 路径读取，路径缺失按变量读取失败处理。

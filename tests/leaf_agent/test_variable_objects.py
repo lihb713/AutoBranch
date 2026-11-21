@@ -242,3 +242,16 @@ def test_containers_with_custom_values_keep_param_reference(llm_config, space):
         m["content"] for m in transport.last_request.json()["messages"] if m["role"] == "user"
     )
     assert "处理 Param.items 与 Param.payload" in user_text
+
+
+def test_nested_param_path_resolved_in_description(llm_config, space):
+    space.write(space._current, "this/obj", {"name": "alice"}, "object")
+    transport = FakeTransport(responses=[chat_response(text="结果: 成功")])
+    ctx = _ctx(llm_config, space, transport, MockRegistry())
+    node = ActionNode(description="处理 Param.obj.name")
+    result = execute_leaf(node, ctx)
+    assert result.status == "success"
+    user_text = " ".join(
+        m["content"] for m in transport.last_request.json()["messages"] if m["role"] == "user"
+    )
+    assert "alice" in user_text

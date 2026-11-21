@@ -84,7 +84,9 @@ function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>):
   const next: TreeNode = { ...node, fields: { ...node.fields } };
   const target = next as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
-    if (CONDITION_KEYS.has(key)) {
+    if (key === "break_on_success") {
+      next.breakOnSuccess = Boolean(value);
+    } else if (CONDITION_KEYS.has(key)) {
       next.conditions = {
         ...(next.conditions ?? {}),
         [key]: value as never,
@@ -677,12 +679,14 @@ describe("PropertyPanel", () => {
     fireEvent.change(screen.getByTestId("foreach-on-failure"), {
       target: { value: "abort" },
     });
+    fireEvent.click(screen.getByTestId("foreach-break-on-success"));
     const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
     expect(next.nodes.fe1.variables).toEqual({
       env_id: "Param.env_ids",
       label: "fixed",
     });
     expect(next.nodes.fe1.onFailure).toBe("abort");
+    expect(next.nodes.fe1.breakOnSuccess).toBe(true);
   });
 
   it("Define：变量行展示与增删改", () => {

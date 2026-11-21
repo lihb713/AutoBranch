@@ -245,3 +245,16 @@
 #### Scenario: all 短路
 - **WHEN** all 的第一个谓词为 false
 - **THEN** 后续谓词不执行，条件结果为 false
+
+
+### Requirement: ForEach 提前终止与点路径
+
+ForEach SHALL 支持 `break_on_success`：body 成功后终止循环。参数/描述中的 `Param.变量.字段` SHALL 按 dict/list 路径读取，路径缺失按读取失败处理。
+
+#### Scenario: 首个成功即停止
+- **WHEN** ForEach.break_on_success=true 且第一个 body 成功
+- **THEN** 循环立即结束
+
+#### Scenario: 读取嵌套字段
+- **WHEN** FunctionCall 参数为 Param.obj.name
+- **THEN** 读取 obj 的 name 字段并传给函数

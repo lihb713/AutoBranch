@@ -40,7 +40,13 @@ from autobranch.plugin_system.defs import AUTOBRANCH_TYPE_KEY
 from autobranch.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
 from autobranch.schema import FrameDecl
 from autobranch.schema.errors import SchemaError
-from autobranch.schema.types import TYPE_REGISTRY, check_type, coerce, infer_type
+from autobranch.schema.types import (
+    TYPE_REGISTRY,
+    check_type,
+    coerce,
+    infer_type,
+    read_path_value,
+)
 from autobranch.timeutil import now_local_naive
 
 logger = logging.getLogger(__name__)
@@ -365,6 +371,9 @@ class Traverser:
                         value,
                         frame.declared.get(name) or infer_type(value),
                     )
+                if node.break_on_success:
+                    meta["details"]["提前终止"] = index + 1
+                    break
         finally:
             if frame is not None:
                 space.exit_frame(frame)
@@ -893,21 +902,18 @@ class Traverser:
         text = expr or ""
         m = _PARAM_REF.fullmatch(text.strip())
         if m:
-            var = m.group(1)
-            if not self.ctx.space.has_variable(frame, var):
-                return _MISSING
-            return self.ctx.space.read(frame, var)
+            return self._read_param(frame, m.group(1), m.group(2))
         if not _PARAM_REF.search(text):
             return _parse_literal(text)
         missing = False
 
         def _replace(match: re.Match) -> str:
             nonlocal missing
-            var = match.group(1)
-            if not self.ctx.space.has_variable(frame, var):
+            value = self._read_param(frame, match.group(1), match.group(2))
+            if value is _MISSING:
                 missing = True
                 return match.group(0)
-            return self._value_summary(self.ctx.space.read(frame, var))
+            return self._value_summary(value)
 
         replaced = _PARAM_REF.sub(_replace, text)
         return _MISSING if missing else replaced
@@ -949,12 +955,23 @@ class Traverser:
             return text
 
         def _replace(match: re.Match) -> str:
-            var = match.group(1)
-            if not self.ctx.space.has_variable(frame, var):
+            value = self._read_param(frame, match.group(1), match.group(2))
+            if value is _MISSING:
                 return match.group(0)
-            return f"Param.{var} ({self._value_summary(self.ctx.space.read(frame, var))})"
+            return f"{match.group(0)} ({self._value_summary(value)})"
 
         return _PARAM_REF.sub(_replace, text)
+
+    def _read_param(self, frame, var: str, suffix: str) -> object:
+        if self.ctx.space is None or not self.ctx.space.has_variable(frame, var):
+            return _MISSING
+        value = self.ctx.space.read(frame, var)
+        if not suffix:
+            return value
+        try:
+            return read_path_value(value, suffix.lstrip("."))
+        except SchemaError:
+            return _MISSING
 
     @staticmethod
     def _value_summary(value: object, limit: int = 200) -> str:
@@ -991,7 +1008,9 @@ _MISSING = object()
 
 
 #: ``Param.<名>`` 变量引用（实参求值用；ASCII 词边界防 ``NewParam.`` 误判）
-_PARAM_REF = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
+_PARAM_REF = re.compile(
+    r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_]+)*)"
+)
 
 
 def _parse_literal(expr: str):

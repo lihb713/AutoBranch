@@ -99,3 +99,8 @@ def test_plugin_custom_type_accepted():
 
 def test_clean_text_no_issues():
     assert _issues("访问 Param.base_url 并保存为 NewParam.siteUrl:int") == []
+
+
+def test_get_reference_with_dot_path():
+    assert _iter_get_paths("访问 Param.obj.field.sub") == ["obj"]
+    assert _iter_get_paths("访问 Param.items.0.name") == ["items"]

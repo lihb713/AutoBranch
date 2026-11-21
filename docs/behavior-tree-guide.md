@@ -250,6 +250,7 @@ n2:
   variables:
     order_id: Param.order_ids
   on_failure: continue
+  break_on_success: true
   body: n3
 ```
 
@@ -258,7 +259,9 @@ n2:
 - 循环体内用 `Param.order_id` 读取；
 - `on_failure`：
   - `continue`：跳过失败项继续；
-  - `abort`：立即失败退出。
+  - `abort`：立即失败退出；
+- `break_on_success: true`：body 成功后提前终止循环，适合“找到第一个满足条件的元素就停止”；
+- 不写 `break_on_success` 时默认遍历全部项。
 
 ### 5.9 Define：声明变量
 
@@ -454,6 +457,23 @@ if:
 ```yaml
 args: [Param.user, Param.password]
 ```
+
+支持点路径读取对象/字典/列表：
+
+```yaml
+args: [Param.vm_info.ip]
+kwargs:
+  port: Param.vm_info.ssh_port
+  user: Param.vm_info.username
+```
+
+列表可用数字段：
+
+```yaml
+args: [Param.items.0, Param.items.1]
+```
+
+点路径只在读取时展开，不改变黑板中的扁平变量命名规则；写入仍是单个裸变量名。
 
 ### 6.2 写入：`NewParam.x[:类型]`
 

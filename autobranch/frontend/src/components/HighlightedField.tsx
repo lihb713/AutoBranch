@@ -6,7 +6,7 @@ import { useMemo, useState, type InputHTMLAttributes, type TextareaHTMLAttribute
  */
 
 const TOKEN_RX =
-  /`[^`]*`|(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?|(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)/g;
+  /`[^`]*`|(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?|(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)/g;
 
 type HighlightedFieldProps = {
   label: string;

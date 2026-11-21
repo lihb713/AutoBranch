@@ -154,7 +154,7 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | Branch | 先操作再按条件分流 | `action`、`branches[].action` | `branches`（[{when,action}\|{otherwise,action}]） |
 | Retry | 反复执行直到成功 | `body` | `max` |
 | LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
-| ForEach | 遍历列表/数组逐项执行 body | `body` | `variables`（名→值表达式）、`on_failure`（continue/abort） |
+| ForEach | 遍历列表/数组逐项执行 body | `body` | `variables`（名→值表达式）、`on_failure`（continue/abort）、`break_on_success`（可选） |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
 | FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`kwargs`、`returns` |
 | Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`） |
@@ -338,9 +338,11 @@ n_foreach:
     label: "固定值"              # 非列表：每轮同值
   body: n_body
   on_failure: continue          # continue | abort
+  break_on_success: true        # 可选：body 成功后提前终止
 ```
 
 - 列表变量长度必须一致；无列表变量则循环 1 次；空列表循环 0 次。
+- `break_on_success`（默认 false）在 body 成功后提前结束循环；失败仍按 `on_failure` 处理。
 - 每轮在**临时子帧**写入 item 变量，body 通过 `Param.变量名` 读取（可向上读取当前行为树帧）。
 - 子帧复用（保证 `transform.append` 等跨轮累积结果），循环结束移除；item 变量对外不可见。
 - `continue`：单轮失败跳过继续；`abort`：立即失败。
@@ -457,6 +459,7 @@ n9:
 >
 > **变量命名规则（全部变量，强制）**：
 > - **读取**：`Param.<名>` 可出现在 Action / Condition 的描述文本中，以及 `ref` / `FunctionCall`
+> - **点路径**：`Param.<名>.<字段>[.<字段>|.<索引>]` 可读取 dict/list 嵌套值；作用域校验针对根变量，路径缺失运行时失败。
 >   的 `args` 元素（args 也可为字面量）。
 > - **写入声明**：`NewParam.<名>[:类型]` **仅**出现在 Action 的 `description` 中，声明该叶子的可写
 >   变量集（产出型工具 target 须在其中）。
@@ -477,7 +480,7 @@ n9:
   - 基本类型（str/int/float/bool/array/object）：替换为真实值文本；array/object 需递归检查，**所有元素均为基本值**才替换；
   - 不确定/引用类型（generics/page_ref），以及**包含自定义值的 list/dict**：**保留 `Param.xxx` 原文**，并在用户消息的「当前变量表」中展示变量名/类型/对象 repr，供 LLM 在函数参数中用 `Param.xxx` 引用。
   读取失败（变量未定义）→ 该叶子直接 FAILURE（程序错误）。
-- **对象参数解析**：LLM 调用插件函数时，字符串参数值若完整匹配 `Param.xxx`，引擎从当前帧读取实际对象后传给插件
+- **对象参数解析**：LLM 调用插件函数时，字符串参数值若完整匹配 `Param.xxx` 或 `Param.xxx.yyy`，引擎从当前帧按路径读取实际对象后传给插件
   （如 `ssh.ssh_exec(session="Param.ssh_conn", ...)`、`browser.activate(page="Param.tab")`）。
 - **变量表**：每个叶子执行前把当前帧变量快照注入用户消息（`当前变量表: - 名 (类型): 值`；对象显示 repr、截断）。
 - **读取变量静态校验**：`Param.x` 读取的变量必须是**本文档 inputs 声明**（调用方

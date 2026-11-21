@@ -19,7 +19,7 @@
 ## 核心特性
 
 - **行为树文档驱动**：`tree / nodes / root` 三段式 YAML，支持 Sequence / Selector / Repeat / LoopUntil / ForEach / Retry / Step / Branch / ref / **FunctionCall** / **Define** 等节点。
-- **ForEach 动态遍历**：按变量中的列表逐项在临时子帧执行子树，支持 `continue` / `abort` 失败策略；子帧可读当前行为树变量、循环结束销毁。
+- **ForEach 动态遍历**：按变量中的列表逐项在临时子帧执行子树，支持 `continue` / `abort` 失败策略与 `break_on_success` 提前终止；子帧可读当前行为树变量、循环结束销毁。
 - **LLM Agent 叶子执行**：Action / Condition 由 LLM 依据语义图决策，调用插件函数并**落笔写变量**（引擎回收返回值，按类型 coerce）。
 - **确定性 FunctionCall 节点**：行为树可直接调用插件函数（`compute.add` 等），不经 LLM，可精确写变量 / 多返回值。
 - **条件模式**：来判断条件支持单行自然语言（LLM）或确定性谓词表达式（`all/any/not` + 单 bool 函数），谓词错误不会被当成 false。

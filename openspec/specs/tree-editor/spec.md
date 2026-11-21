@@ -96,3 +96,16 @@ ref 节点的「目标文档」下拉 SHALL 支持输入过滤（行为树文档
 #### Scenario: 编辑器编辑描述
 - **WHEN** 用户在「树信息」填写描述并点击保存
 - **THEN** 描述持久化并在列表/编辑器重新加载后显示
+
+
+### Requirement: ForEach 提前终止与点路径
+
+ForEach SHALL 支持 `break_on_success`：body 成功后提前终止。变量读取 SHALL 支持 `Param.变量.字段` 点路径（dict 键/list 数字索引），用于 FunctionCall/ref/Define 参数与表达式求值。
+
+#### Scenario: 找到首个成功项即停止
+- **WHEN** ForEach 设置 break_on_success 且第一个 body 成功
+- **THEN** 后续项不再执行
+
+#### Scenario: 读取对象字段
+- **WHEN** 参数使用 Param.vm_info.ip
+- **THEN** 运行时读取 vm_info 字典的 ip 字段

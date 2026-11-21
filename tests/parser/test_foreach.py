@@ -61,3 +61,49 @@ def test_foreach_invalid_policy_rejected():
     result = parse(_doc(on_failure="stop"), None)
     assert not result.checks.ok
     assert any("on_failure" in i.message for i in result.checks.issues)
+
+
+def test_foreach_break_on_success_parsed():
+    result = parse(
+        DocumentSource(
+            id="t",
+            data="""tree: t
+nodes:
+  n1: {type: Root, body: n2}
+  n2:
+    type: ForEach
+    variables: {item: "[1,2]"}
+    break_on_success: true
+    body: n3
+  n3: {type: Action, description: "处理 Param.item"}
+root: n1
+""",
+        ),
+        None,
+    )
+    assert result.checks.ok, result.checks.issues
+    node = result.tree.root.children[0]
+    assert isinstance(node, ForEachNode)
+    assert node.break_on_success is True
+
+
+def test_foreach_break_on_success_must_be_bool():
+    bad = parse(
+        DocumentSource(
+            id="t",
+            data="""tree: t
+nodes:
+  n1: {type: Root, body: n2}
+  n2:
+    type: ForEach
+    variables: {item: "[1,2]"}
+    break_on_success: "true"
+    body: n3
+  n3: {type: Action, description: "处理 Param.item"}
+root: n1
+""",
+        ),
+        None,
+    )
+    assert not bad.checks.ok
+    assert any("break_on_success" in i.message for i in bad.checks.issues)

@@ -96,6 +96,7 @@ class IRNode:
     vars: tuple[tuple[str, str, str], ...] = ()
     foreach_vars: tuple[tuple[str, object], ...] = ()
     on_failure: str | None = None
+    break_on_success: bool = False
     raw: object = None
 
 

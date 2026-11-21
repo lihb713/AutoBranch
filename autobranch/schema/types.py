@@ -201,6 +201,30 @@ def coerce(token: str, raw: Value) -> Value:
     return spec.cast(raw)
 
 
+def read_path_value(value: Value, path: str) -> Value:
+    """按点路径读取字典键/列表索引；非法路径抛 ``SchemaTypeError``。"""
+    current = value
+    for token in (path or "").split("."):
+        if token == "":
+            continue
+        if isinstance(current, dict):
+            if token not in current:
+                raise SchemaTypeError(f"路径字段不存在: {token}")
+            current = current[token]
+        elif isinstance(current, (list, tuple)):
+            try:
+                index = int(token)
+            except ValueError as exc:
+                raise SchemaTypeError(f"列表索引必须是整数: {token}") from exc
+            try:
+                current = current[index]
+            except IndexError as exc:
+                raise SchemaTypeError(f"列表索引越界: {token}") from exc
+        else:
+            raise SchemaTypeError(f"路径 {path!r} 无法在 {type(current).__name__} 上继续")
+    return current
+
+
 def is_fully_basic(value: Value) -> bool:
     """值是否完全由基本标量/容器构成（不含 generics/page_ref 等自定义值）。
 

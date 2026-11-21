@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { pluginsApi } from "../../api/plugins";
+import { CheckboxField } from "../../components/CheckboxField";
 import { Combobox, type ComboboxOption } from "../../components/Combobox";
 import { HighlightedField } from "../../components/HighlightedField";
 import { TextAreaField } from "../../components/TextAreaField";
@@ -613,6 +614,15 @@ export function PropertyPanel({
             <option value="abort">abort（立即停止）</option>
           </select>
         </label>
+        <CheckboxField
+          label="body 成功后提前终止（break）"
+          checked={node.breakOnSuccess ?? false}
+          disabled={readonly}
+          data-testid="foreach-break-on-success"
+          onChange={(e) =>
+            onPatchNode(node.id, { break_on_success: e.target.checked } as Partial<TreeNode>)
+          }
+        />
       </section>
     </>
   );

@@ -44,7 +44,9 @@ from autobranch.schema.types import TYPE_REGISTRY
 #: ``Param.<name>`` 读取引用（叶子执行前程序替换为真实值）；name 为 ASCII 标识符。
 #: ``(?<![A-Za-z0-9_])`` ASCII 词边界防护：``NewParam.x`` 内嵌的 ``Param.x`` 不被误判为读取；
 #: 中文不是 ASCII 字字符，故 ``到Param.x`` 正常匹配（中文即边界）。
-_GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
+_GET_TMPL = re.compile(
+    r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_]+)*)"
+)
 #: ``NewParam.<name>[:type]`` 写入声明；type ∈ TYPE_REGISTRY token（可省略）
 _SET_TMPL = re.compile(
     r"(?<![A-Za-z0-9_])NewParam\.([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z_][A-Za-z0-9_]*))?"
@@ -568,6 +570,7 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
             variables=node.foreach_vars,
             body=body,
             on_failure=node.on_failure or "continue",
+            break_on_success=node.break_on_success,
             loc=node.loc,
         )
     return SequenceNode(loc=node.loc)

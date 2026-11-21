@@ -411,3 +411,28 @@ root: r
     });
   });
 });
+
+describe("ForEach break_on_success", () => {
+  it("解析与序列化提前终止", () => {
+    const yaml = `tree: 循环
+nodes:
+  r:
+    type: Root
+    body: n2
+  n2:
+    type: ForEach
+    variables: {item: Param.items}
+    on_failure: continue
+    break_on_success: true
+    body: n3
+  n3:
+    type: Action
+    description: 处理 Param.item
+root: r
+`;
+    const doc = parseDoc(yaml);
+    expect(doc.nodes.n2.breakOnSuccess).toBe(true);
+    const again = parseDoc(serializeDoc(doc));
+    expect(again.nodes.n2.breakOnSuccess).toBe(true);
+  });
+});

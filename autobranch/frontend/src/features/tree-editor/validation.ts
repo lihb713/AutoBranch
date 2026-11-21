@@ -180,7 +180,9 @@ export function collectDeclaredVars(doc: TreeDoc): Set<string> {
 
 /** args 元素是否为本树变量引用（`Param.x` 命中已声明变量）。 */
 export function exprIsVariable(doc: TreeDoc, expr: string): boolean {
-  const m = expr.trim().match(/^Param\.([A-Za-z_][A-Za-z0-9_]*)$/);
+  const m = expr
+    .trim()
+    .match(/^Param\.([A-Za-z_][A-Za-z0-9_]*)(?:\.[A-Za-z0-9_]+)*$/);
   return m ? collectDeclaredVars(doc).has(m[1]) : false;
 }
 

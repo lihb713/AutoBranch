@@ -123,6 +123,7 @@ class ForEachNode(Node):
     variables: tuple[tuple[str, object], ...] = ()
     body: Node | None = None
     on_failure: str = "continue"
+    break_on_success: bool = False
 
 
 @dataclass(frozen=True)

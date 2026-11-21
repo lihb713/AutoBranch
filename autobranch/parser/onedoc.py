@@ -669,6 +669,17 @@ def _build_ir_node(
                 )
             )
             on_failure = "continue"
+        raw_break = body.get("break_on_success", False)
+        if not isinstance(raw_break, bool):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"ForEach.break_on_success 必须是布尔值（位于 {_path(doc_id, path)}）",
+                )
+            )
+            raw_break = False
         body_id = _str_or_none(body.get("body"))
         if not body_id:
             issues.append(
@@ -684,6 +695,7 @@ def _build_ir_node(
                 kind="ForEach",
                 foreach_vars=tuple(variables),
                 on_failure=on_failure,
+                break_on_success=raw_break,
                 loc=loc,
             ),
             [_slot("body", body_id)],
@@ -1272,6 +1284,7 @@ def _with_children(node: IRNode, children: list[IRNode]) -> IRNode:
         returns=node.returns,
         foreach_vars=node.foreach_vars,
         on_failure=node.on_failure,
+        break_on_success=node.break_on_success,
     )
 
 
@@ -1300,6 +1313,7 @@ def _set(node: IRNode, **kwargs) -> IRNode:
         returns=node.returns,
         foreach_vars=node.foreach_vars,
         on_failure=node.on_failure,
+        break_on_success=node.break_on_success,
     )
 
 

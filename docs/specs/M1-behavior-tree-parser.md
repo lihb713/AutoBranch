@@ -203,3 +203,12 @@ class RefNode(Node):
 ### 8.4 Define 节点解析
 
 解析 `type: Define` 节点：`vars`（名 → `{type, value}` 的映射，数量不固定）。变量名须为 ASCII 标识符（否则 `syntax.invalid_name`）；`type` 须为 TYPE_REGISTRY 合法 token（否则清晰度校验失败并指明非法类型）；`value` 为字面量或 `Param.<ASCII名>`（值引用未定义变量 → `scope.get_undeclared`）。`Define` 为叶子（无槽位、不展开），声明的变量计入"已定义"供后续 `Param` 读取。
+
+
+### ForEach 提前终止
+
+`ForEach` 支持可选 `break_on_success`（布尔，默认 false）：body 成功后立即结束循环；失败仍按 `on_failure` 处理。解析期校验其为布尔值。
+
+### Param 点路径
+
+`Param.变量.字段.子字段` 支持读取 dict/list 嵌套值（列表用数字段）；作用域校验只针对根变量，路径存在性在运行时校验。

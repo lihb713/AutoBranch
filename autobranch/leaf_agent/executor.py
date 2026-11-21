@@ -57,7 +57,12 @@ from autobranch.plugin_system.capability import (
 )
 from autobranch.reporting.models import LeafTrace
 from autobranch.schema.errors import SchemaError
-from autobranch.schema.types import coerce, infer_type, is_fully_basic
+from autobranch.schema.types import (
+    coerce,
+    infer_type,
+    is_fully_basic,
+    read_path_value,
+)
 
 
 @dataclass
@@ -76,7 +81,9 @@ class _LeafOutcome:
 
 
 #: ``Param.<name>`` 读取引用（叶子执行前程序替换；与 M2 同款正则，ASCII 词边界）
-_GET_TMPL = re.compile(r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)")
+_GET_TMPL = re.compile(
+    r"(?<![A-Za-z0-9_])Param\.([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_]+)*)"
+)
 #: 反引号转义段（`` `Param` `` → 纯文本，不替换）
 _BACKTICK = re.compile(r"`([^`]*)`")
 
@@ -117,13 +124,20 @@ def _resolve_get_refs(description: str, ctx: LeafContext) -> tuple[str, str | No
         replaced = seg
         for match in _GET_TMPL.finditer(seg):
             var = match.group(1)
+            suffix = match.group(2)
             try:
                 value = ctx.space.read(frame, var)
+                if suffix:
+                    value = read_path_value(value, suffix.lstrip("."))
             except SchemaError as exc:
-                return description, f"变量读取失败（{var}）: {exc}"
+                return description, f"变量读取失败（{match.group(0)}）: {exc}"
             if value is None:
-                return description, f"变量未定义: {var}"
-            var_type = getattr(frame, "declared", {}).get(var) or infer_type(value)
+                return description, f"变量未定义: {match.group(0)}"
+            var_type = (
+                infer_type(value)
+                if suffix
+                else getattr(frame, "declared", {}).get(var) or infer_type(value)
+            )
             basic = var_type in ("str", "int", "float", "bool") or (
                 var_type in ("array", "object") and is_fully_basic(value)
             )
@@ -151,7 +165,10 @@ def _resolve_param_args(arguments: dict, ctx: LeafContext) -> dict:
             m = _GET_TMPL.fullmatch(val.strip())
             if m:
                 try:
-                    resolved[key] = ctx.space.read(frame, m.group(1))
+                    value = ctx.space.read(frame, m.group(1))
+                    if m.group(2):
+                        value = read_path_value(value, m.group(2).lstrip("."))
+                    resolved[key] = value
                     continue
                 except SchemaError:
                     pass
