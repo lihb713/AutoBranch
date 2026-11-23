@@ -55,6 +55,20 @@ def test_run_failure_writes_reason(client, mock_engine, session):
     assert run.failure_reason == "脚本失败"
 
 
+def test_run_outputs_long_values_are_not_truncated(client, mock_engine):
+    mock_engine.default_result = RunResult(
+        status="success",
+        outputs={"search_result": "x" * 5000, "nested": [{"v": "y" * 3000}]},
+    )
+    tree = create_tree(client)
+    resp = client.post(f"/api/trees/{tree['id']}/run")
+    run_id = resp.json()["run_id"]
+    wait_finished(client, run_id)
+    detail = client.get(f"/api/runs/{run_id}").json()
+    assert detail["outputs"]["search_result"] == "x" * 5000
+    assert detail["outputs"]["nested"] == [{"v": "y" * 3000}]
+
+
 def test_run_missing_tree_404(client):
     resp = client.post("/api/trees/999/run")
     assert resp.status_code == 404

@@ -95,7 +95,7 @@ GET    /api/types                     # 类型信息（TypeInfoOut：token/const
 ② 调度器（线程池，上限 N）：并发未满取最早 pending → 置 running → execute_async 从快照执行（内嵌 M7）
    → 落终态（status/failure_reason/outputs/report_path）→ 再调度下一个
 ③ 前端每 1 秒轮询 GET /state（进行中读引擎内存快照，结束读终态）；执行列表轮询 GET /runs
-④ 执行完毕 → GET /report + /trace 展示完整报告；GET /runs/{id} 取快照/出参
+④ 执行完毕 → GET /report + /trace 展示完整报告；GET /runs/{id} 取快照/完整出参
 ```
 
 - **进程重启恢复**：应用启动时扫描 running/pending 记录置 failure（`failure_reason="interrupted"`），终态仍可查询。
@@ -125,7 +125,8 @@ class ExecStateOut:
     variables: list[dict]    # blackboard 变量快照 [{path, type, value}]（§5.3 扩展，供前端变量黑板）
 ```
 
-- **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），避免 `SSHConnection` 等 generics 变量导致 `/state` 500。
+- **出参完整存储**：`runs.outputs` 经 `_json_safe_type` 递归转换（保留 dict/list，`PageRef`→`{page_id,url}`，其他对象→`str`），**不截断**；最终出参完整返回。
+- **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），并返回 `truncated`/`full_length`，避免 `SSHConnection` 等 generics 变量导致 `/state` 500。
 - `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path（LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
   - `trees`：id、name(unique)、content(Text)、created_at/updated_at

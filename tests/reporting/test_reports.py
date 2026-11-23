@@ -87,6 +87,26 @@ class TestExecReport:
         assert "耗时: 0.123s" in text
         assert "失败原因:" in text and "boom" in text
 
+    def test_exec_report_truncates_large_io_with_length(self, tmp_path):
+        reporter = Reporter("run-1", str(tmp_path))
+        reporter.record_node(
+            NodeReport(
+                node_type="FunctionCall",
+                node_desc="big",
+                result="success",
+                timestamp=TIMESTAMP,
+                function="x.big",
+                arguments={"data": "x" * 5000},
+                returns={"out": "y" * 5000},
+                details={"note": "z" * 5000},
+            )
+        )
+        text = reporter.finalize().exec_report.text
+        assert "已截断，完整长度" in text
+        assert "x" * 201 not in text
+        assert "y" * 201 not in text
+        assert "z" * 201 not in text
+
     def test_exec_report_no_screenshot_line_for_composite(self, tmp_path):
         reporter = Reporter("run-1", str(tmp_path))
         reporter.record_node(make_composite_report(node_desc="登录流程"))

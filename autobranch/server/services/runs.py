@@ -49,12 +49,29 @@ logger = logging.getLogger(__name__)
 #: 进行中状态（报告不可用判定用）。
 _ACTIVE_STATUSES = ("pending", "running")
 
-#: 出参对象 str 化展示上限（防超长入库/展示）。
+#: 黑板/辅助展示的 str 化上限（不用于最终出参）。
 _OUTPUT_STR_LIMIT = 2000
 
 
+def _json_safe_type(value: object) -> object:
+    """出参 JSON 安全转换：保留原生结构，不截断。
+
+    标量/str 原样；PageRef→{page_id,url}；dict/list 递归；其他对象→str。
+    用于行为树最终出参，完整入库并完整返回。
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, PageRef):
+        return {"page_id": value.page_id, "url": value.url}
+    if isinstance(value, dict):
+        return {str(key): _json_safe_type(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_type(item) for item in value]
+    return str(value)
+
+
 def _json_safe_output(value: object) -> object:
-    """出参 JSON 安全序列化：标量原样（长文本截断）；PageRef→{page_id,url}；对象→str。"""
+    """黑板/辅助展示 JSON 安全序列化：标量原样（长文本截断）；PageRef 折叠；对象→str。"""
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
@@ -68,8 +85,8 @@ def _json_safe_output(value: object) -> object:
 
 
 def serialize_outputs(outputs: dict[str, object]) -> dict[str, object]:
-    """把引擎出参转为 JSON 安全可入库的表示（展示用途，不承诺完整还原对象）。"""
-    return {name: _json_safe_output(value) for name, value in outputs.items()}
+    """把引擎出参转为完整、JSON 安全的表示；不截断用户最终结果。"""
+    return {name: _json_safe_type(value) for name, value in outputs.items()}
 
 
 def _json_safe_variable(value: object) -> tuple[object, bool, int | None]:

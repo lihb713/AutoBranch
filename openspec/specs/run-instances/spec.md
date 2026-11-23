@@ -219,3 +219,12 @@
 #### Scenario: 超长字符串变量
 - **WHEN** 变量值超过状态 API 展示上限
 - **THEN** `value` 截断，`truncated=true`，`full_length` 为原始长度
+
+
+### Requirement: 出参完整保留
+
+`runs.outputs` SHALL 完整保存行为树最终出参，JSON 转换不得按展示上限截断；状态 API 的变量快照仍可截断并标注 `truncated`/`full_length`。
+
+#### Scenario: 超长最终出参
+- **WHEN** 行为树输出超过 2000 字符
+- **THEN** `GET /api/runs/{id}` 返回完整值，不包含截断省略

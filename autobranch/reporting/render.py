@@ -21,6 +21,7 @@ import re
 from autobranch.reporting.models import ActionCall, LeafTrace, NodeReport
 
 _SEP = "-" * 64
+_DETAIL_LIMIT = 200
 
 #: 用于 Markdown 图片 alt 文本清洗（反引号/换行等在图片语法中会破坏解析）。
 _ALT_CLEAN_RE = re.compile(r"[`*_\[\]<>]")
@@ -30,11 +31,19 @@ def _result_label(result: str) -> str:
     return "SUCCESS" if result == "success" else "FAILURE"
 
 
+def _summary(value: object, limit: int = _DETAIL_LIMIT) -> str:
+    """报告辅助详情截断：超长标注完整长度，避免单行报告无限膨胀。"""
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}…（已截断，完整长度 {len(text)} 字符）"
+
+
 def _action_call_line(call: ActionCall) -> str:
     status = "成功" if call.success else "失败"
     line = f"函数调用: {call.function}（{status}）"
     if call.arguments:
-        line += f" 参数={call.arguments}"
+        line += f" 参数={_summary(call.arguments)}"
     if call.error:
         line += f" 错误={call.error}"
     return line
@@ -58,19 +67,20 @@ def _common_detail_lines(report: NodeReport) -> list[str]:
         lines.append(f"    耗时: {report.duration}s")
     if report.function:
         lines.append(f"    函数: {report.function}")
-        lines.append(f"    入参: {report.arguments if report.arguments is not None else '-'}")
+        args_text = _summary(report.arguments) if report.arguments is not None else "-"
+        lines.append(f"    入参: {args_text}")
         if report.kwargs:
-            lines.append(f"    命名参数: {report.kwargs}")
-        lines.append(f"    出参: {report.returns if report.returns is not None else '-'}")
+            lines.append(f"    命名参数: {_summary(report.kwargs)}")
+        lines.append(f"    出参: {_summary(report.returns) if report.returns is not None else '-'}")
     else:
         if report.arguments is not None:
-            lines.append(f"    入参: {report.arguments}")
+            lines.append(f"    入参: {_summary(report.arguments)}")
         if report.kwargs:
-            lines.append(f"    命名参数: {report.kwargs}")
+            lines.append(f"    命名参数: {_summary(report.kwargs)}")
         if report.returns is not None:
-            lines.append(f"    出参: {report.returns}")
+            lines.append(f"    出参: {_summary(report.returns)}")
     if report.details:
-        lines.append(f"    详情: {report.details}")
+        lines.append(f"    详情: {_summary(report.details)}")
     if report.action_call is not None:
         lines.append(f"    {_action_call_line(report.action_call)}")
     if report.condition_result is not None:

@@ -1,6 +1,6 @@
 """出参 JSON 安全序列化测试（Change A 任务 2.3）。
 
-覆盖：标量原样、PageRef 折叠为 {page_id,url}、对象 str(value)、超长截断。
+覆盖：出参完整保留、PageRef 折叠、嵌套结构；黑板变量截断。
 """
 
 from __future__ import annotations
@@ -29,11 +29,19 @@ def test_object_str():
     assert out == {"obj": "会话对象"}
 
 
-def test_long_string_truncated():
+def test_long_output_string_not_truncated():
     out = serialize_outputs({"long": "x" * 5000})
-    assert len(out["long"]) == 2001  # 截断到上限 + "…"
-    assert out["long"].endswith("…")
-    assert out["long"].startswith("x" * 2000)
+    assert out["long"] == "x" * 5000
+    assert not out["long"].endswith("…")
+
+
+def test_nested_output_structure_and_page_ref_preserved():
+    out = serialize_outputs(
+        {"items": [{"page": PageRef(page_id="p1", url="https://x")}, 2]}
+    )
+    assert out == {
+        "items": [{"page": {"page_id": "p1", "url": "https://x"}}, 2]
+    }
 
 
 def test_variable_metadata_marks_long_string():

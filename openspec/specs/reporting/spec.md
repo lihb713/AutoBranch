@@ -185,3 +185,12 @@ NodeReport SHALL 记录节点耗时、失败原因与结构化调用详情：Fun
 #### Scenario: OpenAPI 与运行时一致
 - **WHEN** 客户端读取 OpenAPI 或实际调用报告接口
 - **THEN** 未完成返回 JSON，已完成返回 text/markdown
+
+
+### Requirement: 报告辅助详情截断
+
+执行/回溯报告中的 arguments、kwargs、returns、details 为辅助展示，单值超过 200 字符时 SHALL 截断并标注完整长度；最终出参以执行实例 outputs 为准。
+
+#### Scenario: 超长函数入参
+- **WHEN** FunctionCall 的 arguments 超过 200 字符
+- **THEN** 报告截断显示并标注完整长度

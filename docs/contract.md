@@ -2435,7 +2435,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
 - **执行结构指纹**：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys`
   规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
 - **根级入参/出参**：`POST /run` 或 `POST /api/runs`（`{tree_id, inputs?}`）可选 `inputs`（按声明类型 coerce 注入根帧，叶子 `Param.` 读取）；
-  结束读根帧 `outputs` 落库并在报告页/列表展示。声明含不可由文本构造类型（仅 `page_ref`）的树禁止直接执行
+  结束读根帧 `outputs` 完整落库并在报告页/列表展示（出参是最终业务结果，不做长度截断）。声明含不可由文本构造类型（仅 `page_ref`）的树禁止直接执行
   （422，仅支持 ref 调用）；缺少所声明必填入参也 422；`object`/`array` 支持 JSON 文本。可构造性经
   `GET /api/types`（`cast is not None`）单点派生。
 - **队列调度**：全局并发上限（`max_concurrent_runs`，默认 3）+ FIFO 队列；`pending` 即排队中（列表显示
