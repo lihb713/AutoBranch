@@ -311,6 +311,47 @@ root: n1
     expect(validateDoc(doc, ctx())).toEqual([]);
   });
 
+  it("Define 的 str/generics 允许空字符串，其他类型仍报缺值", () => {
+    const yaml = `tree: 主流程
+nodes:
+  n1:
+    type: Root
+    name: 根
+    body: n2
+  n2:
+    type: Sequence
+    name: 主流程
+    actions: [n3, n4, n5, n6]
+  n3:
+    type: Define
+    name: 字符串累加器
+    vars:
+      all_chunks: {type: str, value: ""}
+  n4:
+    type: Define
+    name: 泛型累加器
+    vars:
+      any_value: {type: generics, value: ""}
+  n5:
+    type: Define
+    name: 空整数
+    vars:
+      count: {type: int, value: ""}
+  n6:
+    type: Define
+    name: 空对象
+    vars:
+      payload: {type: object, value: ""}
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const issues = validateDoc(doc, ctx()).filter((i) => i.code === "missing_var_value");
+    expect(issues.map((i) => i.message)).toEqual([
+      "变量「count」缺少值",
+      "变量「payload」缺少值",
+    ]);
+  });
+
   it("Define 变量名非 ASCII 报 syntax.invalid_name", () => {
     const yaml = `tree: 主流程
 nodes:

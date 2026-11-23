@@ -229,6 +229,11 @@ describe("PropertyPanel", () => {
     expect(container.querySelector(".hl-newparam")).toHaveTextContent("NewParam.siteUrl:str");
   });
 
+  it("Action 展示可选 timeout 字段", () => {
+    renderPanel(DOC, DOC.nodes.n4, {});
+    expect(screen.getByTestId("field-n4-timeout")).toBeVisible();
+  });
+
   it("Sequence 增加槽位追加空占位", () => {
     const onUpdate = vi.fn();
     renderPanel(DOC, DOC.nodes.n2, { onUpdate });

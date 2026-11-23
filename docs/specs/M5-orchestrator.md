@@ -118,7 +118,7 @@ class RunConfig:
 
 复用 M8 `ExecState`（单数据源，design D3）：`run_id` / `progress`（派生
 `completed/total_nodes`）/ `current_node` / `completed` / `finished` / `variables`
-（blackboard 变量快照，供前端变量黑板）。`Engine.get_exec_state()` 直接返回
+（blackboard 变量快照，供前端变量黑板；变量条目含 `truncated`/`full_length` 截断提示）。`Engine.get_exec_state()` 直接返回
 `Reporter.exec_state()` 快照（副本，读侧安全），并用 `snapshot_variables(space.root)`
 上报**全部已执行帧**的变量（路径如 `this/主流程/账号`，含所有调用帧，帧保留至运行
 结束）；未运行返回 `ExecState(run_id="")`。节点进入 `start_node` 写 `current_node`、退出
@@ -145,8 +145,8 @@ class RunConfig:
     （RepeatNode.body）；body 失败 → 整体 FAILURE（失败沿树传播，不吞掉继续循环）
   - **Retry**：每轮直接执行 body（body 槽位子树），成功即退；失败重试至上限
 - **失败传播**：叶子 FAILURE 沿树向上由组合节点聚合，根统一终止 + 报告
-- **超时**：全局 timeout 在节点层面生效（§5.7.2.1 终止条件③）——生效值经
-  `resolve_config('timeout')`（自身 → 祖先 → 全局默认）取文档覆盖/全局默认，
+- **超时**：全局 timeout 在节点层面生效（§5.7.2.1 终止条件③）——生效值优先取
+  Action 节点 `timeout`，否则经 `resolve_config('timeout')`（自身 → 祖先 → 全局默认）取文档覆盖/全局默认，
   折算为 deadline 传入叶子执行器，返回后 wall-clock 兜底判定超时置 FAILURE
 
 ### 5.4 运行初始化（§9.8 ⓪/①，已实现）
@@ -203,8 +203,8 @@ class RunConfig:
    默认经 `RunConfig` 构建 M6 `LeafContext` 后调用 `execute_leaf`（需注入
    `llm_config` + `engine`）；测试/mock 直接注入 `(node, timeout)` 可调用对象。
    **建议 contract §5.7.2 标注 M7 通过注入点触发 M6，M0/M5 依赖由调用方接线。**
-3. **超时语义**：生效 timeout 经 `resolve_config('timeout')`（自身 → 祖先 → 全局
-   默认）解析；协作式 deadline 下传 M6（`LeafContext.timeout`），遍历器返回后再做
+3. **超时语义**：生效 timeout 优先取 Action 节点 `timeout`，否则经
+   `resolve_config('timeout')`（自身 → 祖先 → 全局默认）解析；协作式 deadline 下传 M6（`LeafContext.timeout`），遍历器返回后再做
    wall-clock 兜底判定（超时置 FAILURE）。**建议 contract §5.7.7 明确「文档覆盖
    timeout 时本文档及 ref 子树叶子用覆盖值」。**
 4. **LoopUntil body 失败语义明确化**：每轮先判 until 满足即退；**body 失败 → 整体

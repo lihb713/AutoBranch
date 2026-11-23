@@ -110,7 +110,13 @@ def test_register_browser_plugin_exposes_functions():
     )
     # 用户可见 / LLM-only 分层：技术性接口不进入 FunctionCall 清单
     user_names = set(reg.user_functions())
-    assert {"browser.open", "browser.get_url"} <= user_names
+    assert {
+        "browser.open",
+        "browser.get_url",
+        "browser.page_request",
+        "browser.get_request_headers",
+    } <= user_names
+    assert reg.function("browser.get_request_headers").returns == {"headers": "str"}
     assert "browser.semantic_graph" not in user_names
     assert "browser.get_response" not in user_names
     assert "browser.click" not in user_names

@@ -109,3 +109,16 @@ ForEach SHALL 支持 `break_on_success`：body 成功后提前终止。变量读
 #### Scenario: 读取对象字段
 - **WHEN** 参数使用 Param.vm_info.ip
 - **THEN** 运行时读取 vm_info 字典的 ip 字段
+
+
+### Requirement: Action 超时与黑板截断提示
+
+Action 属性面板 SHALL 支持可选节点级 `timeout`。变量黑板 SHALL 对状态 API 标记为截断的变量显示完整长度提示。
+
+#### Scenario: 单独设置 Action 超时
+- **WHEN** 用户在 Action 属性面板填写 timeout
+- **THEN** 序列化文档包含该字段并覆盖文档/全局超时
+
+#### Scenario: 超长变量截断
+- **WHEN** 状态 API 返回 truncated=true
+- **THEN** 黑板显示「已截断，完整长度 N 字符」

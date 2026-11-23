@@ -32,6 +32,8 @@ export type BlackboardVar = {
   path: string;
   type: string;
   value: unknown;
+  truncated?: boolean;
+  full_length?: number | null;
 };
 
 export type RunState = {

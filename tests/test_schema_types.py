@@ -116,3 +116,10 @@ def test_infer_type_english():
     assert infer_type([1, 2]) == "array"
     assert infer_type({"a": 1}) == "object"
     assert infer_type(object()) == "generics"
+
+
+def test_check_type_float_accepts_int_but_not_bool():
+    check_type("float", 2)
+    check_type("float", 2.0)
+    with pytest.raises(SchemaTypeError):
+        check_type("float", True)

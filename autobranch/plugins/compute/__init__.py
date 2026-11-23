@@ -31,7 +31,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def multiply(self, a: float, b: float) -> float:
-        return a * b
+        return float(a * b)
 
     @engine_function(
         name="sort",
@@ -86,7 +86,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def add(self, a: float, b: float) -> float:
-        return a + b
+        return float(a + b)
 
     @engine_function(
         name="sum",
@@ -113,7 +113,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def subtract(self, a: float, b: float) -> float:
-        return a - b
+        return float(a - b)
 
     @engine_function(
         name="divide",
@@ -158,7 +158,7 @@ class ComputePlugin(PluginBase):
     def modulo(self, a: float, b: float) -> FunctionResult:
         if b == 0:
             return FunctionResult.failure("除数不能为 0")
-        return FunctionResult.success(a % b)
+        return FunctionResult.success(float(a % b))
 
     @engine_function(
         name="power",
@@ -171,7 +171,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def power(self, a: float, b: float) -> float:
-        return a**b
+        return float(a**b)
 
     @engine_function(
         name="sqrt",
@@ -182,7 +182,7 @@ class ComputePlugin(PluginBase):
     def sqrt(self, value: float) -> FunctionResult:
         if value < 0:
             return FunctionResult.failure("负数不能开平方")
-        return FunctionResult.success(value**0.5)
+        return FunctionResult.success(float(value**0.5))
 
     @engine_function(
         name="abs_value",
@@ -191,7 +191,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def abs_value(self, value: float) -> float:
-        return abs(value)
+        return float(abs(value))
 
     @engine_function(
         name="negate",
@@ -200,7 +200,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def negate(self, value: float) -> float:
-        return -value
+        return float(-value)
 
     @engine_function(
         name="round_value",
@@ -213,7 +213,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def round_value(self, value: float, digits: int = 0) -> float:
-        return round(value, int(digits))
+        return float(round(value, int(digits)))
 
     @engine_function(
         name="min_values",
@@ -227,7 +227,7 @@ class ComputePlugin(PluginBase):
     def min_values(self, values: list[float]) -> FunctionResult:
         if not values:
             return FunctionResult.failure("列表不能为空")
-        return FunctionResult.success(min(values))
+        return FunctionResult.success(float(min(values)))
 
     @engine_function(
         name="max_values",
@@ -241,7 +241,7 @@ class ComputePlugin(PluginBase):
     def max_values(self, values: list[float]) -> FunctionResult:
         if not values:
             return FunctionResult.failure("列表不能为空")
-        return FunctionResult.success(max(values))
+        return FunctionResult.success(float(max(values)))
 
     @engine_function(
         name="average",
@@ -255,7 +255,7 @@ class ComputePlugin(PluginBase):
     def average(self, values: list[float]) -> FunctionResult:
         if not values:
             return FunctionResult.failure("列表不能为空")
-        return FunctionResult.success(sum(values) / len(values))
+        return FunctionResult.success(float(sum(values) / len(values)))
 
     @engine_function(
         name="clamp",
@@ -271,7 +271,7 @@ class ComputePlugin(PluginBase):
     def clamp(self, value: float, low: float, high: float) -> FunctionResult:
         if low > high:
             return FunctionResult.failure("下限不能大于上限")
-        return FunctionResult.success(min(max(value, low), high))
+        return FunctionResult.success(float(min(max(value, low), high)))
 
     @engine_function(
         name="percentage",
@@ -286,7 +286,7 @@ class ComputePlugin(PluginBase):
     def percentage(self, part: float, total: float) -> FunctionResult:
         if total == 0:
             return FunctionResult.failure("总量不能为 0")
-        return FunctionResult.success(part / total * 100)
+        return FunctionResult.success(float(part / total * 100))
 
     @engine_function(
         name="increment",
@@ -299,7 +299,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def increment(self, value: float, step: float = 1) -> float:
-        return value + step
+        return float(value + step)
 
     @engine_function(
         name="decrement",
@@ -312,7 +312,7 @@ class ComputePlugin(PluginBase):
         returns={"result": "float"},
     )
     def decrement(self, value: float, step: float = 1) -> float:
-        return value - step
+        return float(value - step)
 
 plugin = ComputePlugin()
 

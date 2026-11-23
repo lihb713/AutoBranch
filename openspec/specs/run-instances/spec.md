@@ -210,3 +210,12 @@
 #### Scenario: 缺少必填入参
 - **WHEN** 树声明两个入参但只提供一个
 - **THEN** 返回 422 且不创建执行实例
+
+
+### Requirement: 状态变量截断提示
+
+`GET /api/runs/{id}/state` 的 `variables[]` SHALL 在值被截断时返回 `truncated: true` 与 `full_length`，供前端提示完整长度。
+
+#### Scenario: 超长字符串变量
+- **WHEN** 变量值超过状态 API 展示上限
+- **THEN** `value` 截断，`truncated=true`，`full_length` 为原始长度

@@ -92,7 +92,9 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - **编辑布局（单一右侧侧栏 + Tab）**：编辑器为「画布 | 右侧单侧栏」两列布局（`grid-template-columns: minmax(0,1fr) 320px`），画布独占全部剩余空间（行为树画布与属性面板是最常用区域，不设常驻左侧节点池/顶部工具栏）。右侧侧栏三个 Tab **每次只显示一项**：**属性**（节点属性面板，默认）、**节点**（节点对象池，点击添加为游离树）、**树信息**（行为树名称 + 描述 + 文档接口）。**自动切换**：选中画布节点 → 自动切「属性」；从「节点」添加节点 → 自动切「属性」直接编辑新节点。
 - **节点对象池 + 统一槽位**：全部节点独立定义在 `nodes` 下，节点间一切动作关联经**语义命名字段**引用子树根 id：`Root.body`、`Sequence.actions`（有序列表）、`Step.action`、`IfThenElse.then`/`else`、`Branch.action` + `branches[].action`（每分支一行）、`Retry.body`、`LoopUntil.action`、`ForEach.body`；槽位下拉只展示各棵游离树的根（已挂载节点/树内非根节点不展示）。`Sequence.actions` 可增删；`IfThenElse` 的 `then`/`else` 各 1 个槽；`Branch` 可增删分支行。条件（`expect`/`if`/`when`/`until`）与 `description`/`max` 等为标量字段（存于 `fields`），不占槽位。
 - **根节点**：每文档恰一个 `type: Root`（固定 1 槽 `body`），不可删除/替换；`root` 顶层键引用它。
-- **Action 叶子**：真正叶子节点，无槽位，仅 `fields.description`（自然语言操作描述），可被任意槽位挂载；创建 Step 时自动附带一个 Action 子节点挂入其 `action` 槽位（`createStepWithAction`）。
+- **Action 叶子**：真正叶子节点，无槽位，`fields.description`（自然语言操作描述）与可选 `fields.timeout`，可被任意槽位挂载；创建 Step 时自动附带一个 Action 子节点挂入其 `action` 槽位（`createStepWithAction`）。
+- **Action 超时**：Action 属性面板提供可选「超时（秒）」，留空使用文档/全局配置。
+- **变量黑板截断提示**：状态变量超过展示上限时显示「已截断，完整长度 N 字符」。
 - **行为树描述**：行为树列表新增「描述」列，长文本截断显示，鼠标悬浮用气泡展示完整内容；编辑器「树信息」Tab 提供选填的多行描述输入，随保存发布写入。
 - **文档接口编辑**：**行为树级属性**，位于右侧侧栏「树信息」Tab（与行为树名称输入框同区，`DocInterfaceEditor`，不在节点属性面板内）——编辑树 `inputs` / `outputs`（名→类型），类型下拉由 `GET /api/types` 动态提供（含插件自定义类型），前端即时校验同步使用该 token 表；ref 参数对齐依据该声明。只读模式（ref 预览）下禁用。
 - **ref 参数编辑**：仅加载 **published** 目标文档的 `inputs`/`outputs`；ref 节点下拉选目标文档后，后端按目标 `outputs` 自动生成接收名与类型（`<节点id>_<输出名>`）。入参 `args` 为列表（按序对应 inputs）；出参 `returns` 为字典（键=接收名，值=目标输出类型，**类型只读**）。编辑时即时校验对齐/命名冲突，并即时检测跨文档引用环。目标未选/加载中给出提示。

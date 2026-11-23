@@ -687,7 +687,7 @@ class Traverser:
     def _tick_leaf(self, node: ActionNode | ConditionNode) -> NodeStatus:
         """Action/Condition 叶子：触发 M6 执行、接收 ``LeafResult``，返回前截图。"""
         node_type = "Action" if isinstance(node, ActionNode) else "Condition"
-        timeout = self._effective_timeout()
+        timeout = self._effective_timeout(node)
         result, elapsed = self._execute_leaf(node, timeout)
         timed_out = timeout is not None and elapsed > timeout
 
@@ -756,8 +756,10 @@ class Traverser:
             )
             return LeafResult(status="failure", error_source="program", trace=trace), 0.0
 
-    def _effective_timeout(self) -> float | None:
-        """节点生效超时：``resolve_config('timeout')``（自身 → 祖先 → 全局默认）。"""
+    def _effective_timeout(self, node: Node | None = None) -> float | None:
+        """节点生效超时：节点级 timeout → 帧配置（自身 → 祖先 → 全局默认）。"""
+        if isinstance(node, ActionNode) and node.timeout is not None:
+            return float(node.timeout)
         frame = self.ctx.current_frame
         if frame is None:
             return None

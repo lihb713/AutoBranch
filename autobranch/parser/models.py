@@ -150,6 +150,7 @@ class ActionNode(Node):
 
     description: str = ""
     css_hint: str | None = None
+    timeout: float | None = None
     set_targets: tuple[str, ...] = ()
     set_decls: tuple[tuple[str, str], ...] = ()
 

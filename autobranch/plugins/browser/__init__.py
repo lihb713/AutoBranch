@@ -505,13 +505,14 @@ class BrowserPlugin(PluginBase):
             )
         return FunctionResult.success(_serialize_records(records), count=len(records))
 
-    @llm_function(
+    @engine_function(
         name="get_request_headers",
         description=(
             "获取页面最近 API 请求的完整请求头，用于分析认证参数"
             "（Cookie、CSRF token、Authorization 等）；供 page_request / http.request 补充 headers"
         ),
         parameters=_props(()),
+        returns={"headers": "str"},
     )
     def get_request_headers(self) -> FunctionResult:
         if self._browser is None:
@@ -535,7 +536,7 @@ class BrowserPlugin(PluginBase):
         )
         return FunctionResult.success(text)
 
-    @llm_function(
+    @engine_function(
         name="page_request",
         description=(
             "在当前页面上下文中发起 fetch 请求（自动携带 cookie）。"

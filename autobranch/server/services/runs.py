@@ -72,6 +72,35 @@ def serialize_outputs(outputs: dict[str, object]) -> dict[str, object]:
     return {name: _json_safe_output(value) for name, value in outputs.items()}
 
 
+def _json_safe_variable(value: object) -> tuple[object, bool, int | None]:
+    """变量序列化并返回截断元信息 ``(value, truncated, full_length)``。
+
+    仅字符串和对象 Str 化后可能超限；标量/PageRef 标记为未截断。
+    """
+    safe = _json_safe_output(value)
+    if isinstance(value, str):
+        full_length = len(value)
+    elif value is None or isinstance(value, (bool, int, float)):
+        return safe, False, None
+    elif isinstance(value, PageRef):
+        return safe, False, None
+    else:
+        full_length = len(str(value))
+    return safe, full_length > _OUTPUT_STR_LIMIT, full_length
+
+
+def _variable_out(item: dict) -> dict:
+    """状态 API 变量条目：安全值 + 截断标记。"""
+    safe, truncated, full_length = _json_safe_variable(item.get("value"))
+    return {
+        "path": item.get("path", ""),
+        "type": item.get("type", ""),
+        "value": safe,
+        "truncated": truncated,
+        "full_length": full_length,
+    }
+
+
 def _json_safe_nested(value: object) -> object:
     if isinstance(value, dict):
         return {str(key): _json_safe_nested(item) for key, item in value.items()}
@@ -651,14 +680,7 @@ class RunService:
             completed=[_node_report_out(nr) for nr in state.completed],
             finished=state.finished,
             failure_reason=failure_reason,
-            variables=[
-                {
-                    "path": v.get("path", ""),
-                    "type": v.get("type", ""),
-                    "value": _json_safe_output(v.get("value")),
-                }
-                for v in state.variables
-            ],
+            variables=[_variable_out(v) for v in state.variables],
         )
 
     # ------------------------------------------------------------- 报告获取

@@ -486,6 +486,7 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
         return ActionNode(
             description=node.description or "",
             css_hint=node.css_hint,
+            timeout=node.timeout,
             set_targets=set_targets,
             set_decls=set_decls,
             loc=node.loc,

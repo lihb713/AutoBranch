@@ -165,21 +165,21 @@ n4:
 | `browser.scroll_capture` | `direction` | `responses: str` |
 | `browser.upload_capture` | `ref`, `path` | `responses: str` |
 
-### 2.6 仅 LLM 的请求读取
+### 2.6 请求读取与页面请求
 
-| 函数 | 参数 | 返回 |
-|---|---|---|
-| `browser.clear_requests` | — | — |
-| `browser.list_requests` | — | — |
-| `browser.get_request_headers` | — | — |
-| `browser.get_response` | `method`, `url_pattern` | — |
-| `browser.get_responses` | — | `responses: str` |
-| `browser.page_request` | `method`, `url`, `headers?`, `body?` | `body: str` |
+| 函数 | 参数 | 返回 | 可见性 |
+|---|---|---|---|
+| `browser.clear_requests` | — | — | LLM-only |
+| `browser.list_requests` | — | — | LLM-only |
+| `browser.get_request_headers` | — | `headers: str` | 用户可见 |
+| `browser.get_response` | `method`, `url_pattern` | — | LLM-only |
+| `browser.get_responses` | — | `responses: str` | LLM-only |
+| `browser.page_request` | `method`, `url`, `headers?`, `body?` | `body: str` | 用户可见 |
 
 注意：
 
 - `http.request` 是独立请求，不携带页面 cookie；
-- `browser.page_request` 在当前页面上下文发起请求，会自动携带 cookie；
+- `browser.page_request` 在当前页面上下文发起请求，会自动携带 cookie；可用 FunctionCall 确定性调用；
 - 复杂认证可先 `get_request_headers` 分析，再补 headers。
 
 ### 2.7 仅 LLM 的文件互通
@@ -607,6 +607,8 @@ LLM 会调用 `vars.set(value1="...")`，并通过 `save_to="summary"` 保存。
 - `browser.get_url`
 - `browser.scroll`
 - `browser.wait`
+- `browser.page_request`
+- `browser.get_request_headers`
 
 其他操作请在 Action 描述中让 LLM 执行。
 

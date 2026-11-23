@@ -417,9 +417,10 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
           issues.push({ code: "invalid_var_type", message: `变量「${name || i + 1}」类型「${v.type}」非法`, nodeId: n.id });
         }
         const val = v.value.trim();
-        if (!val) {
+        const emptyAllowed = v.type === "str" || v.type === "generics";
+        if (!val && !emptyAllowed) {
           issues.push({ code: "missing_var_value", message: `变量「${name || i + 1}」缺少值`, nodeId: n.id });
-        } else {
+        } else if (val) {
           const m = val.match(/^Param\.([A-Za-z_][A-Za-z0-9_]*)$/);
           if (m && !defined.has(m[1])) {
             issues.push({ code: "get_undeclared", message: `Define 变量「${name}」读取的变量「${m[1]}」未定义`, nodeId: n.id });

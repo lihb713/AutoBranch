@@ -486,6 +486,7 @@ def test_state_serializes_generics_variables(client, mock_engine):
         variables=[
             {"path": "主流程/ssh_conn", "type": "generics", "value": _ObjectVar()},
             {"path": "主流程/count", "type": "int", "value": 3},
+            {"path": "主流程/long_text", "type": "str", "value": "x" * 5000},
         ],
     )
     tree = create_tree(client)
@@ -493,6 +494,10 @@ def test_state_serializes_generics_variables(client, mock_engine):
     assert resp.status_code == 202
     run_id = resp.json()["run_id"]
     state = wait_finished(client, run_id)
-    values = {item["path"]: item["value"] for item in state["variables"]}
-    assert values["主流程/ssh_conn"] == "SSHConnection(id=abc)"
-    assert values["主流程/count"] == 3
+    by_path = {item["path"]: item for item in state["variables"]}
+    assert by_path["主流程/ssh_conn"]["value"] == "SSHConnection(id=abc)"
+    assert by_path["主流程/count"]["value"] == 3
+    assert by_path["主流程/count"]["truncated"] is False
+    assert by_path["主流程/count"]["full_length"] is None
+    assert by_path["主流程/long_text"]["truncated"] is True
+    assert by_path["主流程/long_text"]["full_length"] == 5000

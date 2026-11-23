@@ -572,6 +572,12 @@ body {
   font-family: ui-monospace, Consolas, monospace;
 }
 
+.blackboard-panel__truncated {
+  margin-left: 0.5rem;
+  color: #b45309;
+  font-size: 0.8rem;
+}
+
 .blackboard-panel__value {
   font-family: ui-monospace, Consolas, monospace;
   word-break: break-all;

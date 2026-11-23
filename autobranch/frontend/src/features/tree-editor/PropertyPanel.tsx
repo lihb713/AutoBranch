@@ -25,7 +25,15 @@ const CONDITION_FIELD_KEYS = new Set(["expect", "if", "until"]);
 /** 各节点类型的标量字段定义（分组渲染，组名 = 组标题）。 */
 const FIELD_GROUPS: Record<string, { title: string; fields: FieldDef[] }[]> = {
   Step: [{ title: "验证条件", fields: [{ key: "expect", label: "验证 expect", placeholder: "如：出现\"工作台\"" }] }],
-  Action: [{ title: "操作描述", fields: [{ key: "description", label: "操作描述", placeholder: "如：点击\"登录\"" }] }],
+  Action: [
+    {
+      title: "操作描述",
+      fields: [
+        { key: "description", label: "操作描述", placeholder: "如：点击\"登录\"" },
+        { key: "timeout", label: "超时（秒，可选）", placeholder: "留空使用全局/文档配置" },
+      ],
+    },
+  ],
   IfThenElse: [{ title: "判断条件", fields: [{ key: "if", label: "判断 if", placeholder: "如：存在\"下载成功\"" }] }],
   LoopUntil: [
     {

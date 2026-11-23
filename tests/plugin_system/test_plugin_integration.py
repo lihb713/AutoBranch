@@ -52,11 +52,12 @@ def test_function_call_node_tick_compute():
         runtime=PluginRuntime(),
     )
     node = FunctionCallNode(
-        function="compute.multiply", args=("2", "3"), returns=(("结果", "int"),)
+        function="compute.multiply", args=("2", "3"), returns=(("结果", "float"),)
     )
     status = Traverser(ctx).tick(node)
     assert status == "success"
-    assert space.read(frame, "结果") == 6
+    assert space.read(frame, "结果") == 6.0
+    assert isinstance(space.read(frame, "结果"), float)
     report = ctx.reporter.reports[-1]
     assert report.function == "compute.multiply"
     assert report.arguments == {"a": 2, "b": 3}

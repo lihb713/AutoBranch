@@ -75,6 +75,7 @@ class IRNode:
     loc: Loc | None = None
     description: str | None = None
     css_hint: str | None = None
+    timeout: float | None = None
     target: str | None = None
     predicate: str | None = None
     children: tuple[IRNode, ...] = ()

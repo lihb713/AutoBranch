@@ -146,7 +146,7 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 
 | 节点 | 核心语义 | 槽位字段（值=子树根 id） | 自有字段 |
 |---|---|---|---|
-| Action | 叶子：执行一个操作 | — | `description` |
+| Action | 叶子：执行一个操作 | — | `description`、`timeout`（可选，节点级超时秒数） |
 | Step | 操作 + 验证（Action+Condition） | `action` | `expect`（条件） |
 | Root | 树的根，执行其主体 | `body` | — |
 | Sequence | 顺序执行 | `actions`（列表） | — |
@@ -576,7 +576,7 @@ root: n1
 TYPE_REGISTRY = { str, int, float, bool, array, object, generics, page_ref }
 - str      任意字符串（文本 / URL / 订单号……一切字符串）
 - int      真整数（校验排除布尔）
-- float    数字 / 金额
+- float    数字 / 金额（int 值可兼容写入，bool 不兼容）
 - bool     布尔
 - array    基本类型：Python list；文本入参必须是 JSON 数组
 - object   基本类型：Python dict；文本入参必须是 JSON 对象
@@ -675,7 +675,7 @@ Finish      完成/终止（报告）                          叶子（终点�
 
 **内部节点模型字段**（解析器产物，供 M6 执行与 M8 报告）：
 - `Node` 基类：`loc`（文档位置）；运行期帧由 ref 动态调用维护，节点不携带静态帧标识
-- `ActionNode`：`description`（自然语言动作）、`css_hint`（可选 CSS 提示）
+- `ActionNode`：`description`（自然语言动作）、`css_hint`（可选 CSS 提示）、`timeout`（可选节点级超时）
 - `ConditionNode`：`mode`（`natural` / `predicate`）；自然语言模式使用单行 `description`，谓词模式使用 `expression`（谓词函数与 `all/any/not` 嵌套）
 - `BranchSpec`：`condition`（为 None 表示 otherwise 兜底分支）+ `child`
 
@@ -998,8 +998,8 @@ ExecState: 复用 M8 (未新增模型)
   list_requests()      列出页面请求清单
   get_response(method, url模式) 读取匹配的请求响应
   get_responses()      批量读取全部请求响应
-  get_request_headers() 分析最近请求头（认证参数）
-  page_request(method, url, headers?, body?) 页面上下文 fetch（自动携带 cookie）
+  get_request_headers() 分析最近请求头（认证参数；用户可见，可被 FunctionCall 调用）
+  page_request(method, url, headers?, body?) 页面上下文 fetch（自动携带 cookie；用户可见）
   list_tabs() / switch_tab(tab_id) 标签页管理
   press(ref, key)      按键
   click_capture / type_capture / press_capture / select_capture /
@@ -2363,7 +2363,7 @@ type: function
 function: compute.add          # 全名：插件名.函数名（跨插件可同名）
 args: [a, b]                # 位置实参（本树裸变量名或字面量，按序对应函数入参）
 kwargs: {jump: {host: jump.internal}}  # 命名可选参数（可跳过中间可选参数）
-returns: {total: float}    # 接收名 → 类型（类型由函数声明决定，用户只改名称）
+returns: {total: float}    # 接收名 → 类型（类型由函数声明决定，用户只改名称；手写类型在归一化时按函数声明覆盖）
 ```
 
 - 引擎核心不感知具体能力；能力全部经插件框架（M3）调用。
@@ -2462,6 +2462,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   实现删除/槽位语义，返回完整文档。前端只负责渲染与提交命令。
 - `POST /api/trees/{id}/save` 执行完整清晰度校验；失败 422 且保持 draft。
 - **状态轮询变量序列化**：`GET /api/runs/{id}/state` 的 `variables[].value` 必须 JSON 安全 —— 标量原样、`PageRef` 转 `{page_id,url}`、其他对象（如 `SSHConnection`）转 `str` 截断，避免 generics/插件对象变量导致 500。
+- **截断提示**：上述变量条目同时返回 `truncated: bool` 与 `full_length: int|null`；超长值被截断时前端黑板 SHALL 显示完整长度提示。
 - 迁移脚本 `scripts.migrate_default_return_param_names`：ASCII 改名、typed outputs、默认接收名、
   published 状态、清空 experiences；不改 `runs.content_snapshot`。
 ```

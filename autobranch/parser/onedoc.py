@@ -625,7 +625,31 @@ def _build_ir_node(
                     f"Action 缺少必需字段 'description'（位于 {_path(doc_id, path)}）",
                 )
             )
-        return IRNode(kind="Action", description=(desc or "").strip(), loc=loc), []
+        timeout: float | None = None
+        raw_timeout = body.get("timeout")
+        if raw_timeout is not None:
+            try:
+                if isinstance(raw_timeout, bool):
+                    raise ValueError
+                timeout = float(str(raw_timeout).strip())
+                if timeout <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "structure",
+                        "invalid_value",
+                        f"Action 的 timeout 必须是正数（位于 {_path(doc_id, path)}）",
+                    )
+                )
+                timeout = None
+        return IRNode(
+            kind="Action",
+            description=(desc or "").strip(),
+            timeout=timeout,
+            loc=loc,
+        ), []
     if ntype == "ref":
         return _ref_ir(doc_id, nid, body, loc, issues), []
     if ntype == "FunctionCall":

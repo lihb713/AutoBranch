@@ -174,6 +174,8 @@ def check_type(token: str, value: Value) -> None:
         return
     if token == "int" and isinstance(value, bool):
         raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 'int'（排除布尔）")
+    if token == "float" and isinstance(value, int) and not isinstance(value, bool):
+        return
     if not isinstance(value, spec.py_type):
         raise SchemaTypeError(f"类型断言失败: 值 {value!r} 不符合类型 {token!r}")
 

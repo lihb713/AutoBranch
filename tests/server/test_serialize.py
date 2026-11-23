@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from autobranch.schema.models import PageRef
-from autobranch.server.services.runs import serialize_outputs
+from autobranch.server.services.runs import _json_safe_variable, serialize_outputs
 
 
 class _FakeObj:
@@ -34,3 +34,14 @@ def test_long_string_truncated():
     assert len(out["long"]) == 2001  # 截断到上限 + "…"
     assert out["long"].endswith("…")
     assert out["long"].startswith("x" * 2000)
+
+
+def test_variable_metadata_marks_long_string():
+    value, truncated, full_length = _json_safe_variable("x" * 5000)
+    assert isinstance(value, str) and value.endswith("…")
+    assert truncated is True
+    assert full_length == 5000
+
+
+def test_variable_metadata_scalar_not_truncated():
+    assert _json_safe_variable(42) == (42, False, None)

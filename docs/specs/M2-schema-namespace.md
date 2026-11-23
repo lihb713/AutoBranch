@@ -116,7 +116,7 @@ TYPE_REGISTRY = {
 - **类型即真实存储类型**：`coerce(token, raw)` 只把用户输入文本转成声明的 Python 类型；函数返回值本来就是 list/dict 时原样写入，不重复转换。
 - `array` / `object` 文本入参必须是 JSON 数组 / JSON 对象；`generics` 原样保留。
 - `infer_type`：list → `array`，dict → `object`，标量按对应 token，其他对象 → `generics`。
-- 校验统一 `isinstance`（`autobranch/schema/types.py` 的 `check_type`），`bool` 是 `int` 子类须排除。
+- 校验统一 `isinstance`（`autobranch/schema/types.py` 的 `check_type`），`bool` 是 `int` 子类须排除；`float` 额外接受非 bool 的 `int`（数值兼容）。
 - 类型不匹配 / 转换失败 → `SchemaTypeError` 断言失败并终止（§5.3.5），M7 捕获基类 `SchemaError` 沿树传播。
 - `validate_type_name`：未登记类型 token → 断言失败；`infer_type`：按值推断英文 token（无声明时的后备，配置参数用）。
 

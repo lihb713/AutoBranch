@@ -218,3 +218,12 @@ class TestTimeoutInheritance:
         )
         assert Traverser(ctx).tick(main_tree) == FAILURE
         assert "执行超时" in ctx.failure_reason
+
+
+def test_action_node_timeout_overrides_frame_default(config) -> None:
+    from autobranch.parser.models import ActionNode
+
+    ctx = make_run_context(config)
+    node = ActionNode(description="节点超时", timeout=0.01)
+    assert Traverser(ctx).tick(node) == SUCCESS
+    assert ctx.leaf_executor.timeouts["节点超时"] == 0.01

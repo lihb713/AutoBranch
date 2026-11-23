@@ -566,3 +566,25 @@ def test_ssh_functions_declare_save_to():
         "channel_id": "str",
         "exited": "bool",
     }
+
+
+def test_compute_float_functions_return_float():
+    reg = _compute_reg()
+    for name, args in [
+        ("add", {"a": 2, "b": 3}),
+        ("subtract", {"a": 5, "b": 2}),
+        ("multiply", {"a": 2, "b": 3}),
+        ("modulo", {"a": 5, "b": 2}),
+        ("power", {"a": 2, "b": 3}),
+        ("abs_value", {"value": -2}),
+        ("negate", {"value": 2}),
+        ("round_value", {"value": 2.4}),
+        ("increment", {"value": 2}),
+        ("decrement", {"value": 2}),
+        ("clamp", {"value": 5, "low": 0, "high": 3}),
+        ("min_values", {"values": [3, 1]}),
+        ("max_values", {"values": [3, 1]}),
+        ("average", {"values": [2, 4]}),
+        ("percentage", {"part": 1, "total": 4}),
+    ]:
+        assert isinstance(reg.call(f"compute.{name}", args).value, float), name

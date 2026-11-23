@@ -172,7 +172,13 @@ n4:
   description: 在用户名输入 admin，密码输入 secret，点击登录
 ```
 
-`Step` 必须有 `action` 和 `expect`。`Action` 必须有自然语言 `description`；如果额外提供 `css_hint`，可作为定位提示，但并非必须。
+`Step` 必须有 `action` 和 `expect`。`Action` 必须有自然语言 `description`；如果额外提供 `css_hint`，可作为定位提示，但并非必须。Action 可选 `timeout`（秒）覆盖该节点的全局/文档超时：
+```yaml
+n5:
+  type: Action
+  description: 执行一个耗时较长的导出操作
+  timeout: 600
+```
 
 ### 5.3 Action：LLM 叶子
 
@@ -279,7 +285,8 @@ n2:
 
 - 字面量；
 - `Param.x`（复制另一个变量）；
-- YAML dict/list（用于 `object` / `array`）。
+- YAML dict/list（用于 `object` / `array`）；
+- `str` / `generics` 允许空字符串初始值（如累加器 `all_chunks: {type: str, value: ""}`）。
 
 ### 5.10 ref：调用另一棵行为树
 
@@ -536,7 +543,7 @@ vars:
 |---|---|---|
 | `str` | 字符串 | 任意文本 |
 | `int` | 整数 | `"42"` |
-| `float` | 浮点数 | `"3.14"` |
+| `float` | 浮点数（整数可兼容写入） | `"3.14"` |
 | `bool` | 布尔 | `true/false/1/0/yes/no` |
 | `array` | Python list | JSON 数组，如 `[1,2,3]` |
 | `object` | Python dict | JSON 对象，如 `{"host":"x"}` |

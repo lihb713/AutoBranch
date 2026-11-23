@@ -34,3 +34,17 @@ describe("BlackboardPanel", () => {
     expect(screen.getByText(/page_id/)).toBeVisible();
   });
 });
+
+
+  it("标记被截断的超长变量", () => {
+    render(
+      <BlackboardPanel
+        variables={[
+          { path: "this/all_chunks", type: "str", value: "x…", truncated: true, full_length: 420000 },
+        ]}
+      />,
+    );
+    expect(screen.getByTestId("blackboard-truncated-this/all_chunks")).toHaveTextContent(
+      "已截断，完整长度 420000 字符",
+    );
+  });

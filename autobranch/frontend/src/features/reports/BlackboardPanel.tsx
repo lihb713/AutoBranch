@@ -36,7 +36,14 @@ export function BlackboardPanel({ variables }: BlackboardPanelProps) {
               <tr key={item.path} data-testid={`blackboard-var-${item.path}`}>
                 <td className="blackboard-panel__path">{item.path}</td>
                 <td>{item.type || "—"}</td>
-                <td className="blackboard-panel__value">{formatValue(item.value)}</td>
+                <td className="blackboard-panel__value">
+                  {formatValue(item.value)}
+                  {item.truncated ? (
+                    <span className="blackboard-panel__truncated" data-testid={`blackboard-truncated-${item.path}`}>
+                      （已截断，完整长度 {item.full_length ?? "未知"} 字符）
+                    </span>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>
