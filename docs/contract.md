@@ -999,7 +999,8 @@ ExecState: 复用 M8 (未新增模型)
   get_response(method, url模式) 读取匹配的请求响应
   get_responses()      批量读取全部请求响应
   get_request_headers() 分析最近请求头（认证参数；用户可见，可被 FunctionCall 调用）
-  page_request(method, url, headers?, body?) 页面上下文 fetch（自动携带 cookie；用户可见）
+  get_header_value(name) 从最新请求头提取单字段（大小写不敏感）
+  page_request(method, url, headers?, body?, json_body?) 页面上下文 fetch（自动携带 cookie；用户可见）
   list_tabs() / switch_tab(tab_id) 标签页管理
   press(ref, key)      按键
   click_capture / type_capture / press_capture / select_capture /

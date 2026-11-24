@@ -1,7 +1,8 @@
 """数据提取与变换插件（纯函数，无外部副作用）。
 
-覆盖列表/字典路径读取、索引/键读取、字符串切分/拼接/搜索/替换、
-类型转换、JSON、正则与通用比较。函数只返回值，不写变量。
+覆盖列表/字典路径读取、记录投影/过滤/查找/JOIN/改名字段、
+字符串切分/拼接/搜索/替换、类型转换、JSON、正则与通用比较。
+函数只返回值，不写变量。
 """
 
 from __future__ import annotations
@@ -173,6 +174,184 @@ class TransformPlugin(PluginBase):
         if isinstance(data, dict) and key in data:
             return FunctionResult.success(data[key])
         return FunctionResult.success(default) if not required else _failure(f"键不存在: {key}")
+
+    @engine_function(
+        name="project",
+        description="从字典列表中提取指定字段，生成精简的字典列表（缺失字段为 null）",
+        parameters=_params(
+            ("items", "fields"),
+            items={"type": "array", "items": {"type": "object"}, "description": "字典列表"},
+            fields={"type": "array", "items": {"type": "string"}, "description": "保留字段名"},
+        ),
+        returns={"items": "array"},
+    )
+    def project(self, items: list[Any], fields: list[Any]) -> FunctionResult:
+        if not isinstance(items, (list, tuple)):
+            return _failure("items 必须是列表")
+        if not isinstance(fields, (list, tuple)) or not all(
+            isinstance(field, str) and field.strip() for field in fields
+        ):
+            return _failure("fields 必须是非空字符串列表")
+        names = [str(field) for field in fields]
+        result: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                return _failure("items 必须是字典列表")
+            result.append({name: item.get(name) for name in names})
+        return FunctionResult.success(result)
+
+    @engine_function(
+        name="filter_eq",
+        description="筛选字典列表中指定字段等于指定值的元素（保留原结构）",
+        parameters=_params(
+            ("items", "field", "value"),
+            items={"type": "array", "items": {"type": "object"}, "description": "字典列表"},
+            field={"type": "string", "description": "比较字段名"},
+            value={"description": "比较值"},
+        ),
+        returns={"items": "array"},
+    )
+    def filter_eq(self, items: list[Any], field: str, value: Any) -> FunctionResult:
+        if not isinstance(items, (list, tuple)):
+            return _failure("items 必须是列表")
+        if not isinstance(field, str) or not field.strip():
+            return _failure("field 必须是非空字符串")
+        result: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                return _failure("items 必须是字典列表")
+            if item.get(field) == value:
+                result.append(dict(item))
+        return FunctionResult.success(result)
+
+    @engine_function(
+        name="find_one",
+        description=(
+            "查找字典列表中第一条 field==value 的记录并返回 target_field；"
+            "未命中返回 default"
+        ),
+        parameters=_params(
+            ("items", "field", "value", "target_field"),
+            items={"type": "array", "items": {"type": "object"}, "description": "字典列表"},
+            field={"type": "string", "description": "匹配字段名"},
+            value={"description": "匹配值"},
+            target_field={"type": "string", "description": "要返回的字段名"},
+            default={"description": "未命中或目标字段缺失时返回的默认值"},
+        ),
+        returns={"value": "generics"},
+    )
+    def find_one(
+        self,
+        items: list[Any],
+        field: str,
+        value: Any,
+        target_field: str,
+        default: Any = None,
+    ) -> FunctionResult:
+        if not isinstance(items, (list, tuple)):
+            return _failure("items 必须是列表")
+        if not isinstance(field, str) or not field.strip():
+            return _failure("field 必须是非空字符串")
+        if not isinstance(target_field, str) or not target_field.strip():
+            return _failure("target_field 必须是非空字符串")
+        for item in items:
+            if not isinstance(item, dict):
+                return _failure("items 必须是字典列表")
+            if item.get(field) == value:
+                return FunctionResult.success(item.get(target_field, default))
+        return FunctionResult.success(default)
+
+    @engine_function(
+        name="join_field",
+        description=(
+            "LEFT JOIN：用 items 的 ref_field 匹配 lookup_list 的 field，"
+            "把 lookup_list 的 target_field 写入 items 的 alias 字段"
+        ),
+        parameters=_params(
+            ("items", "ref_field", "lookup_list", "field", "target_field", "alias"),
+            items={"type": "array", "items": {"type": "object"}, "description": "左表"},
+            ref_field={"type": "string", "description": "左表关联字段"},
+            lookup_list={
+                "type": "array",
+                "items": {"type": "object"},
+                "description": "右表",
+            },
+            field={"type": "string", "description": "右表关联字段"},
+            target_field={"type": "string", "description": "右表取数字段"},
+            alias={"type": "string", "description": "写入左表的新字段名"},
+            default={"description": "未匹配时写入的默认值"},
+        ),
+        returns={"items": "array"},
+    )
+    def join_field(
+        self,
+        items: list[Any],
+        ref_field: str,
+        lookup_list: list[Any],
+        field: str,
+        target_field: str,
+        alias: str,
+        default: Any = None,
+    ) -> FunctionResult:
+        if not isinstance(items, (list, tuple)) or not isinstance(lookup_list, (list, tuple)):
+            return _failure("items 和 lookup_list 必须是列表")
+        for label, value in (
+            ("ref_field", ref_field),
+            ("field", field),
+            ("target_field", target_field),
+            ("alias", alias),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                return _failure(f"{label} 必须是非空字符串")
+        result: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                return _failure("items 必须是字典列表")
+            matched = default
+            for lookup in lookup_list:
+                if not isinstance(lookup, dict):
+                    return _failure("lookup_list 必须是字典列表")
+                if lookup.get(field) == item.get(ref_field):
+                    matched = lookup.get(target_field, default)
+                    break
+            row = dict(item)
+            row[alias] = matched
+            result.append(row)
+        return FunctionResult.success(result)
+
+    @engine_function(
+        name="rename_fields",
+        description="批量重命名字典列表中的字段（未命中字段保持原样）",
+        parameters=_params(
+            ("items", "rename_map"),
+            items={"type": "array", "items": {"type": "object"}, "description": "字典列表"},
+            rename_map={"type": "object", "description": "旧字段名 → 新字段名"},
+        ),
+        returns={"items": "array"},
+    )
+    def rename_fields(self, items: list[Any], rename_map: dict) -> FunctionResult:
+        if not isinstance(items, (list, tuple)):
+            return _failure("items 必须是列表")
+        if not isinstance(rename_map, dict):
+            return _failure("rename_map 必须是字典")
+        mapping: dict[str, str] = {}
+        for old, new in rename_map.items():
+            if not isinstance(old, str) or not old.strip():
+                return _failure("rename_map 的旧字段名必须是非空字符串")
+            if not isinstance(new, str) or not new.strip():
+                return _failure("rename_map 的新字段名必须是非空字符串")
+            if old != new:
+                mapping[old] = new
+        result: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                return _failure("items 必须是字典列表")
+            row = dict(item)
+            for old, new in mapping.items():
+                if old in row:
+                    row[new] = row.pop(old)
+            result.append(row)
+        return FunctionResult.success(result)
 
     @engine_function(
         name="split",

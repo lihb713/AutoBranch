@@ -46,3 +46,12 @@ transform 插件 SHALL 提供 `concat`（顺序拼接 a~e，可指定 separator�
 #### Scenario: 拼接 URL
 - **WHEN** 调用 `transform.concat` 传入协议/主机/端口/路径
 - **THEN** 返回完整拼接字符串
+
+
+### Requirement: 记录列表变换
+
+`transform` SHALL 提供 `project(items, fields)`、`filter_eq(items, field, value)`、`find_one(items, field, value, target_field, default?)`、`join_field(items, ref_field, lookup_list, field, target_field, alias, default?)`、`rename_fields(items, rename_map)`，用于确定性字段投影、过滤、查找、LEFT JOIN 与批量改名。
+
+#### Scenario: LEFT JOIN 补名称
+- **WHEN** Release 记录的 rVersion 通过 join_field 关联 R_VERSION.deltaId
+- **THEN** 输出记录新增 r_version_name 字段

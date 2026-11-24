@@ -83,6 +83,7 @@ def test_list_functions_endpoint(client):
     assert "compute.add" in names
     assert "browser.page_request" in names
     assert "browser.get_request_headers" in names
+    assert "browser.get_header_value" in names
     # LLM-only 技术接口不进入用户函数清单
     assert "browser.semantic_graph" not in names
     assert "browser.get_response" not in names

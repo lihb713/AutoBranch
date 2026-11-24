@@ -233,6 +233,8 @@ parameters={
 | `boolean` | `bool` | `bool` |
 | `array` | `array` | `list` |
 | `object` | `object` | `dict` |
+
+若参数需要同时接受 dict 与 list，不要声明 `object`（仅 dict）；省略 `type` 让引擎原样透传，并在 Python 端自行校验。
 | 不写 `type` | `generics` | 任意值 |
 
 ### 5.1 函数参数里的自定义类型

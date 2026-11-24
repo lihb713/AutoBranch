@@ -15,6 +15,19 @@ from autobranch.schema.models import PageRef as SchemaPageRef  # noqa: F401
 class FakePage:
     def __init__(self, url: str) -> None:
         self.url = url
+        self.last_request: dict | None = None
+
+    def page_request(self, method, url, headers=None, body=None):
+        self.last_request = {
+            "method": method,
+            "url": url,
+            "headers": headers or {},
+            "body": body,
+        }
+        response = types.SimpleNamespace(
+            body='{"ok": true}', status=200, url=url, headers={}
+        )
+        return OpResult(True, detail={"response": response})
 
     def scroll(self, direction):
         return OpResult(True, detail={"direction": direction})
@@ -31,6 +44,7 @@ class FakeBrowser:
         self.opened: list[str] = []
         self.stopped = False
         self.pages: dict[str, FakePage] = {}
+        self.records: list = []
 
     def open(self, url):
         self.opened.append(url)
@@ -58,6 +72,9 @@ class FakeBrowser:
 
     def get_response(self, method, url_pattern):
         return None
+
+    def get_all_records(self):
+        return list(self.records)
 
 
 def _make_ready(browser) -> tuple[PluginRegistry, BrowserPlugin]:
@@ -87,6 +104,7 @@ def test_register_browser_plugin_exposes_functions():
         "browser.get_responses",
         "browser.page_request",
         "browser.get_request_headers",
+        "browser.get_header_value",
         "browser.list_tabs",
         "browser.switch_tab",
         "browser.click_capture",
@@ -115,8 +133,10 @@ def test_register_browser_plugin_exposes_functions():
         "browser.get_url",
         "browser.page_request",
         "browser.get_request_headers",
+        "browser.get_header_value",
     } <= user_names
     assert reg.function("browser.get_request_headers").returns == {"headers": "str"}
+    assert "type" not in reg.function("browser.page_request").parameters["properties"]["json_body"]
     assert "browser.semantic_graph" not in user_names
     assert "browser.get_response" not in user_names
     assert "browser.click" not in user_names
@@ -223,3 +243,36 @@ def test_loader_scans_plugins_excluding_common():
     assert "browser" in loaded
     assert "common" not in loaded
     assert set(reg.functions()) >= {"browser.open", "browser.extract", "browser.semantic_graph"}
+
+
+def test_page_request_json_body_and_header_value():
+    from autobranch.plugins.browser.driver.models import HttpResponse
+
+    browser = FakeBrowser()
+    reg, _ = _make_ready(browser)
+    browser.records = [
+        HttpResponse(
+            method="GET",
+            url="https://x/api",
+            status=200,
+            request_headers={"cftk": "old"},
+        ),
+        HttpResponse(
+            method="GET",
+            url="https://x/api",
+            status=200,
+            request_headers={"CFTK": "new", "Authorization": "Bearer t"},
+        ),
+    ]
+    assert reg.call("browser.get_header_value", {"name": "cftk"}).value == "new"
+    assert reg.call("browser.get_header_value", {"name": "missing"}).ok is False
+
+    opened = reg.call("browser.open", {"url": "https://x"})
+    page = browser.pages["p1"]
+    result = reg.call(
+        "browser.page_request",
+        {"method": "POST", "url": "https://x/api", "json_body": ["a", "b"]},
+    )
+    assert opened.ok and result.ok
+    assert page.last_request["body"] == '["a", "b"]'
+    assert page.last_request["headers"]["Content-Type"] == "application/json"

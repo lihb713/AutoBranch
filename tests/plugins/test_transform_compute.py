@@ -153,3 +153,60 @@ def test_compute_extended_arithmetic():
     assert reg.call("compute.increment", {"value": 2, "step": 3}).value == 5
     assert reg.call("compute.decrement", {"value": 5, "step": 2}).value == 3
     assert reg.call("compute.compare", {"a": 2, "b": 2, "op": "ge"}).value is True
+
+
+def test_transform_project_filter_find_one():
+    reg = _transform()
+    items = [
+        {"id": 1, "name": "a", "extra": "x"},
+        {"id": 2, "name": "b", "extra": "y"},
+    ]
+    assert reg.call("transform.project", {"items": items, "fields": ["id", "name"]}).value == [
+        {"id": 1, "name": "a"},
+        {"id": 2, "name": "b"},
+    ]
+    assert reg.call(
+        "transform.filter_eq", {"items": items, "field": "name", "value": "b"}
+    ).value == [{"id": 2, "name": "b", "extra": "y"}]
+    assert reg.call(
+        "transform.find_one",
+        {"items": items, "field": "id", "value": 2, "target_field": "name"},
+    ).value == "b"
+    assert reg.call(
+        "transform.find_one",
+        {
+            "items": items,
+            "field": "id",
+            "value": 9,
+            "target_field": "name",
+            "default": "missing",
+        },
+    ).value == "missing"
+
+
+def test_transform_join_field_and_rename_fields():
+    reg = _transform()
+    items = [{"name": "Release 1.0", "rVersion": 100}]
+    lookup = [{"deltaId": 100, "name": "SecMaster 1"}]
+    joined = reg.call(
+        "transform.join_field",
+        {
+            "items": items,
+            "ref_field": "rVersion",
+            "lookup_list": lookup,
+            "field": "deltaId",
+            "target_field": "name",
+            "alias": "r_version_name",
+        },
+    )
+    assert joined.value == [
+        {"name": "Release 1.0", "rVersion": 100, "r_version_name": "SecMaster 1"}
+    ]
+    renamed = reg.call(
+        "transform.rename_fields",
+        {
+            "items": [{"deltaId": 1, "fileSha256": "abc"}],
+            "rename_map": {"deltaId": "delta_id", "fileSha256": "file_sha256"},
+        },
+    )
+    assert renamed.value == [{"delta_id": 1, "file_sha256": "abc"}]

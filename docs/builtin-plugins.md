@@ -172,15 +172,18 @@ n4:
 | `browser.clear_requests` | — | — | LLM-only |
 | `browser.list_requests` | — | — | LLM-only |
 | `browser.get_request_headers` | — | `headers: str` | 用户可见 |
+| `browser.get_header_value` | `name` | `value: str`, `header_name: str` | 用户可见 |
 | `browser.get_response` | `method`, `url_pattern` | — | LLM-only |
 | `browser.get_responses` | — | `responses: str` | LLM-only |
-| `browser.page_request` | `method`, `url`, `headers?`, `body?` | `body: str` | 用户可见 |
+| `browser.page_request` | `method`, `url`, `headers?`, `body?`, `json_body?` | `body: str` | 用户可见 |
 
 注意：
 
 - `http.request` 是独立请求，不携带页面 cookie；
 - `browser.page_request` 在当前页面上下文发起请求，会自动携带 cookie；可用 FunctionCall 确定性调用；
-- 复杂认证可先 `get_request_headers` 分析，再补 headers。
+- `page_request.json_body` 接受 dict/list，自动 JSON 序列化并补 `Content-Type: application/json`；与 `body` 互斥；
+- `get_header_value(name)` 大小写不敏感地从最新请求头中取单字段，找不到返回 NOT_FOUND；
+- 复杂认证可先 `get_request_headers` / `get_header_value` 分析，再补 headers。
 
 ### 2.7 仅 LLM 的文件互通
 
@@ -272,6 +275,11 @@ ForEach 跨轮累积时，需要一个能不断传递的容器。早期实现用
 | `transform.get_path` | `data`, `path`, `required?`, `default?` | `value: generics` |
 | `transform.get_index` | `data: array`, `index`, `required?`, `default?` | `value: generics` |
 | `transform.get_key` | `data: object`, `key`, `required?`, `default?` | `value: generics` |
+| `transform.project` | `items: array`, `fields: array` | `items: array` |
+| `transform.filter_eq` | `items: array`, `field`, `value` | `items: array` |
+| `transform.find_one` | `items: array`, `field`, `value`, `target_field`, `default?` | `value: generics` |
+| `transform.join_field` | `items`, `ref_field`, `lookup_list`, `field`, `target_field`, `alias`, `default?` | `items: array` |
+| `transform.rename_fields` | `items: array`, `rename_map: object` | `items: array` |
 | `transform.split` | `text`, `separator`, `maxsplit?` | `values: array` |
 | `transform.join` | `values: array`, `separator` | `text: str` |
 | `transform.concat` | `a`, `b`, `c?`, `d?`, `e?`, `separator?` | `text: str` |
@@ -607,8 +615,9 @@ LLM 会调用 `vars.set(value1="...")`，并通过 `save_to="summary"` 保存。
 - `browser.get_url`
 - `browser.scroll`
 - `browser.wait`
-- `browser.page_request`
+- `browser.page_request`（支持 `json_body`）
 - `browser.get_request_headers`
+- `browser.get_header_value`
 
 其他操作请在 Action 描述中让 LLM 执行。
 

@@ -537,10 +537,36 @@ class BrowserPlugin(PluginBase):
         return FunctionResult.success(text)
 
     @engine_function(
+        name="get_header_value",
+        description=(
+            "从页面最近的请求头中提取指定字段值（字段名大小写不敏感，按最新请求优先）；"
+            "适合确定性获取 cftk / authorization / cookie 等认证值"
+        ),
+        parameters=_props(
+            ("name",),
+            name={"type": "string", "description": "请求头字段名，如 cftk"},
+        ),
+        returns={"value": "str", "header_name": "str"},
+    )
+    def get_header_value(self, name: str) -> FunctionResult:
+        if self._browser is None:
+            return FunctionResult.failure("浏览器未装配（browser 能力未加载）")
+        wanted = str(name or "").strip()
+        if not wanted:
+            return FunctionResult.failure("请提供请求头字段名", code="INVALID_ARGUMENT")
+        records = self._browser.http_recorder.get_all_records()
+        for record in reversed(records):
+            for key, value in (record.request_headers or {}).items():
+                if str(key).lower() == wanted.lower():
+                    return FunctionResult.success(str(value), str(key))
+        return FunctionResult.failure(f"请求头未找到: {wanted}", code="NOT_FOUND")
+
+    @engine_function(
         name="page_request",
         description=(
             "在当前页面上下文中发起 fetch 请求（自动携带 cookie）。"
             "method/url 必填，headers 可选（补充 CSRF token 等认证头）；"
+            "body 传字符串，json_body 传 dict/list（自动 JSON 序列化并补 Content-Type）；"
             "返回响应 body 文本（产出型 save_to）"
         ),
         parameters=_props(
@@ -548,7 +574,8 @@ class BrowserPlugin(PluginBase):
             method={"type": "string", "description": "HTTP 方法，如 GET/POST"},
             url={"type": "string", "description": "请求 URL"},
             headers={"type": "object", "description": "补充请求头（如 CSRF token）"},
-            body={"type": "string", "description": "请求体（可选）"},
+            body={"type": "string", "description": "原始请求体（与 json_body 互斥）"},
+            json_body={"description": "JSON 请求体（dict 或 list；与 body 互斥）"},
         ),
         returns={"body": "str"},
         output_param="save_to",
@@ -559,7 +586,19 @@ class BrowserPlugin(PluginBase):
         url: str,
         headers: dict | None = None,
         body: str | None = None,
+        json_body: object | None = None,
     ) -> FunctionResult:
+        if body is not None and json_body is not None:
+            return FunctionResult.failure("body 与 json_body 不能同时提供", code="INVALID_ARGUMENT")
+        if json_body is not None:
+            body = (
+                json_body
+                if isinstance(json_body, str)
+                else json.dumps(json_body, ensure_ascii=False)
+            )
+            headers = dict(headers or {})
+            if not any(str(key).lower() == "content-type" for key in headers):
+                headers["Content-Type"] = "application/json"
         handle = self._current_page_handle()
         if handle is None:
             return FunctionResult.failure("无当前页面（尚未打开任何页面）", code="INVALID_REF")
