@@ -33,6 +33,7 @@ export function NodeReportRow({ report }: { report: NodeReport }) {
         {report.action_call ? (
           <span> · 调用: {report.action_call.function}</span>
         ) : null}
+        {report.parallel ? <span> · 并行: {report.parallel}</span> : null}
         {report.function ? <span> · 函数: {report.function}</span> : null}
         {report.page_url ? <span> · URL: {report.page_url}</span> : null}
       </div>

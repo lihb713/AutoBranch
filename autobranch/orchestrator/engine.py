@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
@@ -112,13 +113,25 @@ class Engine:
                 load_builtin_plugins(registry, self._plugins_dir)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("预置插件加载异常: %s", exc)
+        if self._leaf_executor is None:
+            def _leaf_factory(target_space):
+                return make_default_leaf_executor(
+                    config, target_space, registry=registry, runtime=runtime
+                )
+
+            leaf_executor = _leaf_factory(space)
+            leaf_executor_factory = _leaf_factory
+        else:
+            leaf_executor = self._leaf_executor
+            leaf_executor_factory = None
         ctx = RunContext(
             config=config,
+            resolver_lock=threading.RLock(),
             space=space,
             reporter=reporter,
             browser=self._browser,
-            leaf_executor=self._leaf_executor
-            or make_default_leaf_executor(config, space, registry=registry, runtime=runtime),
+            leaf_executor=leaf_executor,
+            leaf_executor_factory=leaf_executor_factory,
             blocks_tree=blocks_tree or {},
             resolver=resolver,
             decl_inputs=decl_inputs or {},

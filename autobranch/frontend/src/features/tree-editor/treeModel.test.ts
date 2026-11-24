@@ -436,3 +436,36 @@ root: r
     expect(again.nodes.n2.breakOnSuccess).toBe(true);
   });
 });
+
+
+describe("Parallel", () => {
+  it("解析与序列化 Parallel 变量/并发策略", () => {
+    const yaml = `tree: t
+nodes:
+  n1:
+    type: Parallel
+    variables:
+      item: Param.items
+    on_failure: abort
+    max_concurrency: 2
+    on_conflict: last
+    body: n2
+  n2:
+    type: Action
+    description: 处理 Param.item
+root: n1
+`;
+    const doc = parseDoc(yaml);
+    const node = doc.nodes["n1"];
+    expect(node.type).toBe("Parallel");
+    expect(node.variables).toEqual({ item: "Param.items" });
+    expect(node.maxConcurrency).toBe(2);
+    expect(node.onConflict).toBe("last");
+    expect(node.onFailure).toBe("abort");
+    expect(slotFields(node)[0].field).toBe("body");
+    const out = serializeDoc(doc);
+    expect(out).toContain("type: Parallel");
+    expect(out).toContain("max_concurrency: 2");
+    expect(out).toContain("on_conflict: last");
+  });
+});

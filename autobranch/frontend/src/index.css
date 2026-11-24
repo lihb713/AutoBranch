@@ -449,6 +449,11 @@ body {
   font-weight: 600;
 }
 
+.report-node__parallel {
+  color: #0369a1;
+  font-size: var(--font-size-xs);
+}
+
 .report-node__desc {
   color: var(--color-muted);
 }

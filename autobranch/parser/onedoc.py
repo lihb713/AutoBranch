@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from autobranch.parser.document import (
@@ -51,6 +51,7 @@ _NODE_TYPES = frozenset(
         "FunctionCall",
         "Define",
         "ForEach",
+        "Parallel",
     }
 )
 
@@ -65,6 +66,7 @@ _SLOT_DEFS: dict[str, list[tuple[str, str]]] = {
     "Retry": [("body", "single")],
     "LoopUntil": [("action", "single")],
     "ForEach": [("body", "single")],
+    "Parallel": [("body", "single")],
 }
 
 
@@ -603,7 +605,7 @@ def _attach_children(
     if kind == "LoopUntil":
         kids = child_map.get("action", [])
         return _set(node, action=kids[0][0] if kids else None)
-    if kind == "ForEach":
+    if kind in ("ForEach", "Parallel"):
         kids = child_map.get("body", [])
         return _set(node, body=kids[0][0] if kids else None)
     return node
@@ -720,6 +722,92 @@ def _build_ir_node(
                 foreach_vars=tuple(variables),
                 on_failure=on_failure,
                 break_on_success=raw_break,
+                loc=loc,
+            ),
+            [_slot("body", body_id)],
+        )
+    if ntype == "Parallel":
+        raw_vars = body.get("variables")
+        variables: list[tuple[str, object]] = []
+        if not isinstance(raw_vars, dict) or not raw_vars:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Parallel 需要非空 variables 映射（位于 {_path(doc_id, path)}）",
+                )
+            )
+        else:
+            for name, value in raw_vars.items():
+                if not isinstance(name, str) or not _ASCII_NAME.fullmatch(name):
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "syntax",
+                            "invalid_name",
+                            f"Parallel 变量名 {name!r} 必须是 ASCII 标识符"
+                            f"（位于 {_path(doc_id, path)}）",
+                        )
+                    )
+                    continue
+                variables.append((name, value))
+        on_failure = str(body.get("on_failure") or "continue").strip()
+        if on_failure not in ("continue", "abort"):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Parallel.on_failure 必须是 continue/abort（位于 {_path(doc_id, path)}）",
+                )
+            )
+            on_failure = "continue"
+        raw_concurrency = body.get("max_concurrency", 4)
+        try:
+            if isinstance(raw_concurrency, bool):
+                raise ValueError
+            max_concurrency = int(raw_concurrency)
+        except (TypeError, ValueError):
+            max_concurrency = 0
+        if max_concurrency < 1:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Parallel.max_concurrency 必须是正整数（位于 {_path(doc_id, path)}）",
+                )
+            )
+            max_concurrency = 1
+        on_conflict = str(body.get("on_conflict") or "error").strip()
+        if on_conflict not in ("error", "last"):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Parallel.on_conflict 必须是 error/last（位于 {_path(doc_id, path)}）",
+                )
+            )
+            on_conflict = "error"
+        body_id = _str_or_none(body.get("body"))
+        if not body_id:
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "missing_field",
+                    f"Parallel 缺少必需字段 'body'（位于 {_path(doc_id, path)}）",
+                )
+            )
+        return (
+            IRNode(
+                kind="Parallel",
+                foreach_vars=tuple(variables),
+                on_failure=on_failure,
+                max_concurrency=max_concurrency,
+                on_conflict=on_conflict,
                 loc=loc,
             ),
             [_slot("body", body_id)],
@@ -1292,60 +1380,12 @@ def _leads_back_to(target: str, doc_id: str, resolver, seen: set[str]) -> bool:
 
 def _with_children(node: IRNode, children: list[IRNode]) -> IRNode:
     """给容器节点挂子节点（Root/Sequence/IfThenElse 用 children 字段）。"""
-    return IRNode(
-        kind=node.kind,
-        loc=node.loc,
-        description=node.description,
-        css_hint=node.css_hint,
-        target=node.target,
-        predicate=node.predicate,
-        children=tuple(children),
-        branches=node.branches,
-        condition=node.condition,
-        condition_mode=node.condition_mode,
-        expression=node.expression,
-        action=node.action,
-        until=node.until,
-        body=node.body,
-        max=node.max,
-        mode=node.mode,
-        ref_target=node.ref_target,
-        args=node.args,
-        kwargs=node.kwargs,
-        returns=node.returns,
-        foreach_vars=node.foreach_vars,
-        on_failure=node.on_failure,
-        break_on_success=node.break_on_success,
-    )
+    return replace(node, children=tuple(children))
 
 
 def _set(node: IRNode, **kwargs) -> IRNode:
     """构造带指定字段变更的 IRNode（frozen dataclass 替换）。"""
-    return IRNode(
-        kind=node.kind,
-        loc=node.loc,
-        description=node.description,
-        css_hint=node.css_hint,
-        target=node.target,
-        predicate=node.predicate,
-        children=node.children,
-        branches=kwargs.get("branches", node.branches),
-        condition=node.condition,
-        condition_mode=node.condition_mode,
-        expression=node.expression,
-        action=kwargs.get("action", node.action),
-        until=node.until,
-        body=kwargs.get("body", node.body),
-        max=node.max,
-        mode=node.mode,
-        ref_target=node.ref_target,
-        args=node.args,
-        kwargs=node.kwargs,
-        returns=node.returns,
-        foreach_vars=node.foreach_vars,
-        on_failure=node.on_failure,
-        break_on_success=node.break_on_success,
-    )
+    return replace(node, **kwargs)
 
 
 def _issue(doc_id: str, prefix: str, code: str, message: str):

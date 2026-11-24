@@ -13,7 +13,8 @@ export type NodeType =
   | "ref"
   | "FunctionCall"
   | "Define"
-  | "ForEach";
+  | "ForEach"
+  | "Parallel";
 
 /** Define 节点的一行变量声明：名 / 类型 token / 值（字面量或 `Param.x`）。 */
 export type DefineVar = {
@@ -72,6 +73,8 @@ export type TreeNode = {
   variables?: Record<string, string>;
   onFailure?: string;
   breakOnSuccess?: boolean;
+  maxConcurrency?: number;
+  onConflict?: string;
 };
 
 /** 一份行为树文档（自包含：tree/nodes/root + 文档级接口与配置）。 */
@@ -127,9 +130,13 @@ export function makeNode(
     node.returns = {};
   }
   if (type === "Define") node.vars = [];
-  if (type === "ForEach") {
+  if (type === "ForEach" || type === "Parallel") {
     node.variables = {};
     node.onFailure = "continue";
+  }
+  if (type === "Parallel") {
+    node.maxConcurrency = 4;
+    node.onConflict = "error";
   }
   if (type === "Sequence") node.actions = [];
   if (type === "Branch") {
@@ -175,6 +182,8 @@ export function slotFields(node: TreeNode): SlotMount[] {
       return [{ field: "action", label: "循环体", childId: node.action ?? null }];
     case "ForEach":
       return [{ field: "body", label: "循环体", childId: node.body ?? null }];
+    case "Parallel":
+      return [{ field: "body", label: "并行体", childId: node.body ?? null }];
     default:
       return [];
   }
@@ -212,6 +221,8 @@ const SKIP_KEYS = new Set([
   "vars",
   "variables",
   "on_failure",
+  "max_concurrency",
+  "on_conflict",
 ]);
 
 /** 从文档 dict 解析为 TreeDoc（统一槽位 DSL）。 */
@@ -270,12 +281,17 @@ export function parseDoc(yamlText: string): TreeDoc {
         ? Object.fromEntries(Object.entries(body["returns"]).map(([k, v]) => [k, String(v)]))
         : {};
     }
-    if (type === "ForEach") {
+    if (type === "ForEach" || type === "Parallel") {
       node.variables = isRecord(body["variables"])
         ? Object.fromEntries(Object.entries(body["variables"]).map(([k, v]) => [k, String(v)]))
         : {};
       node.onFailure = typeof body["on_failure"] === "string" ? body["on_failure"] : "continue";
       node.breakOnSuccess = body["break_on_success"] === true;
+    }
+    if (type === "Parallel") {
+      node.maxConcurrency =
+        typeof body["max_concurrency"] === "number" ? body["max_concurrency"] : 4;
+      node.onConflict = typeof body["on_conflict"] === "string" ? body["on_conflict"] : "error";
     }
     if (type === "Define") {
       node.vars = isRecord(body["vars"])
@@ -349,10 +365,14 @@ export function serializeDoc(doc: TreeDoc): string {
       if (node.kwargs && Object.keys(node.kwargs).length > 0) body["kwargs"] = node.kwargs;
       if (node.returns && Object.keys(node.returns).length > 0) body["returns"] = node.returns;
     }
-    if (node.type === "ForEach") {
+    if (node.type === "ForEach" || node.type === "Parallel") {
       body["variables"] = node.variables ?? {};
       body["on_failure"] = node.onFailure ?? "continue";
-      if (node.breakOnSuccess) body["break_on_success"] = true;
+      if (node.breakOnSuccess && node.type === "ForEach") body["break_on_success"] = true;
+    }
+    if (node.type === "Parallel") {
+      body["max_concurrency"] = node.maxConcurrency ?? 4;
+      body["on_conflict"] = node.onConflict ?? "error";
     }
     if (node.type === "Define") {
       const vars: Record<string, { type: string; value: unknown }> = {};

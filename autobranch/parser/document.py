@@ -47,6 +47,7 @@ NODE_KEYS = frozenset(
         "ref",
         "FunctionCall",
         "ForEach",
+        "Parallel",
     }
 )
 #: 复合节点键（§4.3，展开为基础节点组合）
@@ -98,6 +99,8 @@ class IRNode:
     foreach_vars: tuple[tuple[str, object], ...] = ()
     on_failure: str | None = None
     break_on_success: bool = False
+    max_concurrency: int = 4
+    on_conflict: str = "error"
     raw: object = None
 
 
@@ -136,6 +139,8 @@ def _parse_node(
         return IRNode(kind="Finish", description=desc, loc=loc)
     if key == "ForEach":
         return _empty_ir("ForEach", loc)
+    if key == "Parallel":
+        return _empty_ir("Parallel", loc)
     if key in COMPOSITE_KEYS:
         return _parse_composite(doc_id, path, key, value, issues)
     issues.append(

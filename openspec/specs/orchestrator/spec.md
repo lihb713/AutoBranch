@@ -262,3 +262,16 @@ ForEach SHALL 支持 `break_on_success`：body 成功后终止循环。参数/�
 #### Scenario: 读取嵌套字段
 - **WHEN** FunctionCall 参数为 Param.obj.name
 - **THEN** 读取 obj 的 name 字段并传给函数
+
+
+### Requirement: Parallel 并发执行
+
+系统 SHALL 按 Parallel.variables 的列表项并发执行 body，最多 max_concurrency 个；每项使用隔离工作变量区，成功迭代的变量按 on_conflict 合并。on_failure=continue 时全部失败才失败，abort 时任一失败即失败。子节点报告 SHALL 带 parallel 标签。
+
+#### Scenario: 并发执行独立项
+- **WHEN** 列表有 4 项且 max_concurrency=2
+- **THEN** 最多 2 项同时执行，完成后汇总结果
+
+#### Scenario: 变量冲突
+- **WHEN** 两个成功迭代写同一变量且 on_conflict=error
+- **THEN** Parallel 整体失败并报告冲突变量

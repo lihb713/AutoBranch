@@ -116,7 +116,7 @@ class RefNode(Node):
 - `ConditionNode` 支持两种模式：`mode="natural"`（`description` 单行自然语言）与 `mode="predicate"`（`expression` 谓词表达式）。谓词表达式由 `PredicateCall` 和 `all/any/not` 嵌套组成，解析期校验结构，函数存在/可见/单 bool 返回在 checks 阶段校验。
 - `BranchSpec(condition: ConditionNode | None, child: Node)`：`condition=None` 表示 otherwise 兜底分支。
 - `BehaviorTree(name: str, root: Node)`：树名（=文档名） + 基础节点根。
-- 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action` / `ForEach.body`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ForEach/ref/FunctionCall/Define`；`Action` 为真正叶子（`description` 操作描述、可选 `timeout`），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段；`Define` 为变量声明叶子（`vars: {名: {type, value}}`）。
+- 文档格式（一文档一树，§4.1）：`tree: <名>`（须=文档名，否则 `structure.name_mismatch`）+ 可选 `inputs`/`outputs` + 可选保留配置键（`timeout`/`retry`/`browser`）+ `nodes`（节点对象池，每节点 `{id, type, name, ...标量字段, <语义槽位字段>}`；槽位字段按类型：`Root.body` / `Sequence.actions` / `Step.action` / `IfThenElse.then`+`else` / `Branch.action`+`branches[].action` / `Retry.body` / `LoopUntil.action` / `ForEach.body` / `Parallel.body`，值=子树根 id）+ `root: <id>`（须指向 `type: Root` 节点）。节点类型 `Action/Root/Step/Sequence/IfThenElse/Branch/Retry/LoopUntil/ForEach/Parallel/ref/FunctionCall/Define`；`Action` 为真正叶子（`description` 操作描述、可选 `timeout`），`Step` 的 `action` 槽位挂操作子树、`expect` 为验证条件字段；`Define` 为变量声明叶子（`vars: {名: {type, value}}`）。
 
 ### 5.3 复合节点展开规则（§4.3）
 
@@ -222,3 +222,8 @@ class RefNode(Node):
 ### Action 节点级超时
 
 `Action.timeout` 为可选正数（秒）；解析期校验为有限正数并写入 `ActionNode.timeout`，运行期优先于文档/全局 timeout。
+
+
+### Parallel 节点
+
+`Parallel` 与 ForEach 共用 `variables`/`body`/`on_failure`，并新增 `max_concurrency`（正整数，默认 4）与 `on_conflict`（`error`/`last`）。解析期校验变量名、列表表达式、并发数与冲突策略；展开为 `ParallelNode`。

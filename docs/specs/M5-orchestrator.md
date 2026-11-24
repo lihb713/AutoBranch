@@ -135,6 +135,7 @@ class RunConfig:
   - **Retry** → `Repeat(mode=retry, body=body 槽位子树)`
   - **LoopUntil** → `Repeat(mode=loop_until, until 条件, body=action 槽位子树)`
   - **ForEach** → 运行期节点：解析 variables（列表 JSON/数组），每轮在临时子帧执行 body；`continue` 跳过单轮失败，`abort` 立即失败
+  - **Parallel** → 运行期节点：与 ForEach 同构 variables/body；每项在隔离 SchemaSpace 工作副本中并发执行，`max_concurrency` 限流；成功迭代变量合并回父帧，冲突由 `on_conflict` 处理；`continue` 部分失败成功、全部失败失败，`abort` 任一失败失败
   - **Action** 为真正叶子（`description`），由 M6 agent 执行；`ref` 为调用节点（见 §5.4/§8-6）；`FunctionCall` / `Define` 为确定性叶子（不经 LLM，无截图）
 - **Sequence**：依次执行，第一个 FAILURE 短路 → 整体 FAILURE；全 SUCCESS → SUCCESS
 - **Selector**：按条件分流，分支条件先判（FAILURE 试下一分支），命中分支的子节点

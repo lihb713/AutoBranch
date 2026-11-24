@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from collections.abc import Callable
 
 from autobranch.browser.models import OpResult, PageRef
@@ -76,6 +77,7 @@ class Reporter:
         self._state = ExecState(run_id=run_id, total_nodes=total_nodes)
         self._run_root = os.path.join(report_dir, self._run_id)
         self._screenshot_index = 0
+        self._lock = threading.RLock()
         os.makedirs(self._run_root, exist_ok=True)
 
     @property
@@ -95,7 +97,8 @@ class Reporter:
 
         M7 在节点进入执行前调用；节点完成调用 ``record_node`` 后清空。
         """
-        self._state.current_node = node_info
+        with self._lock:
+            self._state.current_node = node_info
 
     def record_node(self, node_report: NodeReport) -> None:
         """记录一条节点报告（节点退出前，M8 spec §5.1）。
@@ -103,8 +106,9 @@ class Reporter:
         追加到已完成报告列表（顺序即记录顺序）；该节点执行完毕，
         ``current_node`` 清空，等待下一个 ``start_node``。
         """
-        self._state.completed.append(node_report)
-        self._state.current_node = None
+        with self._lock:
+            self._state.completed.append(node_report)
+            self._state.current_node = None
 
     # ------------------------------------------------------------------ 截图
 
@@ -117,9 +121,10 @@ class Reporter:
         if self._screenshotter is None:
             logger.warning("未注入截图能力，跳过截图（page_ref=%s）", page_ref.id)
             return ""
-        self._screenshot_index += 1
-        filename = f"{self._screenshot_index:03d}_{slugify(desc) if desc else 'shot'}.png"
-        target = os.path.join(self._run_root, filename)
+        with self._lock:
+            self._screenshot_index += 1
+            filename = f"{self._screenshot_index:03d}_{slugify(desc) if desc else 'shot'}.png"
+            target = os.path.join(self._run_root, filename)
         try:
             result = self._screenshotter(page_ref, target)
         except Exception as exc:  # 截图异常按失败处理，不影响节点记录（任务 2.2）
@@ -139,13 +144,14 @@ class Reporter:
 
         ``completed`` 返回副本列表，调用方修改不影响记录器内部状态。
         """
-        return ExecState(
-            run_id=self._raw_run_id,
-            current_node=self._state.current_node,
-            completed=list(self._state.completed),
-            finished=self._state.finished,
-            total_nodes=self._state.total_nodes,
-        )
+        with self._lock:
+            return ExecState(
+                run_id=self._raw_run_id,
+                current_node=self._state.current_node,
+                completed=list(self._state.completed),
+                finished=self._state.finished,
+                total_nodes=self._state.total_nodes,
+            )
 
     # ------------------------------------------------------------------ finalize
 
@@ -155,14 +161,15 @@ class Reporter:
         执行报告（报告①，含截图）与回溯报告（报告②，含 LLM 推理）均由全部
         已记录节点报告派生；文件写入 ``<report_dir>/<run_id>/``。
         """
-        reports = list(self._state.completed)
+        with self._lock:
+            reports = list(self._state.completed)
+            self._state.finished = True
         exec_text = render_exec_report(self._raw_run_id, reports)
         trace_text = render_trace_report(self._raw_run_id, reports)
         exec_path = os.path.join(self._run_root, "exec_report.md")
         trace_path = os.path.join(self._run_root, "trace_report.md")
         self._write(exec_path, exec_text)
         self._write(trace_path, trace_text)
-        self._state.finished = True
         return ReportBundle(
             exec_report=ExecReport(run_id=self._raw_run_id, path=exec_path, text=exec_text),
             trace_report=TraceReport(run_id=self._raw_run_id, path=trace_path, text=trace_text),

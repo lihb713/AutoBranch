@@ -65,6 +65,8 @@ def _common_detail_lines(report: NodeReport) -> list[str]:
     ]
     if report.duration is not None:
         lines.append(f"    耗时: {report.duration}s")
+    if report.parallel:
+        lines.append(f"    并行: {report.parallel}")
     if report.function:
         lines.append(f"    函数: {report.function}")
         args_text = _summary(report.arguments) if report.arguments is not None else "-"

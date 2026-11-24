@@ -19,6 +19,7 @@ from autobranch.parser.models import (
     FunctionCallNode,
     Loc,
     Node,
+    ParallelNode,
     PredicateCall,
     PredicateExpr,
     PredicateGroup,
@@ -41,6 +42,7 @@ _BASIC_TYPES = (
     SelectorNode,
     RepeatNode,
     ForEachNode,
+    ParallelNode,
     FinishNode,
     RefNode,
 )
@@ -78,7 +80,7 @@ def _walk_expanded(node: Node, issues: list[CheckIssue]) -> None:
         if node.until is not None:
             _walk_expanded(node.until, issues)
         _walk_expanded(node.body, issues)
-    elif isinstance(node, ForEachNode):
+    elif isinstance(node, (ForEachNode, ParallelNode)):
         if node.body is not None:
             _walk_expanded(node.body, issues)
 
@@ -136,7 +138,7 @@ def _walk_leaves(node: Node, issues: list[CheckIssue]) -> None:
         if node.until is not None:
             _walk_leaves(node.until, issues)
         _walk_leaves(node.body, issues)
-    elif isinstance(node, ForEachNode):
+    elif isinstance(node, (ForEachNode, ParallelNode)):
         if node.body is not None:
             _walk_leaves(node.body, issues)
 
@@ -176,7 +178,7 @@ def _walk_functions(
         if node.until is not None:
             _walk_functions(node.until, registry, issues)
         _walk_functions(node.body, registry, issues)
-    elif isinstance(node, ForEachNode):
+    elif isinstance(node, (ForEachNode, ParallelNode)):
         if node.body is not None:
             _walk_functions(node.body, registry, issues)
 

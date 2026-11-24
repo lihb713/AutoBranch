@@ -1,6 +1,7 @@
 export type NodeInfo = {
   node_type: string;
   node_desc: string;
+  parallel?: string | null;
 };
 
 export type ActionCall = {
@@ -26,6 +27,7 @@ export type NodeReport = {
   kwargs?: Record<string, unknown> | null;
   returns?: Record<string, unknown> | null;
   details?: Record<string, unknown> | null;
+  parallel?: string | null;
 };
 
 export type BlackboardVar = {

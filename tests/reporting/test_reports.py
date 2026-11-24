@@ -107,6 +107,20 @@ class TestExecReport:
         assert "y" * 201 not in text
         assert "z" * 201 not in text
 
+    def test_exec_report_parallel_label(self, tmp_path):
+        reporter = Reporter("run-1", str(tmp_path))
+        reporter.record_node(
+            NodeReport(
+                node_type="Action",
+                node_desc="并发项",
+                result="success",
+                timestamp=TIMESTAMP,
+                parallel="Parallel#1[2]",
+            )
+        )
+        text = reporter.finalize().exec_report.text
+        assert "并行: Parallel#1[2]" in text
+
     def test_exec_report_no_screenshot_line_for_composite(self, tmp_path):
         reporter = Reporter("run-1", str(tmp_path))
         reporter.record_node(make_composite_report(node_desc="登录流程"))

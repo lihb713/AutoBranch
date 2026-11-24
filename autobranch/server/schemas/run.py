@@ -81,6 +81,7 @@ class TypeInfoOut(BaseModel):
 class NodeInfoOut(BaseModel):
     node_type: str
     node_desc: str
+    parallel: str | None = None
 
 
 class ActionCallOut(BaseModel):
@@ -106,6 +107,7 @@ class NodeReportOut(BaseModel):
     kwargs: dict | None = None
     returns: dict | None = None
     details: dict | None = None
+    parallel: str | None = None
 
 
 class ReportPendingOut(BaseModel):

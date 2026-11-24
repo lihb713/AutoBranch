@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from autobranch.browser.errors import FatalBrowserError
 from autobranch.leaf_agent.models import LeafResult
@@ -29,6 +30,7 @@ from autobranch.parser.models import (
     ForEachNode,
     FunctionCallNode,
     Node,
+    ParallelNode,
     PredicateCall,
     PredicateExpr,
     RefNode,
@@ -38,7 +40,7 @@ from autobranch.parser.models import (
 )
 from autobranch.plugin_system.defs import AUTOBRANCH_TYPE_KEY
 from autobranch.reporting.models import ActionCall, LeafTrace, NodeInfo, NodeReport
-from autobranch.schema import FrameDecl
+from autobranch.schema import FrameDecl, SchemaSpace
 from autobranch.schema.errors import SchemaError
 from autobranch.schema.types import (
     TYPE_REGISTRY,
@@ -75,6 +77,8 @@ def node_type_name(node: Node) -> str:
         return "Repeat"
     if isinstance(node, ForEachNode):
         return "ForEach"
+    if isinstance(node, ParallelNode):
+        return "Parallel"
     if isinstance(node, FinishNode):
         return "Finish"
     return type(node).__name__
@@ -100,6 +104,8 @@ def node_desc(node: Node) -> str:
         return f"Define({', '.join(name for name, _t, _v in node.vars)})"
     if isinstance(node, ForEachNode):
         return "ForEach(" + ", ".join(f"{name}={value}" for name, value in node.variables) + ")"
+    if isinstance(node, ParallelNode):
+        return "Parallel(" + ", ".join(f"{name}={value}" for name, value in node.variables) + ")"
     return node_type_name(node)
 
 
@@ -178,6 +184,7 @@ class Traverser:
         self.ctx = ctx
         self._depth = 0
         self._foreach_seq = 0
+        self._parallel_seq = 0
         self._meta_stack: list[dict] = []
         self._predicate_error: str | None = None
 
@@ -230,6 +237,8 @@ class Traverser:
             return self._tick_repeat(node)
         if isinstance(node, ForEachNode):
             return self._tick_for_each(node)
+        if isinstance(node, ParallelNode):
+            return self._tick_parallel(node)
         if isinstance(node, FinishNode):
             return self._tick_finish(node)
         self._note_failure(node, f"未知节点类型: {type(node).__name__}")
@@ -390,6 +399,251 @@ class Traverser:
                 self._note_failure(node, f"全部 {count} 轮执行失败")
             return FAILURE
         return SUCCESS
+
+    @staticmethod
+    def _copy_parallel_value(value: object) -> object:
+        """并行工作副本：仅递归复制基础容器，PageRef/插件对象共享引用。"""
+        if isinstance(value, dict):
+            return {
+                key: Traverser._copy_parallel_value(item) for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [Traverser._copy_parallel_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(Traverser._copy_parallel_value(item) for item in value)
+        return value
+
+    @staticmethod
+    def _parallel_values_equal(left: object, right: object) -> bool:
+        try:
+            return bool(left == right)
+        except Exception:  # noqa: BLE001 - 自定义对象比较失败时按身份判断
+            return left is right
+
+    @staticmethod
+    def _merge_config_chain(frame):
+        """收集帧配置继承链（当前帧优先），供并行工作空间复用。"""
+        chain = []
+        node = frame
+        while node is not None:
+            chain.append(node)
+            node = node.config_parent
+        config: dict[str, object] = {}
+        config_types: dict[str, str] = {}
+        for item in reversed(chain):
+            config.update(item.config)
+            config_types.update(item.config_types)
+        return config, config_types
+
+    def _make_parallel_context(
+        self,
+        parent,
+        values: dict[str, object],
+        list_names: list[str],
+        index: int,
+        label: str,
+    ):
+        """创建单次并行迭代的隔离上下文与帧。"""
+        config, config_types = self._merge_config_chain(parent)
+        worker_space = SchemaSpace(global_config=config, global_config_types=config_types)
+        frame = worker_space.enter_frame(parent.name, mount=worker_space.root)
+        frame.inputs = dict(parent.inputs)
+        frame.outputs = dict(parent.outputs)
+        for name, value in parent.storage.items():
+            worker_space.write(
+                frame,
+                f"this/{name}",
+                self._copy_parallel_value(value),
+                parent.declared.get(name) or infer_type(value),
+            )
+        frame.page_write_order = list(parent.page_write_order)
+        for name, value in values.items():
+            item = value[index] if name in list_names else value
+            value_type = (
+                "generics"
+                if item is None
+                else "array"
+                if isinstance(item, list)
+                else "object"
+                if isinstance(item, dict)
+                else infer_type(item)
+            )
+            worker_space.write(frame, f"this/{name}", self._copy_parallel_value(item), value_type)
+        factory = self.ctx.leaf_executor_factory
+        leaf_executor = factory(worker_space) if factory is not None else self.ctx.leaf_executor
+        worker_ctx = RunContext(
+            config=self.ctx.config,
+            space=worker_space,
+            reporter=self.ctx.reporter,
+            browser=self.ctx.browser,
+            leaf_executor=leaf_executor,
+            blocks_tree=self.ctx.blocks_tree,
+            resolver=self.ctx.resolver,
+            decl_inputs=self.ctx.decl_inputs,
+            decl_outputs=self.ctx.decl_outputs,
+            config_overrides=self.ctx.config_overrides,
+            registry=self.ctx.registry,
+            runtime=self.ctx.runtime,
+            parallel_label=label,
+            leaf_executor_factory=self.ctx.leaf_executor_factory,
+            resolver_lock=self.ctx.resolver_lock,
+        )
+        return worker_ctx, frame
+
+    def _parallel_changes(
+        self, frame, seed: dict[str, object], item_names: set[str]
+    ) -> dict[str, tuple[object, str]]:
+        changes: dict[str, tuple[object, str]] = {}
+        for name, value in frame.storage.items():
+            if name in item_names:
+                continue
+            if name not in seed or not self._parallel_values_equal(value, seed[name]):
+                changes[name] = (value, frame.declared.get(name) or infer_type(value))
+        return changes
+
+    def _merge_parallel_changes(
+        self,
+        parent,
+        successes: list[dict],
+        item_names: set[str],
+        on_conflict: str,
+    ) -> tuple[list[str], str | None]:
+        """把成功迭代的变量写入父帧；返回冲突变量与冲突错误。"""
+        by_name: dict[str, list[tuple[int, object, str]]] = {}
+        for result in successes:
+            for name, (value, value_type) in result["changes"].items():
+                if name in item_names:
+                    continue
+                by_name.setdefault(name, []).append((result["index"], value, value_type))
+        conflicts: list[str] = []
+        for name, entries in by_name.items():
+            first = entries[0][1]
+            if any(not self._parallel_values_equal(first, value) for _, value, _ in entries[1:]):
+                conflicts.append(name)
+        for name, entries in by_name.items():
+            if name in conflicts and on_conflict == "error":
+                continue
+            last = max(entries, key=lambda item: item[0])
+            try:
+                self.ctx.space.write(parent, f"this/{name}", last[1], last[2])
+            except SchemaError as exc:
+                return conflicts, f"并行变量回写 '{name}' 失败: {exc}"
+        if conflicts and on_conflict == "error":
+            return conflicts, f"并行变量写冲突: {', '.join(conflicts)}（可设置 on_conflict=last）"
+        return conflicts, None
+
+    def _tick_parallel(self, node: ParallelNode) -> NodeStatus:
+        """Parallel：按列表逐项并发执行 body；每项使用隔离变量空间。"""
+        if node.body is None:
+            self._note_failure(node, "Parallel 缺少 body 子节点")
+            return FAILURE
+        values: dict[str, object] = {}
+        list_names: list[str] = []
+        lengths: set[int] = set()
+        for name, raw in node.variables:
+            value = raw
+            if isinstance(raw, str):
+                evaluated = self._eval_arg(self.ctx.current_frame, raw)
+                if evaluated is not _MISSING:
+                    value = evaluated
+                elif _PARAM_REF.match(raw.strip()):
+                    self._note_failure(node, f"Parallel 变量 '{name}' 引用的变量未定义")
+                    return FAILURE
+            parsed = self._as_foreach_list(value)
+            values[name] = parsed if parsed is not None else value
+            if parsed is not None:
+                list_names.append(name)
+                lengths.add(len(parsed))
+        if len(lengths) > 1:
+            self._note_failure(node, f"Parallel 列表变量长度不一致: {sorted(lengths)}")
+            return FAILURE
+        count = next(iter(lengths)) if lengths else 1
+        if count == 0:
+            return SUCCESS
+        max_workers = max(1, min(int(node.max_concurrency), count))
+        self._parallel_seq += 1
+        group = f"Parallel#{self._parallel_seq}"
+        parent = self.ctx.current_frame
+        previous_failure = self.ctx.failure_reason
+        seed = {name: self._copy_parallel_value(value) for name, value in parent.storage.items()}
+        meta = self._meta_stack[-1] if self._meta_stack else {}
+        meta["details"] = {
+            "变量": {name: self._value_summary(value) for name, value in values.items()},
+            "迭代次数": count,
+            "最大并发": max_workers,
+            "并行组": group,
+        }
+        label_prefix = f"{self.ctx.parallel_label}/" if self.ctx.parallel_label else ""
+
+        def run_one(index: int) -> dict:
+            label = f"{label_prefix}{group}[{index + 1}]"
+            started = time.monotonic()
+            reason = None
+            changes: dict[str, tuple[object, str]] = {}
+            try:
+                worker_ctx, frame = self._make_parallel_context(
+                    parent, values, list_names, index, label
+                )
+                traverser = Traverser(worker_ctx)
+                traverser._depth = self._depth
+                status = traverser.tick(node.body)
+                reason = worker_ctx.failure_reason
+                changes = self._parallel_changes(frame, seed, set(values))
+            except Exception as exc:  # noqa: BLE001 - 单项异常按失败聚合
+                logger.warning("并行迭代异常（%s）: %s", label, exc, exc_info=True)
+                status = FAILURE
+                reason = f"并行迭代异常: {exc}"
+            return {
+                "index": index,
+                "status": status,
+                "reason": reason,
+                "elapsed": round(time.monotonic() - started, 3),
+                "label": label,
+                "changes": changes,
+            }
+
+        results: list[dict] = []
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=group) as pool:
+            futures = [pool.submit(run_one, index) for index in range(count)]
+            for future in as_completed(futures):
+                results.append(future.result())
+        results.sort(key=lambda item: item["index"])
+        successes = [result for result in results if result["status"] == SUCCESS]
+        failures = [result for result in results if result["status"] == FAILURE]
+        conflicts, merge_error = self._merge_parallel_changes(
+            parent, successes, set(values), node.on_conflict
+        )
+        meta["details"]["成功"] = len(successes)
+        meta["details"]["失败"] = len(failures)
+        meta["details"]["结果"] = [
+            {
+                "迭代": result["index"] + 1,
+                "状态": result["status"],
+                "并行": result["label"],
+                "耗时": result["elapsed"],
+                "失败原因": result["reason"],
+            }
+            for result in results
+        ]
+        if conflicts:
+            meta["details"]["变量冲突"] = conflicts
+        failed = bool(failures) and (
+            node.on_failure == "abort" or not successes or merge_error is not None
+        )
+        if merge_error is not None:
+            failed = True
+            meta["details"]["变量回写错误"] = merge_error
+        if not failed:
+            return SUCCESS
+        first_failure = failures[0]["reason"] if failures else None
+        if first_failure is not None:
+            self.ctx.failure_reason = first_failure
+        elif merge_error is not None:
+            self.ctx.failure_reason = merge_error
+        else:
+            self.ctx.failure_reason = previous_failure
+            self._note_failure(node, "Parallel 全部迭代失败")
+        return FAILURE
 
     @staticmethod
     def _as_foreach_list(value: object) -> list | None:
@@ -593,6 +847,7 @@ class Traverser:
                 "求值": details,
                 "最终结果": value if error is None else None,
             },
+            parallel=self.ctx.parallel_label,
         )
         self.ctx.reporter.record_node(report)
         return status
@@ -733,6 +988,7 @@ class Traverser:
             llm_trace=result.trace,
             duration=round(elapsed, 3),
             failure_reason=failure_reason,
+            parallel=self.ctx.parallel_label,
         )
         self.ctx.reporter.record_node(report)
         return status
@@ -862,10 +1118,19 @@ class Traverser:
         return status
 
     def _load_doc_tree(self, doc_id: str) -> tuple[Node, object] | None:
-        """经 resolver 加载被引文档，解析其主树与文档级声明（供 ref 执行）。"""
+        """经 resolver 加载被引文档（并发时按 resolver_lock 串行）。"""
         resolver = self.ctx.resolver
         if resolver is None:
             return None
+        lock = self.ctx.resolver_lock
+        if lock is None:
+            return self._load_doc_tree_unlocked(doc_id, resolver)
+        with lock:
+            return self._load_doc_tree_unlocked(doc_id, resolver)
+
+    def _load_doc_tree_unlocked(
+        self, doc_id: str, resolver
+    ) -> tuple[Node, object] | None:
         try:
             src = resolver.resolve(doc_id)
         except Exception:
@@ -934,7 +1199,11 @@ class Traverser:
 
     def _start_node(self, node: Node) -> None:
         self.ctx.reporter.start_node(
-            NodeInfo(node_type=node_type_name(node), node_desc=node_desc(node))
+            NodeInfo(
+                node_type=node_type_name(node),
+                node_desc=node_desc(node),
+                parallel=self.ctx.parallel_label,
+            )
         )
 
     def _record_node(
@@ -956,6 +1225,7 @@ class Traverser:
                 kwargs=meta.get("kwargs"),
                 returns=meta.get("returns"),
                 details=meta.get("details"),
+                parallel=self.ctx.parallel_label,
             )
         )
 

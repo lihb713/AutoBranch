@@ -221,3 +221,12 @@ FunctionCall SHALL 支持位置参数 `args` 与命名参数 `kwargs`。`args` �
 #### Scenario: 空组拒绝
 - **WHEN** all 或 any 为空列表
 - **THEN** 返回 invalid_expression 校验错误
+
+
+### Requirement: Parallel 节点解析
+
+系统 SHALL 解析 Parallel 节点：`variables`/`body`/`on_failure` 与 ForEach 同构，并支持正整数 `max_concurrency` 与 `on_conflict`（error/last）。
+
+#### Scenario: 解析并发遍历
+- **WHEN** 文档包含 Parallel 节点
+- **THEN** 输出 ParallelNode 并校验变量与并发策略

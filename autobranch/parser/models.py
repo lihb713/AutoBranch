@@ -127,6 +127,25 @@ class ForEachNode(Node):
 
 
 @dataclass(frozen=True)
+class ParallelNode(Node):
+    """并行遍历节点：按变量列表逐项并发执行 body。
+
+    :param variables: ``(临时变量名, 值表达式/字面量)``；列表变量按索引分配每项。
+    :param body: 每项执行的子节点。
+    :param on_failure: ``continue``（容忍部分失败，全部失败才失败）| ``abort``（任一失败整体失败）。
+    :param max_concurrency: 最大并发数（>=1）。
+    :param on_conflict: 多个成功迭代写入同名非 item 变量时的策略：
+        ``error`` 失败 | ``last`` 按迭代顺序后写覆盖。
+    """
+
+    variables: tuple[tuple[str, object], ...] = ()
+    body: Node | None = None
+    on_failure: str = "continue"
+    max_concurrency: int = 4
+    on_conflict: str = "error"
+
+
+@dataclass(frozen=True)
 class DefineNode(Node):
     """变量声明叶子：运行期确定性创建变量（不经 LLM）。
 

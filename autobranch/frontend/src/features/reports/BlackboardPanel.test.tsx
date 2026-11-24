@@ -44,7 +44,7 @@ describe("BlackboardPanel", () => {
         ]}
       />,
     );
-    expect(screen.getByTestId("blackboard-truncated-this/all_chunks")).toHaveTextContent(
+    expect(screen.getByTestId("blackboard-truncated-this/all_chunks-length")).toHaveTextContent(
       "已截断，完整长度 420000 字符",
     );
   });

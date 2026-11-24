@@ -30,6 +30,7 @@ from autobranch.parser.models import (
     FunctionCallNode,
     Loc,
     Node,
+    ParallelNode,
     PredicateCall,
     PredicateExpr,
     PredicateGroup,
@@ -230,7 +231,7 @@ def _check_get_defined(
             if node.until is not None:
                 walk(node.until)
             walk(node.body)
-        elif isinstance(node, ForEachNode):
+        elif isinstance(node, (ForEachNode, ParallelNode)):
             local = set(defined)
             for name, value in node.variables:
                 for ref, loc in _collect_value_get_refs(value, node.loc):
@@ -559,7 +560,7 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
         )
     if kind == "Define":
         return DefineNode(vars=node.vars, loc=node.loc)
-    if kind == "ForEach":
+    if kind in ("ForEach", "Parallel"):
         body = _expand_ir(
             node.body or _empty_ir("Sequence", node.loc), ctx, depth + 1
         )
@@ -567,6 +568,15 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
             if isinstance(value, str):
                 _scope_check_texts(ctx, node.loc, value)
                 _check_param_syntax(ctx, value, node.loc)
+        if kind == "Parallel":
+            return ParallelNode(
+                variables=node.foreach_vars,
+                body=body,
+                on_failure=node.on_failure or "continue",
+                max_concurrency=node.max_concurrency,
+                on_conflict=node.on_conflict or "error",
+                loc=node.loc,
+            )
         return ForEachNode(
             variables=node.foreach_vars,
             body=body,

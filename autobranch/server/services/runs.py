@@ -743,7 +743,9 @@ class RunService:
 def _node_info_out(info: NodeInfo | None) -> NodeInfoOut | None:
     if info is None:
         return None
-    return NodeInfoOut(node_type=info.node_type, node_desc=info.node_desc)
+    return NodeInfoOut(
+        node_type=info.node_type, node_desc=info.node_desc, parallel=info.parallel
+    )
 
 
 def _node_report_out(report: NodeReport) -> NodeReportOut:
@@ -763,6 +765,7 @@ def _node_report_out(report: NodeReport) -> NodeReportOut:
         kwargs=_json_safe_nested(report.kwargs) if report.kwargs else report.kwargs,
         returns=_json_safe_nested(report.returns) if report.returns else report.returns,
         details=_json_safe_nested(report.details) if report.details else report.details,
+        parallel=report.parallel,
     )
 
 

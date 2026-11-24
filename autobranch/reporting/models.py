@@ -79,7 +79,8 @@ class NodeReport:
     :param arguments: FunctionCall 位置入参实际值。
     :param kwargs: FunctionCall 命名入参实际值。
     :param returns: FunctionCall 实际出参。
-    :param details: 其他节点结构化详情（如 ForEach 变量/迭代次数）。
+    :param details: 其他节点结构化详情（如 ForEach/Parallel 变量/迭代次数）。
+    :param parallel: 并行执行标签（如 ``Parallel#1[2]``；非并行节点为空）。
     """
 
     node_type: str
@@ -98,6 +99,7 @@ class NodeReport:
     kwargs: dict[str, Any] | None = None
     returns: dict[str, Any] | None = None
     details: dict[str, Any] | None = None
+    parallel: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,7 @@ class NodeInfo:
 
     node_type: str
     node_desc: str
+    parallel: str | None = None
 
 
 @dataclass

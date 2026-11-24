@@ -261,3 +261,23 @@ def test_run_fallback_normalizes_missing_returns(client, session):
     run = session.get(Run, resp.json()["run_id"])
     assert "n2_status" in run.content_snapshot
     assert "n2_body" in run.content_snapshot
+
+
+def test_add_for_each_and_parallel_nodes(client):
+    draft = client.post("/api/trees/drafts").json()
+    resp = client.post(
+        f"/api/trees/{draft['id']}/commands",
+        json={
+            "commands": [
+                {"op": "add_node", "node_type": "ForEach"},
+                {"op": "add_node", "node_type": "Parallel"},
+            ]
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    data = yaml.safe_load(_content(client, draft["id"]))
+    assert data["nodes"]["n2"]["type"] == "ForEach"
+    assert data["nodes"]["n2"]["variables"] == {}
+    assert data["nodes"]["n3"]["type"] == "Parallel"
+    assert data["nodes"]["n3"]["max_concurrency"] == 4
+    assert data["nodes"]["n3"]["on_conflict"] == "error"

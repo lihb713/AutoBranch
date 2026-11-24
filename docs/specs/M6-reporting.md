@@ -176,3 +176,8 @@ class ExecState:
 报告 = **引擎基础字段**（node_type / desc / result / timestamp / action_call / llm_trace）+ **插件附加信息**（`FunctionResult.report`，引擎落笔，按来源分组展示）。
 
 引擎**不硬编码能力专属字段**（如 page_url / screenshot）；截图由浏览器插件在 `semantic_graph`（"看页面"）时产出，经 `LeafResult.screenshots` 写入 `NodeReport.screenshot_path`（非浏览器操作不产生截图）。
+
+
+### Parallel 报告
+
+`NodeReport` / `NodeInfo` SHALL 支持可选 `parallel` 标签（如 `Parallel#1[2]`）；报告渲染与前端执行状态展示该标签，便于并发场景定位错误。Parallel 节点 details 汇总迭代结果。

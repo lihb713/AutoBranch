@@ -194,3 +194,12 @@ NodeReport SHALL 记录节点耗时、失败原因与结构化调用详情：Fun
 #### Scenario: 超长函数入参
 - **WHEN** FunctionCall 的 arguments 超过 200 字符
 - **THEN** 报告截断显示并标注完整长度
+
+
+### Requirement: 并行标签
+
+节点报告与当前节点信息 SHALL 支持 optional `parallel` 标签；并发子节点报告 SHALL 标注 `Parallel#N[迭代]`，便于定位错误。
+
+#### Scenario: 并发子节点
+- **WHEN** Parallel 执行第 2 个迭代
+- **THEN** 其子节点报告包含 parallel 标签

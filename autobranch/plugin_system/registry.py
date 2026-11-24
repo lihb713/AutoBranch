@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import replace
 from typing import Any
 
@@ -52,6 +53,7 @@ class PluginRegistry:
         self._functions: dict[str, FunctionDef] = {}
         self._owner: dict[str, str] = {}
         self._loaded: set[str] = set()
+        self._lock = threading.RLock()
 
     # ------------------------------------------------------------ 注册
 
@@ -194,13 +196,14 @@ class PluginRegistry:
 
     def ensure_loaded(self, plugin_name: str, runtime: Any = None) -> PluginBase:
         """懒装配：插件未 ``init`` 则初始化（重资源在此启动）。"""
-        plugin = self._plugins.get(plugin_name)
-        if plugin is None:
-            raise PluginError(f"未注册插件: {plugin_name}")
-        if plugin_name not in self._loaded:
-            plugin.init(runtime)
-            self._loaded.add(plugin_name)
-        return plugin
+        with self._lock:
+            plugin = self._plugins.get(plugin_name)
+            if plugin is None:
+                raise PluginError(f"未注册插件: {plugin_name}")
+            if plugin_name not in self._loaded:
+                plugin.init(runtime)
+                self._loaded.add(plugin_name)
+            return plugin
 
     def release(self) -> None:
         """释放全部已装配插件（运行结束统一释放，含提前终止）。"""

@@ -127,7 +127,7 @@ class ExecStateOut:
 
 - **出参完整存储**：`runs.outputs` 经 `_json_safe_type` 递归转换（保留 dict/list，`PageRef`→`{page_id,url}`，其他对象→`str`），**不截断**；最终出参完整返回。
 - **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），并返回 `truncated`/`full_length`，避免 `SSHConnection` 等 generics 变量导致 `/state` 500。
-- `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path（LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
+- `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path/parallel（并行标签；LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
   - `trees`：id、name(unique)、content(Text)、created_at/updated_at
   - `trees`：id、name(唯一)、content(yaml)、status(draft/published，默认 published)、created_at/updated_at

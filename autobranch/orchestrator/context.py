@@ -41,6 +41,8 @@ class RunContext:
     :param config_overrides: 全局配置覆盖（timeout/retry/browser）。
     :param leaf_executor: 叶子执行器（默认包装 M6 ``execute_leaf``；测试注入 mock）。
     :param failure_reason: 首个失败节点描述（沿树传播到根时作为失败原因）。
+    :param parallel_label: 并行执行标签（工作上下文注入，供报告定位）。
+    :param leaf_executor_factory: 按工作 ``SchemaSpace`` 创建叶子执行器（Parallel 隔离使用）。
     """
 
     config: RunConfig
@@ -56,6 +58,9 @@ class RunContext:
     registry: Any = None
     runtime: Any = None
     failure_reason: str | None = None
+    parallel_label: str | None = None
+    leaf_executor_factory: Callable[[SchemaSpace], LeafExecutor] | None = None
+    resolver_lock: Any = None
 
     @property
     def current_frame(self) -> Any:

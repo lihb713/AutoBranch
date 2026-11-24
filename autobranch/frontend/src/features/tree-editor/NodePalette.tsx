@@ -8,6 +8,7 @@ const ITEMS: { type: NodeType; title: string; hint: string }[] = [
   { type: "Retry", title: "Retry", hint: "失败重试限次" },
   { type: "LoopUntil", title: "LoopUntil", hint: "直到条件满足" },
   { type: "ForEach", title: "ForEach", hint: "遍历列表逐项执行" },
+  { type: "Parallel", title: "Parallel", hint: "并发执行列表项" },
   { type: "Action", title: "Action", hint: "单个操作（叶子）" },
   { type: "FunctionCall", title: "FunctionCall", hint: "确定性调用插件函数" },
   { type: "Define", title: "Define", hint: "声明变量（叶子）" },

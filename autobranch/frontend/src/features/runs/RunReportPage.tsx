@@ -216,6 +216,9 @@ export function RunReportPage() {
                 <StatusBadge kind="running" />
                 <span className="report-node__type">{data.current_node.node_type}</span>
                 <span className="report-node__desc">{data.current_node.node_desc}</span>
+                {data.current_node.parallel ? (
+                  <span className="report-node__parallel">并行: {data.current_node.parallel}</span>
+                ) : null}
               </div>
             </div>
           ) : null}

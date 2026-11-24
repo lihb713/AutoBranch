@@ -24,6 +24,8 @@ NODE_TYPES = {
     "Branch",
     "Retry",
     "LoopUntil",
+    "ForEach",
+    "Parallel",
     "ref",
     "FunctionCall",
     "Define",
@@ -79,6 +81,17 @@ def make_node(node_type: str, node_id: str) -> dict[str, Any]:
         body["actions"] = []
     elif node_type == "Branch":
         body["branches"] = []
+    elif node_type == "ForEach":
+        body.update({"variables": {}, "on_failure": "continue"})
+    elif node_type == "Parallel":
+        body.update(
+            {
+                "variables": {},
+                "on_failure": "continue",
+                "max_concurrency": 4,
+                "on_conflict": "error",
+            }
+        )
     return body
 
 
@@ -92,6 +105,8 @@ def slot_mounts(body: dict[str, Any]) -> list[tuple[str, Any]]:
         return [("body", body.get("body"))]
     if kind in ("Step", "Retry", "LoopUntil"):
         return [("action", body.get("action"))]
+    if kind in ("ForEach", "Parallel"):
+        return [("body", body.get("body"))]
     if kind == "IfThenElse":
         return [("then", body.get("then")), ("else", body.get("else"))]
     if kind == "Sequence":

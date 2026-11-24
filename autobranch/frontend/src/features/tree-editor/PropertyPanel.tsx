@@ -83,6 +83,8 @@ export function PropertyPanel({
   const [cycleError, setCycleError] = useState("");
   const [functions, setFunctions] = useState<FunctionInfo[]>([]);
   const [localOnFailure, setLocalOnFailure] = useState<string | null>(null);
+  const [localMaxConcurrency, setLocalMaxConcurrency] = useState<string | null>(null);
+  const [localOnConflict, setLocalOnConflict] = useState<string | null>(null);
 
   useEffect(() => {
     pluginsApi
@@ -93,7 +95,9 @@ export function PropertyPanel({
 
   useEffect(() => {
     setLocalOnFailure(null);
-  }, [node?.id, node?.onFailure]);
+    setLocalMaxConcurrency(null);
+    setLocalOnConflict(null);
+  }, [node?.id, node?.onFailure, node?.maxConcurrency, node?.onConflict]);
 
   if (!node) {
     return (
@@ -567,7 +571,7 @@ export function PropertyPanel({
   const renderForEachGroup = () => (
     <>
       <section className="prop-group" data-testid="prop-group-foreach-vars">
-        <h4 className="prop-group__title">ForEach 变量</h4>
+        <h4 className="prop-group__title">{node.type} 变量</h4>
         {foreachRows.length === 0 ? (
           <p className="property-panel__hint">添加变量后逐项遍历</p>
         ) : (
@@ -622,15 +626,48 @@ export function PropertyPanel({
             <option value="abort">abort（立即停止）</option>
           </select>
         </label>
-        <CheckboxField
-          label="body 成功后提前终止（break）"
-          checked={node.breakOnSuccess ?? false}
-          disabled={readonly}
-          data-testid="foreach-break-on-success"
-          onChange={(e) =>
-            onPatchNode(node.id, { break_on_success: e.target.checked } as Partial<TreeNode>)
-          }
-        />
+        {node.type === "ForEach" ? (
+          <CheckboxField
+            label="body 成功后提前终止（break）"
+            checked={node.breakOnSuccess ?? false}
+            disabled={readonly}
+            data-testid="foreach-break-on-success"
+            onChange={(e) =>
+              onPatchNode(node.id, { break_on_success: e.target.checked } as Partial<TreeNode>)
+            }
+          />
+        ) : (
+          <section className="prop-group" data-testid="prop-group-parallel-policy">
+            <h4 className="prop-group__title">并发策略</h4>
+            <TextField
+              label="最大并发数"
+              value={localMaxConcurrency ?? String(node.maxConcurrency ?? 4)}
+              disabled={readonly}
+              data-testid="parallel-max-concurrency"
+              onChange={(e) => {
+                setLocalMaxConcurrency(e.target.value);
+                const value = Number(e.target.value);
+                updateNode({ max_concurrency: value } as Partial<TreeNode>);
+              }}
+            />
+            <label className="text-field">
+              <span className="text-field__label">变量冲突</span>
+              <select
+                className="text-field__input"
+                value={localOnConflict ?? node.onConflict ?? "error"}
+                disabled={readonly}
+                data-testid="parallel-on-conflict"
+                onChange={(e) => {
+                  setLocalOnConflict(e.target.value);
+                  updateNode({ on_conflict: e.target.value } as Partial<TreeNode>);
+                }}
+              >
+                <option value="error">error（冲突失败）</option>
+                <option value="last">last（按迭代顺序后写覆盖）</option>
+              </select>
+            </label>
+          </section>
+        )}
       </section>
     </>
   );
@@ -785,6 +822,9 @@ export function PropertyPanel({
       break;
     case "ForEach":
       groups = [renderForEachGroup(), renderSlotGroup("循环体", mounts)];
+      break;
+    case "Parallel":
+      groups = [renderForEachGroup(), renderSlotGroup("并行体", mounts)];
       break;
     case "ref":
       groups = [renderRefGroup()];

@@ -47,6 +47,7 @@ AutoBranch 的取舍是：
 | Retry | 失败后重试，最多 `max` 次 |
 | LoopUntil | 循环直到 `until` 成立或达到 `max` |
 | ForEach | 遍历列表/字典，每一轮把当前项写入临时变量 |
+| Parallel | 按列表项并发执行，每项使用隔离变量工作区 |
 | ref | 调用另一份行为树，像调用子程序 |
 | FunctionCall | 直接调用插件函数，不经 LLM |
 | Define | 确定性声明变量 |
@@ -144,6 +145,7 @@ root: r
 | Retry | `body` |
 | LoopUntil | `action` |
 | ForEach | `body` |
+| Parallel | `body` |
 
 同一个节点不能被两个槽位同时引用；这保证它始终是一棵**纯树**。
 
@@ -268,6 +270,39 @@ n2:
   - `abort`：任一失败立即退出并返回 FAILURE；
 - `break_on_success: true`：body 成功后提前终止循环，适合“找到第一个满足条件的元素就停止”；
 - 不写 `break_on_success` 时默认遍历全部项。
+
+### 5.8.1 Parallel：并发遍历
+
+`Parallel` 与 `ForEach` 使用相同的 `variables`/`body` 结构，但每个列表项在独立工作副本中并发执行：
+
+```yaml
+n2:
+  type: Parallel
+  name: 并发检查主机
+  variables:
+    host: Param.hosts
+  max_concurrency: 4
+  on_failure: continue
+  on_conflict: error
+  body: n3
+```
+
+语义：
+
+- `variables` 与 `ForEach` 完全一致：列表变量按索引分配，非列表变量每轮同值；
+- `max_concurrency` 是同时运行的最大迭代数，默认 4；
+- `on_failure`：
+  - `continue`：容忍部分失败；全部失败才整体 FAILURE；
+  - `abort`：任一失败即整体 FAILURE；
+- 每个迭代在**独立变量工作区**中执行；结束时把成功迭代写入的变量合并回父帧；
+- `on_conflict` 控制系统如何处理多个迭代同时写同一个变量：
+  - `error`（默认）：冲突导致 FAILURE，避免静默覆盖；
+  - `last`：按迭代顺序取最后一次写入，兼容“只关心最后结果”的场景；
+- 迭代内写入的变量在合并前对父帧不可见；
+- 报告会给所有子节点标注 `Parallel#N[迭代号]`，Parallel 节点汇总成功数、失败数、耗时和每项结果；
+- `Parallel` 不适合跨迭代累加（如 `transform.append` 累积同一个列表）；需要顺序累积时用 `ForEach`。
+
+**线程安全提示**：`Parallel` 会并发调用插件。`compute`、`http`、`transform`、独立 SSH/文件等适合并发；浏览器插件共享当前页面上下文，不建议对同一页面并发操作，必要时设 `max_concurrency: 1` 或改用 `ForEach`。
 
 ### 5.9 Define：声明变量
 

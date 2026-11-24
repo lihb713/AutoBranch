@@ -122,3 +122,12 @@ Action 属性面板 SHALL 支持可选节点级 `timeout`。变量黑板 SHALL �
 #### Scenario: 超长变量截断
 - **WHEN** 状态 API 返回 truncated=true
 - **THEN** 黑板显示「已截断，完整长度 N 字符」
+
+
+### Requirement: Parallel 编辑
+
+节点面板 SHALL 提供 Parallel；属性面板 SHALL 支持变量、失败策略、最大并发数与变量冲突策略，并能解析/序列化。
+
+#### Scenario: 编辑并发策略
+- **WHEN** 用户设置 max_concurrency=2、on_conflict=last
+- **THEN** 文档序列化包含对应字段

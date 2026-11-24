@@ -38,6 +38,7 @@ export const REQUIRED_SLOT_FIELDS: Record<string, string[]> = {
   Retry: ["body"],
   LoopUntil: ["action"],
   ForEach: ["body"],
+  Parallel: ["body"],
   Branch: ["action"],
   Root: ["body"],
   Sequence: [],
@@ -54,6 +55,7 @@ export const REQUIRED_SCALAR_FIELDS: Record<string, string[]> = {
   LoopUntil: ["until", "max"],
   Retry: ["max"],
   ForEach: [],
+  Parallel: [],
   Branch: [],
   Root: [],
   Sequence: [],
@@ -332,8 +334,19 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
     for (const [field, value] of Object.entries(n.conditions ?? {})) {
       issues.push(...validateConditionValue(value, n.id, field));
     }
-    if (n.type === "ForEach" && Object.keys(n.variables ?? {}).length === 0) {
-      issues.push({ code: "missing_field", message: `节点「${n.name}」缺少 ForEach 变量`, nodeId: n.id });
+    if (
+      (n.type === "ForEach" || n.type === "Parallel") &&
+      Object.keys(n.variables ?? {}).length === 0
+    ) {
+      issues.push({ code: "missing_field", message: `节点「${n.name}」缺少 ${n.type} 变量`, nodeId: n.id });
+    }
+    if (n.type === "Parallel") {
+      if (n.maxConcurrency !== undefined && (!Number.isInteger(n.maxConcurrency) || n.maxConcurrency < 1)) {
+        issues.push({ code: "invalid_value", message: `节点「${n.name}」最大并发数必须是正整数`, nodeId: n.id });
+      }
+      if (n.onConflict !== undefined && !["error", "last"].includes(n.onConflict)) {
+        issues.push({ code: "invalid_value", message: `节点「${n.name}」变量冲突策略必须是 error/last`, nodeId: n.id });
+      }
     }
     if (n.type === "Branch") {
       const branches = n.branches ?? [];
