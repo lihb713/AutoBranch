@@ -437,26 +437,28 @@ class Traverser:
 
     def _make_parallel_context(
         self,
-        parent,
+        snapshot: dict,
         values: dict[str, object],
         list_names: list[str],
         index: int,
         label: str,
     ):
-        """创建单次并行迭代的隔离上下文与帧。"""
-        config, config_types = self._merge_config_chain(parent)
-        worker_space = SchemaSpace(global_config=config, global_config_types=config_types)
-        frame = worker_space.enter_frame(parent.name, mount=worker_space.root)
-        frame.inputs = dict(parent.inputs)
-        frame.outputs = dict(parent.outputs)
-        for name, value in parent.storage.items():
+        """创建单次并行迭代的隔离上下文与帧（只使用父帧快照）。"""
+        worker_space = SchemaSpace(
+            global_config=snapshot["config"],
+            global_config_types=snapshot["config_types"],
+        )
+        frame = worker_space.enter_frame(snapshot["name"], mount=worker_space.root)
+        frame.inputs = dict(snapshot["inputs"])
+        frame.outputs = dict(snapshot["outputs"])
+        for name, value in snapshot["seed"].items():
             worker_space.write(
                 frame,
                 f"this/{name}",
                 self._copy_parallel_value(value),
-                parent.declared.get(name) or infer_type(value),
+                snapshot["declared"].get(name) or infer_type(value),
             )
-        frame.page_write_order = list(parent.page_write_order)
+        frame.page_write_order = list(snapshot["page_write_order"])
         for name, value in values.items():
             item = value[index] if name in list_names else value
             value_type = (
@@ -566,6 +568,17 @@ class Traverser:
         parent = self.ctx.current_frame
         previous_failure = self.ctx.failure_reason
         seed = {name: self._copy_parallel_value(value) for name, value in parent.storage.items()}
+        config, config_types = self._merge_config_chain(parent)
+        snapshot = {
+            "name": parent.name,
+            "seed": seed,
+            "declared": dict(parent.declared),
+            "inputs": dict(parent.inputs),
+            "outputs": dict(parent.outputs),
+            "page_write_order": list(parent.page_write_order),
+            "config": config,
+            "config_types": config_types,
+        }
         meta = self._meta_stack[-1] if self._meta_stack else {}
         meta["details"] = {
             "变量": {name: self._value_summary(value) for name, value in values.items()},
@@ -582,7 +595,7 @@ class Traverser:
             changes: dict[str, tuple[object, str]] = {}
             try:
                 worker_ctx, frame = self._make_parallel_context(
-                    parent, values, list_names, index, label
+                    snapshot, values, list_names, index, label
                 )
                 traverser = Traverser(worker_ctx)
                 traverser._depth = self._depth
