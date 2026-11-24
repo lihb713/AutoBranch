@@ -25,6 +25,7 @@ from autobranch.orchestrator.models import FAILURE, SUCCESS, NodeStatus, Orchest
 from autobranch.parser.models import (
     ActionNode,
     ConditionNode,
+    DebugNode,
     DefineNode,
     FinishNode,
     ForEachNode,
@@ -67,6 +68,8 @@ def node_type_name(node: Node) -> str:
         return "Ref"
     if isinstance(node, FunctionCallNode):
         return "FunctionCall"
+    if isinstance(node, DebugNode):
+        return "Debug"
     if isinstance(node, DefineNode):
         return "Define"
     if isinstance(node, SequenceNode):
@@ -82,6 +85,12 @@ def node_type_name(node: Node) -> str:
     if isinstance(node, FinishNode):
         return "Finish"
     return type(node).__name__
+
+
+def node_id(node: Node) -> str | None:
+    """节点文档内 id（loc.path 末段，如 ``nodes/n3`` → ``n3``）。"""
+    path = node.loc.path if node.loc is not None else ""
+    return path.rsplit("/", 1)[-1] if path else None
 
 
 def _predicate_summary(expr: PredicateExpr | None) -> str:
@@ -100,6 +109,8 @@ def node_desc(node: Node) -> str:
         return node.description
     if isinstance(node, FunctionCallNode):
         return f"{node.function}({', '.join(str(arg) for arg in node.args)})"
+    if isinstance(node, DebugNode):
+        return f"Debug({', '.join(node.vars)})"
     if isinstance(node, DefineNode):
         return f"Define({', '.join(name for name, _t, _v in node.vars)})"
     if isinstance(node, ForEachNode):
@@ -223,6 +234,8 @@ class Traverser:
             return self._tick_ref(node)
         if isinstance(node, FunctionCallNode):
             return self._tick_function_call(node)
+        if isinstance(node, DebugNode):
+            return self._tick_debug(node)
         if isinstance(node, DefineNode):
             return self._tick_define(node)
         if isinstance(node, ConditionNode) and node.mode == "predicate":
@@ -751,12 +764,29 @@ class Traverser:
         meta["returns"] = outputs
         return SUCCESS
 
+    def _tick_debug(self, node: DebugNode) -> NodeStatus:
+        """Debug：读取变量快照写入报告，不改变执行流。"""
+        frame = self.ctx.current_frame
+        meta = self._meta_stack[-1] if self._meta_stack else {}
+        values: dict[str, object] = {}
+        for name in node.vars:
+            if self.ctx.space.has_variable(frame, name):
+                values[name] = self._value_summary(self.ctx.space.read(frame, name))
+            else:
+                values[name] = "<未定义>"
+        meta["details"] = {"变量": values}
+        return SUCCESS
+
     def _tick_define(self, node: DefineNode) -> NodeStatus:
         """Define 节点：确定性创建变量（值可 `Param.x` 读当前帧 / 字面量，coerce 后写帧）。"""
         frame = self.ctx.current_frame
         meta = self._meta_stack[-1] if self._meta_stack else {}
         defined: dict[str, object] = {}
+        skipped: list[str] = []
         for name, type_name, expr in node.vars:
+            if not node.overwrite and self.ctx.space.has_variable(frame, name):
+                skipped.append(name)
+                continue
             value = self._eval_arg(frame, expr or "")
             if value is _MISSING:
                 return (
@@ -780,6 +810,8 @@ class Traverser:
             except SchemaError as exc:
                 return self._note_failure(node, f"Define 变量 '{name}' 写入失败: {exc}") or FAILURE
         meta["details"] = {"变量": defined}
+        if skipped:
+            meta["details"]["保留已有变量"] = skipped
         return SUCCESS
 
     def _tick_predicate_condition(self, node: ConditionNode) -> NodeStatus:
@@ -807,6 +839,7 @@ class Traverser:
                 "最终结果": value if error is None else None,
             },
             parallel=self.ctx.parallel_label,
+            node_id=node_id(node),
         )
         self.ctx.reporter.record_node(report)
         return status
@@ -948,6 +981,7 @@ class Traverser:
             duration=round(elapsed, 3),
             failure_reason=failure_reason,
             parallel=self.ctx.parallel_label,
+            node_id=node_id(node),
         )
         self.ctx.reporter.record_node(report)
         return status
@@ -1162,6 +1196,7 @@ class Traverser:
                 node_type=node_type_name(node),
                 node_desc=node_desc(node),
                 parallel=self.ctx.parallel_label,
+                node_id=node_id(node),
             )
         )
 
@@ -1185,6 +1220,7 @@ class Traverser:
                 returns=meta.get("returns"),
                 details=meta.get("details"),
                 parallel=self.ctx.parallel_label,
+                node_id=node_id(node),
             )
         )
 

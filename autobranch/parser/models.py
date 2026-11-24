@@ -147,14 +147,23 @@ class ParallelNode(Node):
 
 
 @dataclass(frozen=True)
+class DebugNode(Node):
+    """调试节点：读取指定变量写入报告，不改变执行流或变量。"""
+
+    vars: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class DefineNode(Node):
     """变量声明叶子：运行期确定性创建变量（不经 LLM）。
 
     :param vars: ``(变量名, 类型 token, value 表达式)`` 列表（数量任意）；value
       为字面量或 ``Param.<名>``（读取当前帧变量做拷贝重命名）。
+    :param overwrite: 是否覆盖已存在变量；``False`` 时仅变量不存在才赋值。
     """
 
     vars: tuple[tuple[str, str, str], ...] = ()
+    overwrite: bool = True
 
 
 @dataclass(frozen=True)

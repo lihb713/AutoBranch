@@ -43,7 +43,7 @@
 
 - 路径/索引/键：`get_path(data, path)`（如 `0.a.b.1` / `a[0].b[-1]`）、`get_index`、`get_key`；可选 `required=false` + `default`。
 - 字符串：`split` / `join` / `contains` / `index_of` / `replace` / `strip` / `concat`（a~e 顺序拼接）/ `format`（`{name}` 模板 + values 字典）。
-- 容器：`length` / `slice` / `keys` / `values`；列表记录：`project` / `filter_eq` / `find_one` / `join_field` / `rename_fields`。
+- 容器：`length` / `slice` / `keys` / `values`；列表记录：`project` / `filter_eq` / `find_one` / `join_field` / `rename_fields`；`join_field(loose_match=true)` 使用字符串比较兼容 ID 类型差异。
 - 转换：`to_string` / `to_int` / `to_number` / `to_bool` / `json_parse` / `json_dumps`。
 - 比较：`compare(a, b, op, ignore_case)`，支持 `eq/ne/gt/ge/lt/le/contains/startswith/endswith`。
 - 正则：`regex_match` / `regex_extract` / `regex_findall`。

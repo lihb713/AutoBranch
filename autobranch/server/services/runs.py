@@ -744,7 +744,10 @@ def _node_info_out(info: NodeInfo | None) -> NodeInfoOut | None:
     if info is None:
         return None
     return NodeInfoOut(
-        node_type=info.node_type, node_desc=info.node_desc, parallel=info.parallel
+        node_type=info.node_type,
+        node_desc=info.node_desc,
+        parallel=info.parallel,
+        node_id=info.node_id,
     )
 
 
@@ -766,6 +769,7 @@ def _node_report_out(report: NodeReport) -> NodeReportOut:
         returns=_json_safe_nested(report.returns) if report.returns else report.returns,
         details=_json_safe_nested(report.details) if report.details else report.details,
         parallel=report.parallel,
+        node_id=report.node_id,
     )
 
 

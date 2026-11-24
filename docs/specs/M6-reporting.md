@@ -180,4 +180,4 @@ class ExecState:
 
 ### Parallel 报告
 
-`NodeReport` / `NodeInfo` SHALL 支持可选 `parallel` 标签（如 `Parallel#1[2]`）；报告渲染与前端执行状态展示该标签，便于并发场景定位错误。Parallel 节点 details 汇总迭代结果。
+`NodeReport` / `NodeInfo` SHALL 支持可选 `node_id` 与 `parallel` 标签（如 `Parallel#1[2]`）；报告渲染与前端执行状态展示该标签，便于并发场景定位错误。Parallel 节点 details 汇总迭代结果。

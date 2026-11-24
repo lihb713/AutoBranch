@@ -271,6 +271,7 @@ def test_add_for_each_and_parallel_nodes(client):
             "commands": [
                 {"op": "add_node", "node_type": "ForEach"},
                 {"op": "add_node", "node_type": "Parallel"},
+                {"op": "add_node", "node_type": "Debug"},
             ]
         },
     )
@@ -281,3 +282,76 @@ def test_add_for_each_and_parallel_nodes(client):
     assert data["nodes"]["n3"]["type"] == "Parallel"
     assert data["nodes"]["n3"]["max_concurrency"] == 4
     assert data["nodes"]["n3"]["collect"] == {"target": "", "fields": []}
+    assert data["nodes"]["n4"]["type"] == "Debug"
+    assert data["nodes"]["n4"]["variables"] == []
+
+
+def test_save_preserves_function_name(client):
+    draft = client.post(
+        "/api/trees",
+        json={
+            "name": "保留函数",
+            "content": (
+                "tree: 保留函数\n"
+                "nodes:\n"
+                "  n1: {type: Root, body: n2}\n"
+                "  n2:\n"
+                "    type: FunctionCall\n"
+                "    function: compute.add\n"
+                '    args: ["1", "2"]\n'
+                "    returns: {total: float}\n"
+                "root: n1\n"
+            ),
+        },
+    )
+    assert draft.status_code == 201, draft.text
+    saved = client.post(f"/api/trees/{draft.json()['id']}/save")
+    assert saved.status_code == 200, saved.text
+    data = yaml.safe_load(saved.json()["content"])
+    assert data["nodes"]["n2"]["function"] == "compute.add"
+
+
+def test_publish_guard_rejects_function_name_change():
+    from autobranch.server.errors import AppError
+    from autobranch.server.services.trees import TreeService
+
+    before = {"nodes": {"n2": {"type": "FunctionCall", "function": "compute.add"}}}
+    after = {"nodes": {"n2": {"type": "FunctionCall"}}}
+    try:
+        TreeService._assert_functions_preserved(before, after)
+    except AppError as exc:
+        assert exc.status_code == 422
+        assert "函数名被修改" in exc.detail
+    else:
+        raise AssertionError("expected AppError")
+
+
+def test_publish_guard_rejects_return_name_change():
+    from autobranch.server.errors import AppError
+    from autobranch.server.services.trees import TreeService
+
+    before = {
+        "nodes": {
+            "n2": {
+                "type": "ref",
+                "target": "子流程",
+                "returns": {"formatted_versions": "array"},
+            }
+        }
+    }
+    after = {
+        "nodes": {
+            "n2": {
+                "type": "ref",
+                "target": "子流程",
+                "returns": {"n2_outputs": "array"},
+            }
+        }
+    }
+    try:
+        TreeService._assert_returns_preserved(before, after)
+    except AppError as exc:
+        assert exc.status_code == 422
+        assert "接收名丢失" in exc.detail
+    else:
+        raise AssertionError("expected AppError")

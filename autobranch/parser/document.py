@@ -96,6 +96,8 @@ class IRNode:
     returns: tuple[tuple[str, str], ...] = ()
     function: str | None = None
     vars: tuple[tuple[str, str, str], ...] = ()
+    debug_vars: tuple[str, ...] = ()
+    overwrite: bool = True
     foreach_vars: tuple[tuple[str, object], ...] = ()
     on_failure: str | None = None
     break_on_success: bool = False
@@ -142,6 +144,8 @@ def _parse_node(
         return _empty_ir("ForEach", loc)
     if key == "Parallel":
         return _empty_ir("Parallel", loc)
+    if key == "Debug":
+        return _empty_ir("Debug", loc)
     if key in COMPOSITE_KEYS:
         return _parse_composite(doc_id, path, key, value, issues)
     issues.append(

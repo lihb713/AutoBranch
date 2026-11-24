@@ -196,7 +196,11 @@ class TreeService:
         target_description = (
             description if description is not None else tree.description
         )
+        before = tree_doc.load(tree.content)
         content = self._normalize(tree.content)
+        after_normalize = tree_doc.load(content)
+        self._assert_functions_preserved(before, after_normalize)
+        self._assert_returns_preserved(before, after_normalize)
         content = self._rename_content(content, target_name)
         # 校验使用即将发布的内容（由本服务注入 resolver；ref 目标需正式版）
         validate_document(content, target_name, registry=self.registry)
@@ -217,6 +221,59 @@ class TreeService:
 
     def _temp_name(self) -> str:
         return f"未命名-{int(time.time() * 1000)}"
+
+    @staticmethod
+    def _assert_functions_preserved(before: dict, after: dict) -> None:
+        """发布归一化不得丢失/篡改 FunctionCall 函数名。"""
+        before_nodes = before.get("nodes") if isinstance(before, dict) else None
+        after_nodes = after.get("nodes") if isinstance(after, dict) else None
+        if not isinstance(before_nodes, dict) or not isinstance(after_nodes, dict):
+            return
+        for node_id, body in before_nodes.items():
+            if not isinstance(body, dict) or body.get("type") != "FunctionCall":
+                continue
+            function = body.get("function")
+            if not isinstance(function, str) or not function:
+                continue
+            after_body = after_nodes.get(node_id)
+            after_function = after_body.get("function") if isinstance(after_body, dict) else None
+            if after_function != function:
+                raise AppError(
+                    422,
+                    f"发布归一化后 FunctionCall 函数名被修改: {node_id} "
+                    f"{function!r} → {after_function!r}",
+                )
+
+    @staticmethod
+    def _assert_returns_preserved(before: dict, after: dict) -> None:
+        """发布归一化不得丢弃用户显式 returns 接收名。"""
+        before_nodes = before.get("nodes") if isinstance(before, dict) else None
+        after_nodes = after.get("nodes") if isinstance(after, dict) else None
+        if not isinstance(before_nodes, dict) or not isinstance(after_nodes, dict):
+            return
+        for node_id, body in before_nodes.items():
+            if not isinstance(body, dict) or body.get("type") not in ("ref", "FunctionCall"):
+                continue
+            returns = body.get("returns")
+            if not isinstance(returns, dict):
+                continue
+            user_names = {
+                str(key)
+                for key in returns
+                if key and not str(key).startswith("\x00auto")
+            }
+            if not user_names:
+                continue
+            after_body = after_nodes.get(node_id)
+            after_returns = after_body.get("returns") if isinstance(after_body, dict) else None
+            after_names = set(after_returns) if isinstance(after_returns, dict) else set()
+            missing = user_names - after_names
+            if missing:
+                raise AppError(
+                    422,
+                    f"发布归一化后 returns 接收名丢失: {node_id} "
+                    f"{', '.join(sorted(missing))}",
+                )
 
     @staticmethod
     def _rename_content(content: str, name: str) -> str:

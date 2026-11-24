@@ -230,3 +230,12 @@ FunctionCall SHALL 支持位置参数 `args` 与命名参数 `kwargs`。`args` �
 #### Scenario: 解析并发遍历
 - **WHEN** 文档包含 Parallel 节点
 - **THEN** 输出 ParallelNode 并校验变量与并发策略
+
+
+### Requirement: Define overwrite / Debug
+
+Define SHALL support optional boolean `overwrite` (default true); false only assigns missing variables. Debug SHALL accept a list of variable names and parse as DebugNode without slots.
+
+#### Scenario: 保留已有变量
+- **WHEN** Define.overwrite=false 且变量已存在
+- **THEN** 变量值保持不变

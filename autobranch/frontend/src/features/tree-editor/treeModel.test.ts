@@ -473,3 +473,35 @@ root: n1
     expect(out).toContain("fields:");
   });
 });
+
+
+describe("Define overwrite", () => {
+  it("解析/序列化不覆盖选项", () => {
+    const doc = parseDoc(`tree: t
+nodes:
+  n1:
+    type: Define
+    overwrite: false
+    vars:
+      x: {type: str, value: "v"}
+root: n1
+`);
+    expect(doc.nodes.n1.overwrite).toBe(false);
+    expect(serializeDoc(doc)).toContain("overwrite: false");
+  });
+});
+
+
+describe("Debug", () => {
+  it("解析/序列化调试变量", () => {
+    const doc = parseDoc(`tree: t
+nodes:
+  n1:
+    type: Debug
+    variables: [result, rows]
+root: n1
+`);
+    expect(doc.nodes.n1.debugVars).toEqual(["result", "rows"]);
+    expect(serializeDoc(doc)).toContain("variables:");
+  });
+});

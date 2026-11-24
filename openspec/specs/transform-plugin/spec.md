@@ -55,3 +55,6 @@ transform 插件 SHALL 提供 `concat`（顺序拼接 a~e，可指定 separator�
 #### Scenario: LEFT JOIN 补名称
 - **WHEN** Release 记录的 rVersion 通过 join_field 关联 R_VERSION.deltaId
 - **THEN** 输出记录新增 r_version_name 字段
+
+- **WHEN** 字符串 ID 与数字 ID 使用 loose_match=true 关联
+- **THEN** 按字符串形式匹配成功

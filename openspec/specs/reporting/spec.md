@@ -198,7 +198,7 @@ NodeReport SHALL 记录节点耗时、失败原因与结构化调用详情：Fun
 
 ### Requirement: 并行标签
 
-节点报告与当前节点信息 SHALL 支持 optional `parallel` 标签；并发子节点报告 SHALL 标注 `Parallel#N[迭代]`，便于定位错误。
+节点报告与当前节点信息 SHALL 支持 optional `node_id` 与 `parallel` 标签；并发子节点报告 SHALL 标注 `Parallel#N[迭代]`，便于定位错误。
 
 #### Scenario: 并发子节点
 - **WHEN** Parallel 执行第 2 个迭代

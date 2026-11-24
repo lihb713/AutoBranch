@@ -131,3 +131,12 @@ Action 属性面板 SHALL 支持可选节点级 `timeout`。变量黑板 SHALL �
 #### Scenario: 编辑并发策略
 - **WHEN** 用户设置 max_concurrency=2、collect.target=rows
 - **THEN** 文档序列化包含对应字段
+
+
+### Requirement: Define 不覆盖与 Debug 编辑
+
+Define 属性面板 SHALL 支持 overwrite=false；Debug 属性面板 SHALL 支持编辑变量名列表。
+
+#### Scenario: 编辑调试变量
+- **WHEN** 用户为 Debug 填写 result, rows
+- **THEN** 文档 variables 为 ["result","rows"]

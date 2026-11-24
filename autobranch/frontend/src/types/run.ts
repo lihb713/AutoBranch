@@ -2,6 +2,7 @@ export type NodeInfo = {
   node_type: string;
   node_desc: string;
   parallel?: string | null;
+  node_id?: string | null;
 };
 
 export type ActionCall = {
@@ -28,6 +29,7 @@ export type NodeReport = {
   returns?: Record<string, unknown> | null;
   details?: Record<string, unknown> | null;
   parallel?: string | null;
+  node_id?: string | null;
 };
 
 export type BlackboardVar = {

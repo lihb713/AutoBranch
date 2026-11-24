@@ -51,6 +51,7 @@ AutoBranch 的取舍是：
 | ref | 调用另一份行为树，像调用子程序 |
 | FunctionCall | 直接调用插件函数，不经 LLM |
 | Define | 确定性声明变量 |
+| Debug | 记录变量值到报告，不改变流程 |
 | 黑板 | 当前执行帧中的变量空间 |
 | 入参/出参 | 一棵树的输入变量与输出变量 |
 | 报告 | 每个节点的执行结果、耗时、失败原因、函数调用等 |
@@ -319,12 +320,33 @@ n2:
     base_url: {type: str, value: "https://api.example.com"}
 ```
 
-`Define` 是确定性节点，不经 LLM。`value` 可以是：
+`Define` 是确定性节点，不经 LLM。默认覆盖同名变量；可设置 `overwrite: false` 仅当变量不存在时初始化：
+
+```yaml
+n2:
+  type: Define
+  overwrite: false
+  vars:
+    versions_list: {type: array, value: []}
+```
+
+`value` 可以是：
 
 - 字面量；
 - `Param.x`（复制另一个变量）；
 - YAML dict/list（用于 `object` / `array`）；
 - `str` / `generics` 允许空字符串初始值（如累加器 `all_chunks: {type: str, value: ""}`）。
+
+### 5.9.1 Debug：调试输出
+
+```yaml
+n2:
+  type: Debug
+  name: 查看中间结果
+  variables: [versions_list, search_result]
+```
+
+Debug 是纯报告叶子：读取当前帧/父帧变量，把值摘要写入报告详情，不改变执行流和变量。变量不存在时记录 `<未定义>`。
 
 ### 5.10 ref：调用另一棵行为树
 

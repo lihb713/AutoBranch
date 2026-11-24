@@ -158,7 +158,8 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | Parallel | 按列表/数组项并发执行 body | `body` | `variables`、`on_failure`（continue/abort）、`max_concurrency`、`collect: {target, fields}` |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
 | FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`kwargs`、`returns` |
-| Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`） |
+| Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`）、`overwrite`（默认 true） |
+| Debug | 调试叶子：记录变量值到报告 | — | `variables`（变量名列表） |
 
 **Condition 是概念性节点**（用户不可感知独立类型），内嵌为自有字段：`Step.expect`、`IfThenElse.if`、`Branch.branches[].when`、`LoopUntil.until`。
 
@@ -192,6 +193,7 @@ vars:
 ```
 
 - `vars` 个数不固定；变量名须为裸 ASCII 标识符，`type` 为类型 token（核心 str/int/float/bool/array/object/generics/page_ref，或插件已注册自定义类型）。
+- `overwrite: false` 时，若当前帧或父帧已有同名变量则保留原值、跳过赋值；默认 true。
 - `value` 可为标量字面量 / `Param.x`；`object`/`array` 也可直接写 YAML dict/list（解析后以 JSON 文本保存并由运行时构造）。
 - `value` 为字面量，或 `Param.<名>`（读取本帧变量做拷贝）；按 `type` coerce 后写入本帧 `this/<名>`。
 - 声明变量计入"已定义"，供后续 `Param` 读取；`Define` 不经 LLM、无截图。
@@ -388,6 +390,19 @@ n9:
   action: n10
   expect: 出现"下载成功"
 ```
+
+#### 4.3.6 Debug：调试输出
+
+```yaml
+n_debug:
+  type: Debug
+  name: 查看变量
+  variables: [result, rows]
+```
+
+- 读取当前帧（可向上读父帧）变量，写入节点报告 details；
+- 不写变量、不改变执行流，恒 SUCCESS；
+- 变量不存在记录 `<未定义>`。
 
 ### 4.4 清晰度校验标准（行为树文档是否合格）
 

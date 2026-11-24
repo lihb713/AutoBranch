@@ -24,6 +24,7 @@ from autobranch.parser.models import (
     BranchSpec,
     CheckIssue,
     ConditionNode,
+    DebugNode,
     DefineNode,
     FinishNode,
     ForEachNode,
@@ -558,8 +559,10 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
             returns=node.returns,
             loc=node.loc,
         )
+    if kind == "Debug":
+        return DebugNode(vars=node.debug_vars, loc=node.loc)
     if kind == "Define":
-        return DefineNode(vars=node.vars, loc=node.loc)
+        return DefineNode(vars=node.vars, overwrite=node.overwrite, loc=node.loc)
     if kind in ("ForEach", "Parallel"):
         body = _expand_ir(
             node.body or _empty_ir("Sequence", node.loc), ctx, depth + 1

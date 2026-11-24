@@ -275,3 +275,12 @@ ForEach SHALL 支持 `break_on_success`：body 成功后终止循环。参数/�
 #### Scenario: 收集逐线程结果
 - **WHEN** Parallel.collect.target=rows 且 fields=[result]
 - **THEN** 父帧 rows 为按迭代顺序的字典列表，包含 item 与 result
+
+
+### Requirement: 调试节点
+
+Debug 节点 SHALL 读取指定变量并写入节点报告 details，不写变量、不改变执行流。
+
+#### Scenario: 查看变量
+- **WHEN** Debug.variables=[result]
+- **THEN** 报告 details 包含 result 的值摘要

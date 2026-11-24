@@ -494,6 +494,13 @@ export function PropertyPanel({
           ) : null}
         </div>
       ))}
+      <CheckboxField
+        label="仅当变量不存在时赋值（不覆盖上游变量）"
+        checked={node.overwrite === false}
+        disabled={readonly}
+        data-testid={`define-overwrite-${node.id}`}
+        onChange={(e) => updateNode({ overwrite: !e.target.checked })}
+      />
       {!readonly ? (
         <button
           type="button"
@@ -504,6 +511,28 @@ export function PropertyPanel({
           + 添加变量
         </button>
       ) : null}
+    </section>
+  );
+
+  const renderDebugGroup = () => (
+    <section className="prop-group" data-testid="prop-group-debug-vars">
+      <h4 className="prop-group__title">调试变量</h4>
+      <TextField
+        label="变量名（逗号分隔）"
+        value={(node.debugVars ?? []).join(", ")}
+        placeholder="如 result, rows"
+        disabled={readonly}
+        data-testid={`debug-vars-${node.id}`}
+        onChange={(e) =>
+          updateNode({
+            variables: e.target.value
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          } as unknown as Partial<TreeNode>)
+        }
+      />
+      <p className="property-panel__hint">执行时把变量值写入报告，不改变流程。</p>
     </section>
   );
 
@@ -855,6 +884,9 @@ export function PropertyPanel({
       break;
     case "Define":
       groups = [renderDefineGroup()];
+      break;
+    case "Debug":
+      groups = [renderDebugGroup()];
       break;
     default:
       groups = [renderSlotGroup("槽位", mounts)];

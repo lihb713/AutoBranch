@@ -29,6 +29,7 @@ NODE_TYPES = {
     "ref",
     "FunctionCall",
     "Define",
+    "Debug",
 }
 
 _SLOT_KEYS = ("body", "actions", "action", "then", "else", "branches")
@@ -77,6 +78,8 @@ def make_node(node_type: str, node_id: str) -> dict[str, Any]:
         body.update({"function": "", "args": [], "kwargs": {}, "returns": {}})
     elif node_type == "Define":
         body["vars"] = {}
+    elif node_type == "Debug":
+        body["variables"] = []
     elif node_type == "Sequence":
         body["actions"] = []
     elif node_type == "Branch":

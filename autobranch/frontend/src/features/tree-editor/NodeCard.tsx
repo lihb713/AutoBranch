@@ -13,6 +13,7 @@ export const TYPE_COLORS: Record<string, string> = {
   Action: "#64748b",
   ref: "#0891b2",
   FunctionCall: "#d97706",
+  Debug: "#db2777",
 };
 
 type NodeCardProps = {

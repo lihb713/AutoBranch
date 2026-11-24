@@ -17,7 +17,7 @@
 | 行为树遍历 | 阻塞式遍历，SUCCESS/FAILURE 聚合，组合节点短路 | §5.7.7 | ✅ `Traverser.tick`（递归，design D1） |
 | 组合节点执行 | Sequence/Selector/Repeat/ForEach 纯程序遍历，零 LLM | §5.7.7 | ✅ `_tick_sequence/selector/repeat/for_each` |
 | 叶子节点触发 | 触发 M6 agent 执行，接收结果 | §5.7.2 | ✅ `_tick_leaf`（经注入的叶子执行器） |
-| 确定性叶子 | FunctionCall 调插件函数 / Define 声明变量，零 LLM、无截图 | §4.1 | ✅ `_tick_function_call` / `_tick_define` |
+| 确定性叶子 | FunctionCall 调插件函数 / Define 声明变量 / Debug 记录变量，零 LLM、无截图 | §4.1 | ✅ `_tick_function_call` / `_tick_define` / `_tick_debug` |
 | 失败传播 | 叶子失败沿树传播，根统一终止 + 报告 | §5.7.7/§5.7.2.1 | ✅ 组合节点聚合 + `RunResult.failure_reason` |
 | schema 帧管理 | 每次 ref 动态调用建立/退出 schema 帧（M3） | §5.7.4 | ✅ `Traverser._tick_ref`（RefNode 动态建帧/注入/退出）+ `Engine.run` 根帧 |
 | 会话初始化 | 创建全新浏览器 context，注入全局默认配置到根级 schema | §5.9/§9.8 | ✅ `Engine.run` 开头/结尾 |
@@ -136,7 +136,7 @@ class RunConfig:
   - **LoopUntil** → `Repeat(mode=loop_until, until 条件, body=action 槽位子树)`
   - **ForEach** → 运行期节点：解析 variables（列表 JSON/数组），每轮在临时子帧执行 body；`continue` 跳过单轮失败，`abort` 立即失败
   - **Parallel** → 运行期节点：与 ForEach 同构 variables/body；每项在独立线程帧中并发执行（父帧只读），`max_concurrency` 限流；按 `collect` 收集各线程帧变量为字典列表并写入父帧；`continue` 部分失败成功、全部失败失败，`abort` 任一失败失败
-  - **Action** 为真正叶子（`description`），由 M6 agent 执行；`ref` 为调用节点（见 §5.4/§8-6）；`FunctionCall` / `Define` 为确定性叶子（不经 LLM，无截图）
+  - **Action** 为真正叶子（`description`），由 M6 agent 执行；`ref` 为调用节点（见 §5.4/§8-6）；`FunctionCall` / `Define` / `Debug` 为确定性叶子（不经 LLM，无截图）
 - **Sequence**：依次执行，第一个 FAILURE 短路 → 整体 FAILURE；全 SUCCESS → SUCCESS
 - **Selector**：按条件分流，分支条件先判（FAILURE 试下一分支），命中分支的子节点
   结果即 Selector 结果并短路；全分支条件 FAILURE → FAILURE（不承载兜底，命中后
@@ -263,3 +263,8 @@ class RunConfig:
 
 
 `ForEach` 的 `break_on_success=True` 在 body 成功后终止循环；`on_failure=continue` 下全部迭代失败时整体返回 FAILURE。`Param.x.y` 在 FunctionCall/ref/Define 参数中按 dict/list 路径读取，路径缺失按变量读取失败处理。字符串字面量保留前后空白，FunctionCall/ref 位置参数保留 YAML 原生 dict/list 并递归求值。
+
+
+### Define 覆盖与 Debug
+
+Define 支持 `overwrite=false`：仅在当前帧/父帧不存在同名变量时赋值；已存在则跳过并记录详情。Debug 读取变量并写入报告 details，恒成功、不写变量。

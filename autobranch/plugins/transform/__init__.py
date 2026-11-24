@@ -280,6 +280,10 @@ class TransformPlugin(PluginBase):
             target_field={"type": "string", "description": "右表取数字段"},
             alias={"type": "string", "description": "写入左表的新字段名"},
             default={"description": "未匹配时写入的默认值"},
+            loose_match={
+                "type": "boolean",
+                "description": "是否按 str(a)==str(b) 宽松匹配（默认 false，严格相等）",
+            },
         ),
         returns={"items": "array"},
     )
@@ -292,6 +296,7 @@ class TransformPlugin(PluginBase):
         target_field: str,
         alias: str,
         default: Any = None,
+        loose_match: bool = False,
     ) -> FunctionResult:
         if not isinstance(items, (list, tuple)) or not isinstance(lookup_list, (list, tuple)):
             return _failure("items 和 lookup_list 必须是列表")
@@ -311,7 +316,15 @@ class TransformPlugin(PluginBase):
             for lookup in lookup_list:
                 if not isinstance(lookup, dict):
                     return _failure("lookup_list 必须是字典列表")
-                if lookup.get(field) == item.get(ref_field):
+                left = item.get(ref_field)
+                right = lookup.get(field)
+                if (
+                    left is not None
+                    and right is not None
+                    and str(left) == str(right)
+                    if loose_match
+                    else left == right
+                ):
                     matched = lookup.get(target_field, default)
                     break
             row = dict(item)

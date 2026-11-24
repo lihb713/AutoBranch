@@ -45,6 +45,7 @@ export const REQUIRED_SLOT_FIELDS: Record<string, string[]> = {
   Action: [],
   ref: [],
   FunctionCall: [],
+  Debug: [],
 };
 
 /** 各类型必填标量字段（fields 中）。 */
@@ -61,6 +62,7 @@ export const REQUIRED_SCALAR_FIELDS: Record<string, string[]> = {
   Sequence: [],
   ref: [],
   FunctionCall: [],
+  Debug: [],
 };
 
 const CONDITION_FIELDS = new Set(["expect", "if", "until"]);

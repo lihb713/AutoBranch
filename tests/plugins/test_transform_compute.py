@@ -210,3 +210,22 @@ def test_transform_join_field_and_rename_fields():
         },
     )
     assert renamed.value == [{"delta_id": 1, "file_sha256": "abc"}]
+
+
+def test_transform_join_field_loose_match():
+    reg = _transform()
+    result = reg.call(
+        "transform.join_field",
+        {
+            "items": [{"cVersion": "268673144"}],
+            "ref_field": "cVersion",
+            "lookup_list": [{"deltaId": 268673144, "name": "Version"}],
+            "field": "deltaId",
+            "target_field": "name",
+            "alias": "c_version_name",
+            "loose_match": True,
+        },
+    )
+    assert result.value == [
+        {"cVersion": "268673144", "c_version_name": "Version"}
+    ]

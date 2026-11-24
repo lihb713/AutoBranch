@@ -13,6 +13,7 @@ from autobranch.parser.models import (
     CheckIssue,
     CheckReport,
     ConditionNode,
+    DebugNode,
     DefineNode,
     FinishNode,
     ForEachNode,
@@ -33,6 +34,7 @@ from autobranch.parser.models import (
 _BASIC_TYPES = (
     ActionNode,
     ConditionNode,
+    DebugNode,
     DefineNode,
     PredicateCall,
     PredicateExpr,

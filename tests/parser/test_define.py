@@ -118,3 +118,21 @@ def test_define_missing_or_empty_vars_rejected() -> None:
     )
     result = parse(doc, None)
     assert not result.checks.ok
+
+
+def test_parse_define_overwrite_false() -> None:
+    doc = _doc({"x": {"type": "str", "value": "v"}})
+    doc.data["nodes"]["d1"]["overwrite"] = False
+    result = parse(doc, None)
+    assert result.checks.ok, result.checks.issues
+    node = _find(result.tree.root, "DefineNode")
+    assert node is not None
+    assert node.overwrite is False
+
+
+def test_parse_define_overwrite_must_be_bool() -> None:
+    doc = _doc({"x": {"type": "str", "value": "v"}})
+    doc.data["nodes"]["d1"]["overwrite"] = "no"
+    result = parse(doc, None)
+    assert not result.checks.ok
+    assert any("overwrite" in issue.message for issue in result.checks.issues)

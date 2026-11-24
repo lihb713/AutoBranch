@@ -82,6 +82,7 @@ class NodeInfoOut(BaseModel):
     node_type: str
     node_desc: str
     parallel: str | None = None
+    node_id: str | None = None
 
 
 class ActionCallOut(BaseModel):
@@ -108,6 +109,7 @@ class NodeReportOut(BaseModel):
     returns: dict | None = None
     details: dict | None = None
     parallel: str | None = None
+    node_id: str | None = None
 
 
 class ReportPendingOut(BaseModel):

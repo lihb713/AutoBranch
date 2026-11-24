@@ -234,3 +234,18 @@ class TestMixedNodeScenario:
         trace_text = bundle.trace_report.text
         assert trace_text.count("结果: FAILURE") == 2
         assert "LLM 推理过程:" in trace_text
+
+
+def test_report_contains_node_id(tmp_path):
+    reporter = Reporter("run-1", str(tmp_path))
+    reporter.record_node(
+        NodeReport(
+            node_type="FunctionCall",
+            node_desc="compute.add(1, 2)",
+            result="success",
+            timestamp=TIMESTAMP,
+            node_id="n3",
+        )
+    )
+    text = reporter.finalize().exec_report.text
+    assert "节点 ID: n3" in text

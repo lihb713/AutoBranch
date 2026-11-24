@@ -13,6 +13,7 @@ export type NodeType =
   | "ref"
   | "FunctionCall"
   | "Define"
+  | "Debug"
   | "ForEach"
   | "Parallel";
 
@@ -70,6 +71,8 @@ export type TreeNode = {
   kwargs?: Record<string, unknown>;
   returns?: Record<string, string>;
   vars?: DefineVar[];
+  overwrite?: boolean;
+  debugVars?: string[];
   variables?: Record<string, string>;
   onFailure?: string;
   breakOnSuccess?: boolean;
@@ -130,7 +133,11 @@ export function makeNode(
     node.kwargs = {};
     node.returns = {};
   }
-  if (type === "Define") node.vars = [];
+  if (type === "Define") {
+    node.vars = [];
+    node.overwrite = true;
+  }
+  if (type === "Debug") node.debugVars = [];
   if (type === "ForEach" || type === "Parallel") {
     node.variables = {};
     node.onFailure = "continue";
@@ -221,6 +228,7 @@ const SKIP_KEYS = new Set([
   "name",
   "id",
   "vars",
+  "overwrite",
   "variables",
   "on_failure",
   "max_concurrency",
@@ -299,7 +307,13 @@ export function parseDoc(yamlText: string): TreeDoc {
         ? collect["fields"].map(String)
         : [];
     }
+    if (type === "Debug") {
+      node.debugVars = Array.isArray(body["variables"])
+        ? body["variables"].map(String)
+        : [];
+    }
     if (type === "Define") {
+      node.overwrite = body["overwrite"] !== false;
       node.vars = isRecord(body["vars"])
         ? Object.entries(body["vars"]).map(([k, v]) => ({
             name: k,
@@ -385,7 +399,11 @@ export function serializeDoc(doc: TreeDoc): string {
         };
       }
     }
+    if (node.type === "Debug") {
+      body["variables"] = node.debugVars ?? [];
+    }
     if (node.type === "Define") {
+      if (node.overwrite === false) body["overwrite"] = false;
       const vars: Record<string, { type: string; value: unknown }> = {};
       for (const v of node.vars ?? []) {
         if (!v.name.trim()) continue;

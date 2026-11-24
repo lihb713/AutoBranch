@@ -22,6 +22,7 @@ export function NodeReportRow({ report }: { report: NodeReport }) {
       <div className="report-node__header">
         <StatusBadge kind={kind} />
         <span className="report-node__type">{report.node_type}</span>
+        {report.node_id ? <span className="report-node__id">#{report.node_id}</span> : null}
         {report.node_desc ? <span className="report-node__desc">{report.node_desc}</span> : null}
       </div>
       <div className="report-node__meta">

@@ -54,3 +54,40 @@ class TestTickDefine:
         assert Traverser(ctx).tick(define(("n", "int", "abc"))) == FAILURE
         assert ctx.failure_reason is not None
         assert "n" in ctx.failure_reason
+
+
+def test_define_can_preserve_existing_variable(config):
+    from orchestrator_helpers import make_run_context
+
+    from autobranch.orchestrator import SUCCESS
+    from autobranch.orchestrator.traverser import Traverser
+    from autobranch.parser.models import DefineNode
+
+    ctx = make_run_context(config)
+    frame = ctx.current_frame
+    ctx.space.write(frame, "versions", ["a", "b"], "array")
+    node = DefineNode(
+        vars=(("versions", "str", ""),),
+        overwrite=False,
+    )
+    assert Traverser(ctx).tick(node) == SUCCESS
+    assert ctx.space.read(frame, "versions") == ["a", "b"]
+
+
+def test_debug_records_values_without_writing(config):
+    from orchestrator_helpers import make_run_context
+
+    from autobranch.orchestrator import SUCCESS
+    from autobranch.orchestrator.traverser import Traverser
+    from autobranch.parser.models import DebugNode
+
+    ctx = make_run_context(config)
+    frame = ctx.current_frame
+    ctx.space.write(frame, "result", "ok", "str")
+    node = DebugNode(vars=("result", "missing"))
+    assert Traverser(ctx).tick(node) == SUCCESS
+    report = ctx.reporter.exec_state().completed[-1]
+    assert report.node_type == "Debug"
+    assert report.details["变量"]["result"] == "ok"
+    assert report.details["变量"]["missing"] == "<未定义>"
+    assert ctx.space.read(frame, "result") == "ok"

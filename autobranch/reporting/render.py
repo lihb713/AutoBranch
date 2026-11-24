@@ -60,6 +60,7 @@ def _node_header(index: int, report: NodeReport) -> str:
 def _common_detail_lines(report: NodeReport) -> list[str]:
     lines = [
         f"    节点类型: {report.node_type}",
+        f"    节点 ID: {report.node_id or '-'}",
         f"    节点描述: {report.node_desc}",
         f"    结果: {_result_label(report.result)}",
     ]

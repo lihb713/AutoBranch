@@ -82,7 +82,7 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 > `POST /api/trees/{id}/commands` 提交命令，后端修改并返回完整文档。`/editor` 无 id 时
 > 先创建草稿。文本输入 debounce/onBlur 提交。
 
-支持节点：`Action / Root / Step / Sequence / IfThenElse / Branch / Retry / LoopUntil / ForEach / Parallel / ref / FunctionCall / Define`（ref = 文档引用）。`Action` 为真正叶子（`fields.description` = 自然语言操作描述）；`Step` 经 `action` 槽位挂操作子树、`expect` 为验证条件字段；用户填写自然语言叶子内容（description/expect/when/until...）。
+支持节点：`Action / Root / Step / Sequence / IfThenElse / Branch / Retry / LoopUntil / ForEach / Parallel / ref / FunctionCall / Define / Debug`（ref = 文档引用）。`Action` 为真正叶子（`fields.description` = 自然语言操作描述）；`Step` 经 `action` 槽位挂操作子树、`expect` 为验证条件字段；用户填写自然语言叶子内容（description/expect/when/until...）。
 
 ### 5.3.1 节点画布编辑器（一文档一树）
 
@@ -94,6 +94,8 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - **根节点**：每文档恰一个 `type: Root`（固定 1 槽 `body`），不可删除/替换；`root` 顶层键引用它。
 - **Action 叶子**：真正叶子节点，无槽位，`fields.description`（自然语言操作描述）与可选 `fields.timeout`，可被任意槽位挂载；创建 Step 时自动附带一个 Action 子节点挂入其 `action` 槽位（`createStepWithAction`）。
 - **Parallel 节点**：节点面板提供 Parallel；属性面板复用变量/失败策略，并增加最大并发数、收集结果变量与收集字段。
+- **Define 不覆盖**：Define 属性面板提供「仅当变量不存在时赋值」开关。
+- **Debug 节点**：属性面板填写逗号分隔的调试变量；执行结果写入报告详情。
 - **Action 超时**：Action 属性面板提供可选「超时（秒）」，留空使用文档/全局配置。
 - **变量黑板截断提示**：状态变量超过展示上限时显示「已截断，完整长度 N 字符」。
 - **行为树描述**：行为树列表新增「描述」列，长文本截断显示，鼠标悬浮用气泡展示完整内容；编辑器「树信息」Tab 提供选填的多行描述输入，随保存发布写入。
@@ -102,7 +104,7 @@ GET    /api/types              # 类型可构造性（token + constructible，�
 - **FunctionCall 签名驱动**：选中函数后按函数 `parameters` 自动罗列入参输入框；后端按函数 `returns`（`{返回参数名: 类型}`）自动生成接收名与类型，前端展示名称输入框 + 只读类型；未选函数给出提示；**不提供**手动「添加实参/添加返回值」，也不提供类型编辑。
 - **ref 展开/收缩**：收缩态为单节点占位（显示目标文档名）；展开态将**被引文档整树并入主树布局**（`layoutDocument` 的 `refExpansions`，节点以 `<refId>:` 前缀隔离，向下生长不遮挡主树），与主树以连线相连、预览内部父子连线一并渲染；逐层懒加载，收缩连同已展开子引用一并收起。展开/收缩按钮位于 ref 节点卡片右上角。**预览节点可点击查看只读属性面板**（展示节点字段/槽位/ref 参数，禁止编辑）。
 - **删除/修改语义**：删槽位=解引用（子节点回游离区）；删单节点=各槽位子节点各自成游离树；删子树=连带后代；改槽位=旧节点回游离区、新节点入主树；删 ref 仅解除引用，被引用文档不受影响。删除/删除子树操作位于**属性面板**（节点卡片上不提供，避免重复），按钮文案无括号描述（「删除此节点」「删除子树」）。
-- **节点属性面板（三段式 + 两级分组）**：第一段**节点信息**（类型徽章 + id、名称输入框）；第二段**节点内部属性**以「整体容器 → 属性分组」两级展示（`.node-props` 整体容器包裹，内部分组卡片 + 组标题；组名按语义统一命名，槽位组一律叫「槽位」）：Root/Sequence 槽位；Step 验证条件+槽位；Action 操作描述；IfThenElse 判断条件+槽位；Branch 前置操作+分支；Retry 重试参数+槽位；LoopUntil 循环参数+槽位；ForEach 临时变量行（名/值）+失败策略+break_on_success+循环体槽位；Parallel 变量/失败策略/最大并发数/收集结果变量与字段+并行体槽位；ref 引用目标+入参+出参；FunctionCall 函数+入参/命名参数+返回值；Define 变量（变量名/类型/值行表格，可增删）。第三段**操作区**（删除按钮）。
+- **节点属性面板（三段式 + 两级分组）**：第一段**节点信息**（类型徽章 + id、名称输入框）；第二段**节点内部属性**以「整体容器 → 属性分组」两级展示（`.node-props` 整体容器包裹，内部分组卡片 + 组标题；组名按语义统一命名，槽位组一律叫「槽位」）：Root/Sequence 槽位；Step 验证条件+槽位；Action 操作描述；IfThenElse 判断条件+槽位；Branch 前置操作+分支；Retry 重试参数+槽位；LoopUntil 循环参数+槽位；ForEach 临时变量行（名/值）+失败策略+break_on_success+循环体槽位；Parallel 变量/失败策略/最大并发数/收集结果变量与字段+并行体槽位；ref 引用目标+入参+出参；FunctionCall 函数+入参/命名参数+返回值；Define 变量（变量名/类型/值行表格，可增删）+不覆盖开关；Debug 调试变量（逗号分隔）。第三段**操作区**（删除按钮）。
 - **即时校验**：节点必填字段（Action `description`、Step `action` 槽位+`expect`、IfThenElse `if`+`then`+`else`、Branch `action`+至少一分支、LoopUntil `until`+`action`+`max`、ForEach `body`+至少一个变量、Parallel `body`+至少一个变量+收集字段时需填写结果变量、Retry `body`+`max`、ref `target`）红框标记；保存时汇总校验（单根、主树与各游离树无环、槽位引用存在且无重复引用、ref 目标存在）并经后端 `/check` 权威兜底。
 - **参数记号高亮**：参数读写统一用 `Param.x`（读取）/`NewParam.x[:类型]`（新建）记号（详见 `docs/contract.md` §5.3 与参数语法重构设计文档）；属性面板的描述/条件（Action description、Step expect、IfThenElse if、LoopUntil until、Branch when）与 ref/FunctionCall 的入参、出参/返回值接收名等输入框均用**高亮输入框**（`HighlightedField`）渲染：`Param.x` 蓝色、`NewParam.x[:类型]` 绿色（**纯颜色高亮，不改字重/字体**，保证叠加层与输入框文本布局一致、光标对齐）；反引号转义段（`` `Param` ``/`` `NewParam` ``）不高亮。
 - **节点标识**：`id` 文档内唯一（自动生成 n1/n2...、**文档导入保留原 id**，仅 `[A-Za-z0-9_-]`、≤64）；`name` 用户自定义画布显示名（≤64，不强制唯一，空则显示类型名）。

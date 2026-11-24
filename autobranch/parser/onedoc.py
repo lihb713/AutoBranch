@@ -50,6 +50,7 @@ _NODE_TYPES = frozenset(
         "ref",
         "FunctionCall",
         "Define",
+        "Debug",
         "ForEach",
         "Parallel",
     }
@@ -865,6 +866,35 @@ def _build_ir_node(
             ),
             [_slot("body", body_id)],
         )
+    if ntype == "Debug":
+        raw_vars = body.get("variables", [])
+        names: list[str] = []
+        if not isinstance(raw_vars, list):
+            issues.append(
+                _issue(
+                    doc_id,
+                    "structure",
+                    "invalid_value",
+                    f"Debug.variables 必须是变量名列表（位于 {_path(doc_id, path)}）",
+                )
+            )
+        else:
+            for raw_name in raw_vars:
+                name = str(raw_name).strip()
+                if not _ASCII_NAME.fullmatch(name):
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "syntax",
+                            "invalid_name",
+                            f"Debug 变量 {name!r} 必须是 ASCII 标识符"
+                            f"（位于 {_path(doc_id, path)}）",
+                        )
+                    )
+                    continue
+                names.append(name)
+        return IRNode(kind="Debug", debug_vars=tuple(names), loc=loc), []
+
     if ntype == "Root":
         return IRNode(kind="Root", loc=loc), [_slot("body", _str_or_none(body.get("body")))]
     if ntype == "Sequence":
@@ -1275,7 +1305,20 @@ def _define_ir(
         else:
             value_expr = json.dumps(value, ensure_ascii=False)
         pairs.append((var, type_name, value_expr))
-    return IRNode(kind="Define", vars=tuple(pairs), loc=loc)
+    raw_overwrite = body.get("overwrite", True)
+    if not isinstance(raw_overwrite, bool):
+        issues.append(
+            _issue(
+                doc_id,
+                "structure",
+                "invalid_value",
+                f"Define.overwrite 必须是布尔值（位于 {_path(doc_id, path)}）",
+            )
+        )
+        raw_overwrite = True
+    return IRNode(
+        kind="Define", vars=tuple(pairs), overwrite=raw_overwrite, loc=loc
+    )
 
 
 def _iter_subtrees(node: IRNode | None) -> list[IRNode]:

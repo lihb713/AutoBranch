@@ -76,6 +76,8 @@ const DIRECT_KEYS = new Set([
   "variables",
   "onFailure",
   "on_failure",
+  "overwrite",
+  "variables",
   "max_concurrency",
   "collect",
 ]);
@@ -86,7 +88,9 @@ function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>):
   const next: TreeNode = { ...node, fields: { ...node.fields } };
   const target = next as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(patch)) {
-    if (key === "break_on_success") {
+    if (key === "variables" && next.type === "Debug") {
+      next.debugVars = Array.isArray(value) ? value.map(String) : [];
+    } else if (key === "break_on_success") {
       next.breakOnSuccess = Boolean(value);
     } else if (key === "max_concurrency") {
       next.maxConcurrency = Number(value);
@@ -700,6 +704,61 @@ describe("PropertyPanel", () => {
     });
     expect(next.nodes.fe1.onFailure).toBe("abort");
     expect(next.nodes.fe1.breakOnSuccess).toBe(true);
+  });
+
+  it("Define：可设置不覆盖已有变量", () => {
+    const define: TreeNode = {
+      id: "d1",
+      type: "Define",
+      name: "声明",
+      fields: {},
+      vars: [{ name: "x", type: "str", value: "v" }],
+      overwrite: true,
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: {},
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "d1" },
+        d1: define,
+      },
+    };
+    const onUpdate = vi.fn();
+    renderPanel(doc, define, { onUpdate });
+    fireEvent.click(screen.getByTestId("define-overwrite-d1"));
+    const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.d1.overwrite).toBe(false);
+  });
+
+  it("Debug：编辑调试变量", () => {
+    const debugNode: TreeNode = {
+      id: "dbg1",
+      type: "Debug",
+      name: "调试",
+      fields: {},
+      debugVars: ["result"],
+    };
+    const doc: TreeDoc = {
+      tree: "主流程",
+      inputs: {},
+      outputs: {},
+      config: {},
+      root: "r1",
+      nodes: {
+        r1: { id: "r1", type: "Root", name: "根", fields: {}, body: "dbg1" },
+        dbg1: debugNode,
+      },
+    };
+    const onUpdate = vi.fn();
+    renderPanel(doc, debugNode, { onUpdate });
+    fireEvent.change(screen.getByTestId("debug-vars-dbg1"), {
+      target: { value: "result, rows" },
+    });
+    const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
+    expect(next.nodes.dbg1.debugVars).toEqual(["result", "rows"]);
   });
 
   it("Parallel：编辑并发数与结果收集", () => {
