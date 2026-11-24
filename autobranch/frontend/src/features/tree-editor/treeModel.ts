@@ -74,7 +74,8 @@ export type TreeNode = {
   onFailure?: string;
   breakOnSuccess?: boolean;
   maxConcurrency?: number;
-  onConflict?: string;
+  collectTarget?: string;
+  collectFields?: string[];
 };
 
 /** 一份行为树文档（自包含：tree/nodes/root + 文档级接口与配置）。 */
@@ -136,7 +137,8 @@ export function makeNode(
   }
   if (type === "Parallel") {
     node.maxConcurrency = 4;
-    node.onConflict = "error";
+    node.collectTarget = "";
+    node.collectFields = [];
   }
   if (type === "Sequence") node.actions = [];
   if (type === "Branch") {
@@ -222,7 +224,7 @@ const SKIP_KEYS = new Set([
   "variables",
   "on_failure",
   "max_concurrency",
-  "on_conflict",
+  "collect",
 ]);
 
 /** 从文档 dict 解析为 TreeDoc（统一槽位 DSL）。 */
@@ -291,7 +293,11 @@ export function parseDoc(yamlText: string): TreeDoc {
     if (type === "Parallel") {
       node.maxConcurrency =
         typeof body["max_concurrency"] === "number" ? body["max_concurrency"] : 4;
-      node.onConflict = typeof body["on_conflict"] === "string" ? body["on_conflict"] : "error";
+      const collect = isRecord(body["collect"]) ? body["collect"] : {};
+      node.collectTarget = typeof collect["target"] === "string" ? collect["target"] : "";
+      node.collectFields = Array.isArray(collect["fields"])
+        ? collect["fields"].map(String)
+        : [];
     }
     if (type === "Define") {
       node.vars = isRecord(body["vars"])
@@ -372,7 +378,12 @@ export function serializeDoc(doc: TreeDoc): string {
     }
     if (node.type === "Parallel") {
       body["max_concurrency"] = node.maxConcurrency ?? 4;
-      body["on_conflict"] = node.onConflict ?? "error";
+      if (node.collectTarget && node.collectTarget.trim()) {
+        body["collect"] = {
+          target: node.collectTarget.trim(),
+          fields: node.collectFields ?? [],
+        };
+      }
     }
     if (node.type === "Define") {
       const vars: Record<string, { type: string; value: unknown }> = {};

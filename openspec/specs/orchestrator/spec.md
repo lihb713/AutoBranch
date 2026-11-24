@@ -266,12 +266,12 @@ ForEach SHALL 支持 `break_on_success`：body 成功后终止循环。参数/�
 
 ### Requirement: Parallel 并发执行
 
-系统 SHALL 按 Parallel.variables 的列表项并发执行 body，最多 max_concurrency 个；每项使用隔离工作变量区，成功迭代的变量按 on_conflict 合并。on_failure=continue 时全部失败才失败，abort 时任一失败即失败。子节点报告 SHALL 带 parallel 标签。
+系统 SHALL 按 Parallel.variables 的列表项并发执行 body，最多 max_concurrency 个；每项使用独立线程帧，线程可读父帧但不得写父帧。Parallel 按 collect 收集各线程帧变量为字典列表写入父帧。on_failure=continue 时全部失败才失败，abort 时任一失败即失败。子节点报告 SHALL 带 parallel 标签。
 
 #### Scenario: 并发执行独立项
 - **WHEN** 列表有 4 项且 max_concurrency=2
 - **THEN** 最多 2 项同时执行，完成后汇总结果
 
-#### Scenario: 变量冲突
-- **WHEN** 两个成功迭代写同一变量且 on_conflict=error
-- **THEN** Parallel 整体失败并报告冲突变量
+#### Scenario: 收集逐线程结果
+- **WHEN** Parallel.collect.target=rows 且 fields=[result]
+- **THEN** 父帧 rows 为按迭代顺序的字典列表，包含 item 与 result

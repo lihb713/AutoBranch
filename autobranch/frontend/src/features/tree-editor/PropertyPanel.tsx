@@ -84,7 +84,8 @@ export function PropertyPanel({
   const [functions, setFunctions] = useState<FunctionInfo[]>([]);
   const [localOnFailure, setLocalOnFailure] = useState<string | null>(null);
   const [localMaxConcurrency, setLocalMaxConcurrency] = useState<string | null>(null);
-  const [localOnConflict, setLocalOnConflict] = useState<string | null>(null);
+  const [localCollectTarget, setLocalCollectTarget] = useState<string | null>(null);
+  const [localCollectFields, setLocalCollectFields] = useState<string | null>(null);
 
   useEffect(() => {
     pluginsApi
@@ -96,8 +97,9 @@ export function PropertyPanel({
   useEffect(() => {
     setLocalOnFailure(null);
     setLocalMaxConcurrency(null);
-    setLocalOnConflict(null);
-  }, [node?.id, node?.onFailure, node?.maxConcurrency, node?.onConflict]);
+    setLocalCollectTarget(null);
+    setLocalCollectFields(null);
+  }, [node?.id, node?.onFailure, node?.maxConcurrency, node?.collectTarget, node?.collectFields]);
 
   if (!node) {
     return (
@@ -650,22 +652,41 @@ export function PropertyPanel({
                 updateNode({ max_concurrency: value } as Partial<TreeNode>);
               }}
             />
-            <label className="text-field">
-              <span className="text-field__label">变量冲突</span>
-              <select
-                className="text-field__input"
-                value={localOnConflict ?? node.onConflict ?? "error"}
-                disabled={readonly}
-                data-testid="parallel-on-conflict"
-                onChange={(e) => {
-                  setLocalOnConflict(e.target.value);
-                  updateNode({ on_conflict: e.target.value } as Partial<TreeNode>);
-                }}
-              >
-                <option value="error">error（冲突失败）</option>
-                <option value="last">last（按迭代顺序后写覆盖）</option>
-              </select>
-            </label>
+            <TextField
+              label="收集结果变量"
+              value={localCollectTarget ?? node.collectTarget ?? ""}
+              placeholder="写入父帧的变量名，如 rows"
+              disabled={readonly}
+              data-testid="parallel-collect-target"
+              onChange={(e) => {
+                setLocalCollectTarget(e.target.value);
+                updateNode({
+                  collect: {
+                    target: e.target.value,
+                    fields: node.collectFields ?? [],
+                  },
+                } as Partial<TreeNode>);
+              }}
+            />
+            <TextField
+              label="收集字段（逗号分隔）"
+              value={localCollectFields ?? (node.collectFields ?? []).join(", ")}
+              placeholder="如 result, status"
+              disabled={readonly}
+              data-testid="parallel-collect-fields"
+              onChange={(e) => {
+                setLocalCollectFields(e.target.value);
+                updateNode({
+                  collect: {
+                    target: node.collectTarget ?? "",
+                    fields: e.target.value
+                      .split(",")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  },
+                } as Partial<TreeNode>);
+              }}
+            />
           </section>
         )}
       </section>

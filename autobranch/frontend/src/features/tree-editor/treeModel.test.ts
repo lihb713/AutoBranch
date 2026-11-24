@@ -448,7 +448,9 @@ nodes:
       item: Param.items
     on_failure: abort
     max_concurrency: 2
-    on_conflict: last
+    collect:
+      target: rows
+      fields: [result]
     body: n2
   n2:
     type: Action
@@ -460,12 +462,14 @@ root: n1
     expect(node.type).toBe("Parallel");
     expect(node.variables).toEqual({ item: "Param.items" });
     expect(node.maxConcurrency).toBe(2);
-    expect(node.onConflict).toBe("last");
+    expect(node.collectTarget).toBe("rows");
+    expect(node.collectFields).toEqual(["result"]);
     expect(node.onFailure).toBe("abort");
     expect(slotFields(node)[0].field).toBe("body");
     const out = serializeDoc(doc);
     expect(out).toContain("type: Parallel");
     expect(out).toContain("max_concurrency: 2");
-    expect(out).toContain("on_conflict: last");
+    expect(out).toContain("target: rows");
+    expect(out).toContain("fields:");
   });
 });

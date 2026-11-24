@@ -780,17 +780,69 @@ def _build_ir_node(
                 )
             )
             max_concurrency = 1
-        on_conflict = str(body.get("on_conflict") or "error").strip()
-        if on_conflict not in ("error", "last"):
-            issues.append(
-                _issue(
-                    doc_id,
-                    "structure",
-                    "invalid_value",
-                    f"Parallel.on_conflict 必须是 error/last（位于 {_path(doc_id, path)}）",
+        collect = body.get("collect")
+        collect_target: str | None = None
+        collect_fields: list[str] = []
+        if collect is not None:
+            if not isinstance(collect, dict):
+                issues.append(
+                    _issue(
+                        doc_id,
+                        "structure",
+                        "invalid_value",
+                        f"Parallel.collect 必须是 {{target, fields}} 映射"
+                        f"（位于 {_path(doc_id, path)}）",
+                    )
                 )
-            )
-            on_conflict = "error"
+            else:
+                raw_target = collect.get("target")
+                if raw_target is None or str(raw_target).strip() == "":
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "structure",
+                            "missing_field",
+                            f"Parallel.collect 缺少 target（位于 {_path(doc_id, path)}）",
+                        )
+                    )
+                else:
+                    collect_target = str(raw_target).strip()
+                    if not _ASCII_NAME.fullmatch(collect_target):
+                        issues.append(
+                            _issue(
+                                doc_id,
+                                "syntax",
+                                "invalid_name",
+                                f"Parallel.collect.target {collect_target!r} 必须是 ASCII 标识符"
+                                f"（位于 {_path(doc_id, path)}）",
+                            )
+                        )
+                        collect_target = None
+                raw_fields = collect.get("fields", [])
+                if not isinstance(raw_fields, list):
+                    issues.append(
+                        _issue(
+                            doc_id,
+                            "structure",
+                            "invalid_value",
+                            f"Parallel.collect.fields 必须是列表（位于 {_path(doc_id, path)}）",
+                        )
+                    )
+                else:
+                    for raw_field in raw_fields:
+                        field = str(raw_field).strip()
+                        if not _ASCII_NAME.fullmatch(field):
+                            issues.append(
+                                _issue(
+                                    doc_id,
+                                    "syntax",
+                                    "invalid_name",
+                                    f"Parallel.collect 字段 {field!r} 必须是 ASCII 标识符"
+                                    f"（位于 {_path(doc_id, path)}）",
+                                )
+                            )
+                            continue
+                        collect_fields.append(field)
         body_id = _str_or_none(body.get("body"))
         if not body_id:
             issues.append(
@@ -807,7 +859,8 @@ def _build_ir_node(
                 foreach_vars=tuple(variables),
                 on_failure=on_failure,
                 max_concurrency=max_concurrency,
-                on_conflict=on_conflict,
+                collect_target=collect_target,
+                collect_fields=tuple(collect_fields),
                 loc=loc,
             ),
             [_slot("body", body_id)],

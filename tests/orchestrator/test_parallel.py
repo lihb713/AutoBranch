@@ -1,4 +1,4 @@
-"""Parallel 节点：并发执行、变量隔离/冲突与报告标签。"""
+"""Parallel 节点：线程帧隔离、父帧只读、并发执行与结果收集。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from autobranch.orchestrator.traverser import Traverser
 from autobranch.parser.models import ActionNode, FunctionCallNode, ParallelNode
 from autobranch.plugin_system import PluginRegistry
 from autobranch.plugins.compute import ComputePlugin
+from autobranch.plugins.transform import TransformPlugin
 from autobranch.plugins.vars import VarsPlugin
 
 
@@ -20,6 +21,7 @@ def _registry() -> PluginRegistry:
     reg = PluginRegistry()
     reg.register(VarsPlugin())
     reg.register(ComputePlugin())
+    reg.register(TransformPlugin())
     return reg
 
 
@@ -56,7 +58,7 @@ def test_parallel_runs_concurrently_and_labels_reports(config):
     )
 
 
-def test_parallel_merges_variables_with_last_policy(config):
+def test_parallel_collects_rows_in_input_order(config):
     ctx = make_run_context(config)
     ctx.registry = _registry()
     ctx.space.write(ctx.current_frame, "items", ["a", "b", "c"], "array")
@@ -67,29 +69,101 @@ def test_parallel_merges_variables_with_last_policy(config):
             args=("Param.item",),
             returns=(("result", "str"),),
         ),
-        on_conflict="last",
+        collect_target="rows",
+        collect_fields=("result",),
     )
     assert Traverser(ctx).tick(node) == SUCCESS
-    assert ctx.space.read(ctx.current_frame, "result") == "c"
-    report = ctx.reporter.exec_state().completed[-1]
-    assert report.node_type == "Parallel"
-    assert report.details["成功"] == 3
+    assert ctx.space.read(ctx.current_frame, "rows") == [
+        {"item": "a", "result": "a"},
+        {"item": "b", "result": "b"},
+        {"item": "c", "result": "c"},
+    ]
+    # 线程局部 result 不写父帧
+    assert ctx.space.read(ctx.current_frame, "result") is None
 
 
-def test_parallel_conflict_defaults_to_failure(config):
+def test_parallel_reads_parent_but_never_writes_it(config):
     ctx = make_run_context(config)
     ctx.registry = _registry()
-    ctx.space.write(ctx.current_frame, "items", ["a", "b"], "array")
+    frame = ctx.current_frame
+    ctx.space.write(frame, "items", ["a", "b"], "array")
+    ctx.space.write(frame, "prefix", "P", "str")
+    ctx.space.write(frame, "result", "parent", "str")
     node = ParallelNode(
         variables=(("item", "Param.items"),),
         body=FunctionCallNode(
-            function="vars.set",
-            args=("Param.item",),
+            function="transform.concat",
+            args=("Param.prefix", "Param.item"),
             returns=(("result", "str"),),
         ),
+        collect_target="rows",
+        collect_fields=("result",),
     )
-    assert Traverser(ctx).tick(node) == "failure"
-    assert "变量写冲突" in (ctx.failure_reason or "")
+    assert Traverser(ctx).tick(node) == SUCCESS
+    assert ctx.space.read(frame, "result") == "parent"
+    assert ctx.space.read(frame, "rows") == [
+        {"item": "a", "result": "Pa"},
+        {"item": "b", "result": "Pb"},
+    ]
+
+
+def test_parallel_collects_multiple_item_dimensions(config):
+    ctx = make_run_context(config)
+    ctx.registry = _registry()
+    frame = ctx.current_frame
+    ctx.space.write(frame, "hosts", ["a", "b"], "array")
+    ctx.space.write(frame, "ports", [80, 81], "array")
+    node = ParallelNode(
+        variables=(("host", "Param.hosts"), ("port", "Param.ports")),
+        body=FunctionCallNode(
+            function="vars.set",
+            args=("Param.host",),
+            returns=(("result", "str"),),
+        ),
+        collect_target="rows",
+        collect_fields=("result",),
+    )
+    assert Traverser(ctx).tick(node) == SUCCESS
+    assert ctx.space.read(frame, "rows") == [
+        {"host": "a", "port": 80, "result": "a"},
+        {"host": "b", "port": 81, "result": "b"},
+    ]
+
+
+def test_parallel_partial_failure_policy_and_collection(config):
+    def _node(on_failure: str) -> ParallelNode:
+        return ParallelNode(
+            variables=(("item", "Param.items"),),
+            body=FunctionCallNode(
+                function="compute.divide",
+                args=("1", "Param.item"),
+                returns=(("result", "float"),),
+            ),
+            on_failure=on_failure,
+            collect_target="rows",
+            collect_fields=("result",),
+        )
+
+    ctx = make_run_context(config)
+    ctx.registry = _registry()
+    ctx.space.write(ctx.current_frame, "items", [1, 0, 2], "array")
+    assert Traverser(ctx).tick(_node("continue")) == SUCCESS
+    assert ctx.space.read(ctx.current_frame, "rows") == [
+        {"item": 1, "result": 1.0},
+        {"item": 0, "result": None},
+        {"item": 2, "result": 0.5},
+    ]
+
+    ctx = make_run_context(config)
+    ctx.registry = _registry()
+    ctx.space.write(ctx.current_frame, "items", [1, 0, 2], "array")
+    assert Traverser(ctx).tick(_node("abort")) == "failure"
+    # 失败整体不阻止收集：仍保留逐线程结果供排查
+    assert ctx.space.read(ctx.current_frame, "rows") == [
+        {"item": 1, "result": 1.0},
+        {"item": 0, "result": None},
+        {"item": 2, "result": 0.5},
+    ]
 
 
 def test_parallel_all_fail_with_continue_is_failure(config):
@@ -102,28 +176,3 @@ def test_parallel_all_fail_with_continue_is_failure(config):
     )
     assert Traverser(ctx).tick(node) == "failure"
     assert ctx.failure_reason is not None
-
-
-def test_parallel_partial_failure_policy(config):
-    def _node(on_failure: str) -> ParallelNode:
-        return ParallelNode(
-            variables=(("item", "Param.items"),),
-            body=FunctionCallNode(
-                function="compute.divide",
-                args=("1", "Param.item"),
-                returns=(("result", "float"),),
-            ),
-            on_failure=on_failure,
-            on_conflict="last",
-        )
-
-    ctx = make_run_context(config)
-    ctx.registry = _registry()
-    ctx.space.write(ctx.current_frame, "items", [1, 0, 2], "array")
-    assert Traverser(ctx).tick(_node("continue")) == SUCCESS
-    assert ctx.space.read(ctx.current_frame, "result") == 0.5
-
-    ctx = make_run_context(config)
-    ctx.registry = _registry()
-    ctx.space.write(ctx.current_frame, "items", [1, 0, 2], "array")
-    assert Traverser(ctx).tick(_node("abort")) == "failure"

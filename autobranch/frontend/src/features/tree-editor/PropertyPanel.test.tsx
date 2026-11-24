@@ -77,7 +77,7 @@ const DIRECT_KEYS = new Set([
   "onFailure",
   "on_failure",
   "max_concurrency",
-  "on_conflict",
+  "collect",
 ]);
 
 function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>): TreeDoc {
@@ -90,8 +90,10 @@ function applyNodePatch(doc: TreeDoc, nodeId: string, patch: Partial<TreeNode>):
       next.breakOnSuccess = Boolean(value);
     } else if (key === "max_concurrency") {
       next.maxConcurrency = Number(value);
-    } else if (key === "on_conflict") {
-      next.onConflict = String(value);
+    } else if (key === "collect") {
+      const collect = (value ?? {}) as Record<string, unknown>;
+      next.collectTarget = typeof collect.target === "string" ? collect.target : "";
+      next.collectFields = Array.isArray(collect.fields) ? collect.fields.map(String) : [];
     } else if (CONDITION_KEYS.has(key)) {
       next.conditions = {
         ...(next.conditions ?? {}),
@@ -700,7 +702,7 @@ describe("PropertyPanel", () => {
     expect(next.nodes.fe1.breakOnSuccess).toBe(true);
   });
 
-  it("Parallel：编辑并发数与冲突策略", () => {
+  it("Parallel：编辑并发数与结果收集", () => {
     const pnode: TreeNode = {
       id: "p1",
       type: "Parallel",
@@ -709,7 +711,8 @@ describe("PropertyPanel", () => {
       variables: { item: "Param.items" },
       onFailure: "continue",
       maxConcurrency: 4,
-      onConflict: "error",
+      collectTarget: "rows",
+      collectFields: ["result"],
       body: "a1",
     };
     const doc: TreeDoc = {
@@ -730,12 +733,13 @@ describe("PropertyPanel", () => {
     fireEvent.change(screen.getByTestId("parallel-max-concurrency"), {
       target: { value: "2" },
     });
-    fireEvent.change(screen.getByTestId("parallel-on-conflict"), {
-      target: { value: "last" },
+    fireEvent.change(screen.getByTestId("parallel-collect-fields"), {
+      target: { value: "result, status" },
     });
     const next = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0] as TreeDoc;
     expect(next.nodes.p1.maxConcurrency).toBe(2);
-    expect(next.nodes.p1.onConflict).toBe("last");
+    expect(next.nodes.p1.collectTarget).toBe("rows");
+    expect(next.nodes.p1.collectFields).toEqual(["result", "status"]);
   });
 
   it("Define：变量行展示与增删改", () => {

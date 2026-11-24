@@ -155,7 +155,7 @@ root: n1                   # 主树根引用（必须指向 type: Root 节点）
 | Retry | 反复执行直到成功 | `body` | `max` |
 | LoopUntil | 每轮先判条件再执行 | `action` | `until`（条件）、`max` |
 | ForEach | 遍历列表/数组逐项执行 body | `body` | `variables`（名→值表达式）、`on_failure`（continue/abort）、`break_on_success`（可选） |
-| Parallel | 按列表/数组项并发执行 body | `body` | `variables`、`on_failure`（continue/abort）、`max_concurrency`、`on_conflict`（error/last） |
+| Parallel | 按列表/数组项并发执行 body | `body` | `variables`、`on_failure`（continue/abort）、`max_concurrency`、`collect: {target, fields}` |
 | ref | 跨文档引用（叶子） | — | `target`、`args`、`returns` |
 | FunctionCall | 叶子：确定性调用插件函数（不经 LLM） | — | `function`、`args`、`kwargs`、`returns` |
 | Define | 叶子：确定性声明变量（不经 LLM） | — | `vars`（`{名: {type, value}}`） |
@@ -360,15 +360,19 @@ n_parallel:
     host: Param.hosts
   max_concurrency: 4
   on_failure: continue
-  on_conflict: error
+  collect:
+    target: results
+    fields: [status, detail]
   body: n_body
 ```
 
 - `variables` / `body` 与 ForEach 同构；列表变量长度必须一致，无列表变量时执行 1 次，空列表执行 0 次。
-- 每个迭代使用独立工作变量区（复制父帧变量与 item），执行结束后仅将成功迭代的变量变更合并回父帧。
+- 每个迭代创建独立线程帧；线程可读父帧/祖先帧，但不得写父帧/祖先帧。
+- item 变量写入线程帧；线程内新建变量也仅在线程帧中有效。
 - `max_concurrency` 为正整数（默认 4）。
 - `on_failure=continue`：部分失败仍 SUCCESS，全部失败 FAILURE；`abort`：任一失败 FAILURE。
-- 多个成功迭代写同一变量：`on_conflict=error`（默认）整体 FAILURE；`last` 按迭代顺序取最后写入。
+- `collect.target` 指定父帧结果变量；`collect.fields` 指定从每个线程帧收集的变量名。结果是字典列表，按迭代顺序，每项包含 item 名与收集字段；字段缺失为 null。
+- 收集结果在 Parallel 结束后统一写入父帧，是 Parallel 唯一的父帧变量写入。
 - 所有子节点报告带 `parallel` 标签（`Parallel#N[迭代]`）；Parallel 报告 details 含成功/失败数与逐项结果。
 - 并发插件需线程安全；浏览器页面操作不建议并发。
 
@@ -1140,7 +1144,7 @@ LLM-only (页面上下文监听, 不进入用户函数清单):
     Condition: 判断结果 (布尔)
     FunctionCall: 函数名 / 实际入参 args / 命名参数 kwargs / 实际出参 returns
     ForEach: 变量定义与实际值 / 迭代次数 / 失败迭代数
-  Parallel: 变量定义 / 迭代次数 / 最大并发 / 成功失败数 / 逐项状态 / 变量冲突
+  Parallel: 变量定义 / 迭代次数 / 最大并发 / 成功失败数 / 逐项状态 / 收集字段
     截图 (Action/Condition 节点的页面状态)
 
   用途: 概览整个流程的执行结果, 每步成功/失败 + 页面快照

@@ -273,7 +273,7 @@ n2:
 
 ### 5.8.1 Parallel：并发遍历
 
-`Parallel` 与 `ForEach` 使用相同的 `variables`/`body` 结构，但每个列表项在独立工作副本中并发执行：
+`Parallel` 与 `ForEach` 使用相同的 `variables`/`body` 结构，但每个列表项在独立线程帧中并发执行：
 
 ```yaml
 n2:
@@ -283,7 +283,9 @@ n2:
     host: Param.hosts
   max_concurrency: 4
   on_failure: continue
-  on_conflict: error
+  collect:
+    target: results
+    fields: [status, detail]
   body: n3
 ```
 
@@ -294,13 +296,14 @@ n2:
 - `on_failure`：
   - `continue`：容忍部分失败；全部失败才整体 FAILURE；
   - `abort`：任一失败即整体 FAILURE；
-- 每个迭代在**独立变量工作区**中执行；结束时把成功迭代写入的变量合并回父帧；
-- `on_conflict` 控制系统如何处理多个迭代同时写同一个变量：
-  - `error`（默认）：冲突导致 FAILURE，避免静默覆盖；
-  - `last`：按迭代顺序取最后一次写入，兼容“只关心最后结果”的场景；
-- 迭代内写入的变量在合并前对父帧不可见；
+- 每个迭代在**独立线程帧**中执行；线程可以读取父帧/祖先帧，但禁止写父帧/祖先帧；
+- `collect` 指定收集：
+  - `target`：收集结果写入父帧的变量名；
+  - `fields`：从每个线程帧收集的变量名；
+- 收集结果是字典列表，每个字典包含该线程的 `variables` item 信息和 `fields` 指定变量；顺序与输入列表一致；
+- 线程内新建变量只在该线程帧使用；未收集的变量不会回写父帧；
 - 报告会给所有子节点标注 `Parallel#N[迭代号]`，Parallel 节点汇总成功数、失败数、耗时和每项结果；
-- `Parallel` 不适合跨迭代累加（如 `transform.append` 累积同一个列表）；需要顺序累积时用 `ForEach`。
+- `Parallel` 不直接跨线程修改父帧；需要汇总结果时用 `collect` 收集各线程帧变量。需要顺序累积同一列表时用 `ForEach`。
 
 **线程安全提示**：`Parallel` 会并发调用插件。`compute`、`http`、`transform`、独立 SSH/文件等适合并发；浏览器插件共享当前页面上下文，不建议对同一页面并发操作，必要时设 `max_concurrency: 1` 或改用 `ForEach`。
 

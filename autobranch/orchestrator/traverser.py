@@ -401,64 +401,29 @@ class Traverser:
         return SUCCESS
 
     @staticmethod
-    def _copy_parallel_value(value: object) -> object:
-        """并行工作副本：仅递归复制基础容器，PageRef/插件对象共享引用。"""
+    def _copy_parallel_item(value: object) -> object:
+        """item 变量的工作副本：只复制基础容器，插件对象共享引用。"""
         if isinstance(value, dict):
             return {
-                key: Traverser._copy_parallel_value(item) for key, item in value.items()
+                key: Traverser._copy_parallel_item(item) for key, item in value.items()
             }
         if isinstance(value, list):
-            return [Traverser._copy_parallel_value(item) for item in value]
+            return [Traverser._copy_parallel_item(item) for item in value]
         if isinstance(value, tuple):
-            return tuple(Traverser._copy_parallel_value(item) for item in value)
+            return tuple(Traverser._copy_parallel_item(item) for item in value)
         return value
-
-    @staticmethod
-    def _parallel_values_equal(left: object, right: object) -> bool:
-        try:
-            return bool(left == right)
-        except Exception:  # noqa: BLE001 - 自定义对象比较失败时按身份判断
-            return left is right
-
-    @staticmethod
-    def _merge_config_chain(frame):
-        """收集帧配置继承链（当前帧优先），供并行工作空间复用。"""
-        chain = []
-        node = frame
-        while node is not None:
-            chain.append(node)
-            node = node.config_parent
-        config: dict[str, object] = {}
-        config_types: dict[str, str] = {}
-        for item in reversed(chain):
-            config.update(item.config)
-            config_types.update(item.config_types)
-        return config, config_types
 
     def _make_parallel_context(
         self,
-        snapshot: dict,
+        parent,
         values: dict[str, object],
         list_names: list[str],
         index: int,
         label: str,
     ):
-        """创建单次并行迭代的隔离上下文与帧（只使用父帧快照）。"""
-        worker_space = SchemaSpace(
-            global_config=snapshot["config"],
-            global_config_types=snapshot["config_types"],
-        )
-        frame = worker_space.enter_frame(snapshot["name"], mount=worker_space.root)
-        frame.inputs = dict(snapshot["inputs"])
-        frame.outputs = dict(snapshot["outputs"])
-        for name, value in snapshot["seed"].items():
-            worker_space.write(
-                frame,
-                f"this/{name}",
-                self._copy_parallel_value(value),
-                snapshot["declared"].get(name) or infer_type(value),
-            )
-        frame.page_write_order = list(snapshot["page_write_order"])
+        """创建单次并行迭代的线程帧；父帧/祖先帧只读共享。"""
+        worker_space = SchemaSpace()
+        frame = worker_space.enter_worker_frame(label, parent)
         for name, value in values.items():
             item = value[index] if name in list_names else value
             value_type = (
@@ -470,7 +435,9 @@ class Traverser:
                 if isinstance(item, dict)
                 else infer_type(item)
             )
-            worker_space.write(frame, f"this/{name}", self._copy_parallel_value(item), value_type)
+            worker_space.write(
+                frame, f"this/{name}", self._copy_parallel_item(item), value_type
+            )
         factory = self.ctx.leaf_executor_factory
         leaf_executor = factory(worker_space) if factory is not None else self.ctx.leaf_executor
         worker_ctx = RunContext(
@@ -492,60 +459,34 @@ class Traverser:
         )
         return worker_ctx, frame
 
-    def _parallel_changes(
-        self, frame, seed: dict[str, object], item_names: set[str]
-    ) -> dict[str, tuple[object, str]]:
-        changes: dict[str, tuple[object, str]] = {}
-        for name, value in frame.storage.items():
-            if name in item_names:
-                continue
-            if name not in seed or not self._parallel_values_equal(value, seed[name]):
-                changes[name] = (value, frame.declared.get(name) or infer_type(value))
-        return changes
-
-    def _merge_parallel_changes(
-        self,
-        parent,
-        successes: list[dict],
-        item_names: set[str],
-        on_conflict: str,
-    ) -> tuple[list[str], str | None]:
-        """把成功迭代的变量写入父帧；返回冲突变量与冲突错误。"""
-        by_name: dict[str, list[tuple[int, object, str]]] = {}
-        for result in successes:
-            for name, (value, value_type) in result["changes"].items():
-                if name in item_names:
-                    continue
-                by_name.setdefault(name, []).append((result["index"], value, value_type))
-        conflicts: list[str] = []
-        for name, entries in by_name.items():
-            first = entries[0][1]
-            if any(not self._parallel_values_equal(first, value) for _, value, _ in entries[1:]):
-                conflicts.append(name)
-        for name, entries in by_name.items():
-            if name in conflicts and on_conflict == "error":
-                continue
-            last = max(entries, key=lambda item: item[0])
-            try:
-                self.ctx.space.write(parent, f"this/{name}", last[1], last[2])
-            except SchemaError as exc:
-                return conflicts, f"并行变量回写 '{name}' 失败: {exc}"
-        if conflicts and on_conflict == "error":
-            return conflicts, f"并行变量写冲突: {', '.join(conflicts)}（可设置 on_conflict=last）"
-        return conflicts, None
+    @staticmethod
+    def _parallel_row(
+        frame,
+        values: dict[str, object],
+        list_names: list[str],
+        index: int,
+        fields: tuple[str, ...],
+    ) -> dict[str, object]:
+        row: dict[str, object] = {}
+        for name, value in values.items():
+            row[name] = value[index] if name in list_names else value
+        for field in fields:
+            row[field] = frame.storage.get(field)
+        return row
 
     def _tick_parallel(self, node: ParallelNode) -> NodeStatus:
-        """Parallel：按列表逐项并发执行 body；每项使用隔离变量空间。"""
+        """Parallel：按列表逐项并发执行 body；线程帧写入，父帧只读。"""
         if node.body is None:
             self._note_failure(node, "Parallel 缺少 body 子节点")
             return FAILURE
+        parent = self.ctx.current_frame
         values: dict[str, object] = {}
         list_names: list[str] = []
         lengths: set[int] = set()
         for name, raw in node.variables:
             value = raw
             if isinstance(raw, str):
-                evaluated = self._eval_arg(self.ctx.current_frame, raw)
+                evaluated = self._eval_arg(parent, raw)
                 if evaluated is not _MISSING:
                     value = evaluated
                 elif _PARAM_REF.match(raw.strip()):
@@ -561,24 +502,17 @@ class Traverser:
             return FAILURE
         count = next(iter(lengths)) if lengths else 1
         if count == 0:
+            if node.collect_target:
+                try:
+                    self.ctx.space.write(parent, f"this/{node.collect_target}", [], "array")
+                except SchemaError as exc:
+                    self._note_failure(node, f"Parallel 收集结果写入失败: {exc}")
+                    return FAILURE
             return SUCCESS
         max_workers = max(1, min(int(node.max_concurrency), count))
         self._parallel_seq += 1
         group = f"Parallel#{self._parallel_seq}"
-        parent = self.ctx.current_frame
         previous_failure = self.ctx.failure_reason
-        seed = {name: self._copy_parallel_value(value) for name, value in parent.storage.items()}
-        config, config_types = self._merge_config_chain(parent)
-        snapshot = {
-            "name": parent.name,
-            "seed": seed,
-            "declared": dict(parent.declared),
-            "inputs": dict(parent.inputs),
-            "outputs": dict(parent.outputs),
-            "page_write_order": list(parent.page_write_order),
-            "config": config,
-            "config_types": config_types,
-        }
         meta = self._meta_stack[-1] if self._meta_stack else {}
         meta["details"] = {
             "变量": {name: self._value_summary(value) for name, value in values.items()},
@@ -586,22 +520,27 @@ class Traverser:
             "最大并发": max_workers,
             "并行组": group,
         }
+        if node.collect_target:
+            meta["details"]["收集变量"] = node.collect_target
+            meta["details"]["收集字段"] = list(node.collect_fields)
         label_prefix = f"{self.ctx.parallel_label}/" if self.ctx.parallel_label else ""
 
         def run_one(index: int) -> dict:
             label = f"{label_prefix}{group}[{index + 1}]"
             started = time.monotonic()
             reason = None
-            changes: dict[str, tuple[object, str]] = {}
+            row: dict[str, object] = {}
             try:
                 worker_ctx, frame = self._make_parallel_context(
-                    snapshot, values, list_names, index, label
+                    parent, values, list_names, index, label
                 )
                 traverser = Traverser(worker_ctx)
                 traverser._depth = self._depth
                 status = traverser.tick(node.body)
                 reason = worker_ctx.failure_reason
-                changes = self._parallel_changes(frame, seed, set(values))
+                row = self._parallel_row(
+                    frame, values, list_names, index, node.collect_fields
+                )
             except Exception as exc:  # noqa: BLE001 - 单项异常按失败聚合
                 logger.warning("并行迭代异常（%s）: %s", label, exc, exc_info=True)
                 status = FAILURE
@@ -612,7 +551,7 @@ class Traverser:
                 "reason": reason,
                 "elapsed": round(time.monotonic() - started, 3),
                 "label": label,
-                "changes": changes,
+                "row": row,
             }
 
         results: list[dict] = []
@@ -623,9 +562,17 @@ class Traverser:
         results.sort(key=lambda item: item["index"])
         successes = [result for result in results if result["status"] == SUCCESS]
         failures = [result for result in results if result["status"] == FAILURE]
-        conflicts, merge_error = self._merge_parallel_changes(
-            parent, successes, set(values), node.on_conflict
-        )
+        collect_error = None
+        if node.collect_target:
+            try:
+                self.ctx.space.write(
+                    parent,
+                    f"this/{node.collect_target}",
+                    [result["row"] for result in results],
+                    "array",
+                )
+            except SchemaError as exc:
+                collect_error = f"Parallel 收集结果写入 '{node.collect_target}' 失败: {exc}"
         meta["details"]["成功"] = len(successes)
         meta["details"]["失败"] = len(failures)
         meta["details"]["结果"] = [
@@ -638,21 +585,20 @@ class Traverser:
             }
             for result in results
         ]
-        if conflicts:
-            meta["details"]["变量冲突"] = conflicts
+        if collect_error:
+            meta["details"]["收集错误"] = collect_error
         failed = bool(failures) and (
-            node.on_failure == "abort" or not successes or merge_error is not None
+            node.on_failure == "abort" or not successes or collect_error is not None
         )
-        if merge_error is not None:
+        if collect_error is not None:
             failed = True
-            meta["details"]["变量回写错误"] = merge_error
         if not failed:
             return SUCCESS
         first_failure = failures[0]["reason"] if failures else None
         if first_failure is not None:
             self.ctx.failure_reason = first_failure
-        elif merge_error is not None:
-            self.ctx.failure_reason = merge_error
+        elif collect_error is not None:
+            self.ctx.failure_reason = collect_error
         else:
             self.ctx.failure_reason = previous_failure
             self._note_failure(node, "Parallel 全部迭代失败")

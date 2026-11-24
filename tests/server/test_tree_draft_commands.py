@@ -280,4 +280,4 @@ def test_add_for_each_and_parallel_nodes(client):
     assert data["nodes"]["n2"]["variables"] == {}
     assert data["nodes"]["n3"]["type"] == "Parallel"
     assert data["nodes"]["n3"]["max_concurrency"] == 4
-    assert data["nodes"]["n3"]["on_conflict"] == "error"
+    assert data["nodes"]["n3"]["collect"] == {"target": "", "fields": []}

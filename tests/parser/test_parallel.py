@@ -17,7 +17,9 @@ nodes:
     type: Parallel
     variables: {{item: Param.items}}
     on_failure: continue
-    on_conflict: last
+    collect:
+      target: rows
+      fields: [result]
 {extra}    body: n3
   n3: {{type: Action, description: "处理 Param.item"}}
 root: n1
@@ -32,12 +34,16 @@ def test_parallel_parses():
     assert isinstance(node, ParallelNode)
     assert node.variables == (("item", "Param.items"),)
     assert node.max_concurrency == 2
-    assert node.on_conflict == "last"
+    assert node.collect_target == "rows"
+    assert node.collect_fields == ("result",)
 
 
 def test_parallel_invalid_options():
-    result = parse(_doc("    max_concurrency: 0\n    on_conflict: nope\n"), None)
+    result = parse(
+        _doc("    max_concurrency: 0\n    collect: {target: '', fields: [bad-name]}\n"),
+        None,
+    )
     assert not result.checks.ok
     messages = " ".join(issue.message for issue in result.checks.issues)
     assert "max_concurrency" in messages
-    assert "on_conflict" in messages
+    assert "collect" in messages

@@ -574,7 +574,8 @@ def _expand_ir(node: IRNode, ctx: ExpandContext, depth: int) -> Node:
                 body=body,
                 on_failure=node.on_failure or "continue",
                 max_concurrency=node.max_concurrency,
-                on_conflict=node.on_conflict or "error",
+                collect_target=node.collect_target,
+                collect_fields=node.collect_fields,
                 loc=node.loc,
             )
         return ForEachNode(

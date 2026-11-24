@@ -88,6 +88,24 @@ class SchemaSpace:
         self._current = frame
         return frame
 
+    def enter_worker_frame(
+        self, name: str, parent: SchemaFrame
+    ) -> SchemaFrame:
+        """创建并行工作帧：父指针指向真实父帧，但不挂入父帧 children。
+
+        工作帧可沿 parent 链只读访问父/祖先变量；写入仅落在工作帧。
+        不挂入 ``parent.children`` 可避免多个工作线程并发修改父帧结构。
+        """
+        if not name or "/" in name or name == THIS_TOKEN:
+            raise SchemaPathError(f"非法工作帧名: {name!r}")
+        frame = self._new_frame(name, parent)
+        frame.config_parent = parent
+        frame.inputs = dict(parent.inputs)
+        frame.outputs = dict(parent.outputs)
+        self._call_stack.append(None)
+        self._current = frame
+        return frame
+
     def exit_frame(self, frame: SchemaFrame | None = None) -> None:
         """退出当前帧并恢复父帧为当前帧。
 

@@ -344,8 +344,8 @@ export function validateDoc(doc: TreeDoc, ctx: ValidateContext): ClientIssue[] {
       if (n.maxConcurrency !== undefined && (!Number.isInteger(n.maxConcurrency) || n.maxConcurrency < 1)) {
         issues.push({ code: "invalid_value", message: `节点「${n.name}」最大并发数必须是正整数`, nodeId: n.id });
       }
-      if (n.onConflict !== undefined && !["error", "last"].includes(n.onConflict)) {
-        issues.push({ code: "invalid_value", message: `节点「${n.name}」变量冲突策略必须是 error/last`, nodeId: n.id });
+      if ((n.collectFields ?? []).length > 0 && !(n.collectTarget ?? "").trim()) {
+        issues.push({ code: "missing_field", message: `节点「${n.name}」配置收集字段时必须填写收集结果变量`, nodeId: n.id });
       }
     }
     if (n.type === "Branch") {

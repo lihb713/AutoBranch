@@ -89,7 +89,7 @@ def make_node(node_type: str, node_id: str) -> dict[str, Any]:
                 "variables": {},
                 "on_failure": "continue",
                 "max_concurrency": 4,
-                "on_conflict": "error",
+                "collect": {"target": "", "fields": []},
             }
         )
     return body

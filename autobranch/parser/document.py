@@ -100,7 +100,8 @@ class IRNode:
     on_failure: str | None = None
     break_on_success: bool = False
     max_concurrency: int = 4
-    on_conflict: str = "error"
+    collect_target: str | None = None
+    collect_fields: tuple[str, ...] = ()
     raw: object = None
 
 

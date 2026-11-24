@@ -134,15 +134,16 @@ class ParallelNode(Node):
     :param body: 每项执行的子节点。
     :param on_failure: ``continue``（容忍部分失败，全部失败才失败）| ``abort``（任一失败整体失败）。
     :param max_concurrency: 最大并发数（>=1）。
-    :param on_conflict: 多个成功迭代写入同名非 item 变量时的策略：
-        ``error`` 失败 | ``last`` 按迭代顺序后写覆盖。
+    :param collect_target: 收集结果写入父帧的变量名（None=不收集）。
+    :param collect_fields: 从每个线程帧收集的变量名（按顺序写入结果字典）。
     """
 
     variables: tuple[tuple[str, object], ...] = ()
     body: Node | None = None
     on_failure: str = "continue"
     max_concurrency: int = 4
-    on_conflict: str = "error"
+    collect_target: str | None = None
+    collect_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

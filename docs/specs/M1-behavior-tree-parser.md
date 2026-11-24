@@ -226,4 +226,4 @@ class RefNode(Node):
 
 ### Parallel 节点
 
-`Parallel` 与 ForEach 共用 `variables`/`body`/`on_failure`，并新增 `max_concurrency`（正整数，默认 4）与 `on_conflict`（`error`/`last`）。解析期校验变量名、列表表达式、并发数与冲突策略；展开为 `ParallelNode`。
+`Parallel` 与 ForEach 共用 `variables`/`body`/`on_failure`，并新增 `max_concurrency`（正整数，默认 4）与 `collect: {target, fields}`（结果变量与逐线程收集字段）。解析期校验变量名、列表表达式、并发数与收集声明；展开为 `ParallelNode`。

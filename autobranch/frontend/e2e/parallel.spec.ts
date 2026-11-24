@@ -11,6 +11,7 @@ const API = { baseURL: "http://localhost:5174" };
 test("P1 前端执行 Parallel 并查看并行报告", async ({ page }) => {
   const name = `e2eParallel${Date.now()}`;
   const content = `tree: ${name}
+outputs: {rows: array}
 nodes:
   n1:
     type: Root
@@ -21,7 +22,9 @@ nodes:
       item: '["a","b","c"]'
     max_concurrency: 2
     on_failure: continue
-    on_conflict: last
+    collect:
+      target: rows
+      fields: [result]
     body: n3
   n3:
     type: FunctionCall
@@ -44,5 +47,9 @@ root: n1
   const panel = page.getByTestId("report-panel");
   await expect(panel).toContainText("SUCCESS", { timeout: 30_000 });
   await expect(panel).toContainText("Parallel#", { timeout: 30_000 });
+  await expect(panel).toContainText("收集变量", { timeout: 30_000 });
   await expect(panel).not.toContainText("FAILURE");
+  await expect(page.getByTestId("outputs-section")).toContainText("rows", {
+    timeout: 30_000,
+  });
 });
