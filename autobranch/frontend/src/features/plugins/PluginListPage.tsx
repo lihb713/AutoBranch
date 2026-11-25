@@ -30,7 +30,7 @@ export function PluginListPage() {
     const refs = await pluginsApi.listReferences(plugin.name).catch(() => []);
     const message =
       refs.length > 0
-        ? `插件「${plugin.name}」被行为树 ${refs.join("、")} 引用，删除后其 FunctionCall 引用将被置空。确认删除？`
+        ? `插件「${plugin.name}」被行为树 ${refs.join("、")} 引用。删除后引用保留，但这些树校验/运行会报未知函数；重新注册同名插件后恢复。确认删除？`
         : `确认删除插件「${plugin.name}」？`;
     if (!window.confirm(message)) {
       return;

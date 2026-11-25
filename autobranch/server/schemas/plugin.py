@@ -102,7 +102,7 @@ class PluginCheckOut(BaseModel):
 
 
 class PluginDeleteOut(BaseModel):
-    """删除结果：受影响（引用被置空）的行为树名列表。"""
+    """删除结果：引用该插件函数的行为树名列表（文档引用保留）。"""
 
     affected_trees: list[str] = Field(default_factory=list)
 

@@ -75,7 +75,7 @@ def update_plugin(name: str, payload: PluginUpdate, service: PluginServiceDep):
 
 @router.delete("/{name}", response_model=PluginDeleteOut)
 def delete_plugin(name: str, service: PluginServiceDep):
-    """删除自定义插件；返回被置空引用的行为树名列表。"""
+    """删除自定义插件；返回引用该插件的行为树名列表（引用内容保留）。"""
     affected = service.delete(name)
     return PluginDeleteOut(affected_trees=affected)
 

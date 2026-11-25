@@ -229,3 +229,18 @@ def test_transform_join_field_loose_match():
     assert result.value == [
         {"cVersion": "268673144", "c_version_name": "Version"}
     ]
+
+
+def test_transform_find_one_return_record():
+    reg = _transform()
+    items = [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]
+    record = reg.call(
+        "transform.find_one",
+        {
+            "items": items,
+            "field": "id",
+            "value": 2,
+            "return_record": True,
+        },
+    )
+    assert record.value == {"id": 2, "name": "b"}

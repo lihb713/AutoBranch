@@ -187,7 +187,7 @@ GET    /api/plugins                列表（含 kind；?include_manifest=true �
 GET    /api/plugins/{name}         详情（builtin 返回文件源码供只读查看）
 POST   /api/plugins                新增（校验：语法+仅标准库+可加载 → 通过才落库+重载）
 PUT    /api/plugins/{name}         更新（自定义；重载成功才落库）
-DELETE /api/plugins/{name}         删除（扫描引用其函数的行为树，FunctionCall 引用置空并持久化，返回受影响树名）
+DELETE /api/plugins/{name}         删除（扫描引用其函数的行为树并返回受影响树名；不修改文档，保留函数名以便重注册恢复）
 POST   /api/plugins/check          校验（返回行号/列号/类型/约束 错误明细）
 GET    /api/plugins/{name}/references  引用该插件函数的行为树名列表
 GET    /api/plugins/{name}/manifest   插件前端清单 + 配置 schema

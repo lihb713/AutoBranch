@@ -3,8 +3,8 @@
 - 启动初始化：扫描预置插件 → 写/刷新 ``builtin`` 记录（只读，``source`` NULL）。
 - CRUD：自定义插件源码存 DB；校验（语法 + 仅标准库约束 + 可加载）通过才落库。
 - 重载：保存成功后重新加载进共享注册表。
-- 关联查询与删除置空：删除插件时扫描引用其函数的行为树，批量把 FunctionCall
-  的 ``function`` 引用置空（持久化修改文档）。
+- 关联查询：删除插件前可扫描引用其函数的行为树；删除时保留文档中的
+  ``function`` 名，便于重新注册同名插件后恢复，期间校验/运行会明确报未知函数。
 """
 
 from __future__ import annotations
@@ -305,21 +305,11 @@ class PluginService:
         return out
 
     def delete(self, name: str) -> list[str]:
-        """删除自定义插件；引用其函数的行为树中 FunctionCall 引用置空。"""
+        """删除自定义插件；保留行为树中的函数引用，便于同名插件重注册后恢复。"""
         row = self.get(name)
         if row.kind == KIND_BUILTIN:
             raise AppError(403, "预置插件只读，不可删除")
         affected = self.references(name)
-        funcs = self._function_names(name)
-        if affected:
-            for tree in self.db.scalars(select(Tree)).all():
-                if tree.name not in affected:
-                    continue
-                new_content = tree.content
-                for fn in funcs:
-                    new_content = self._nullify_ref(new_content, fn)
-                if new_content != tree.content:
-                    tree.content = new_content
         self.registry.unregister(name)
         self.db.delete(row)
         self.db.commit()
@@ -380,14 +370,6 @@ class PluginService:
 
     def _has_ref(self, content: str, fn: str) -> bool:
         return any(m.group("name") == fn for m in _FUNCTION_LINE.finditer(content))
-
-    def _nullify_ref(self, content: str, fn: str) -> str:
-        def repl(match: re.Match) -> str:
-            if match.group("name") == fn:
-                return f"{match.group('indent')}null"
-            return match.group(0)
-
-        return _FUNCTION_LINE.sub(repl, content)
 
     def _commit_or_conflict(self) -> None:
         try:

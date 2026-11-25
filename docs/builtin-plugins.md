@@ -277,7 +277,7 @@ ForEach 跨轮累积时，需要一个能不断传递的容器。早期实现用
 | `transform.get_key` | `data: object`, `key`, `required?`, `default?` | `value: generics` |
 | `transform.project` | `items: array`, `fields: array` | `items: array` |
 | `transform.filter_eq` | `items: array`, `field`, `value` | `items: array` |
-| `transform.find_one` | `items: array`, `field`, `value`, `target_field`, `default?` | `value: generics` |
+| `transform.find_one` | `items: array`, `field`, `value`, `target_field?`, `default?`, `return_record?` | `value: generics` |
 | `transform.join_field` | `items`, `ref_field`, `lookup_list`, `field`, `target_field`, `alias`, `default?`, `loose_match?` | `items: array` |
 | `transform.rename_fields` | `items: array`, `rename_map: object` | `items: array` |
 | `transform.split` | `text`, `separator`, `maxsplit?` | `values: array` |
@@ -323,7 +323,7 @@ n2:
 
 `append` / `dict_set` 返回 JSON **字符串**，适合 ForEach 跨轮累积；如果只是普通 list/dict，优先直接使用 `array` / `object` 变量。
 
-`join_field` 默认严格相等；跨系统 ID 常见 str/int 混用时设置 `loose_match: true`，按 `str(a) == str(b)` 匹配。
+`find_one` 默认返回 `target_field`；设置 `return_record: true` 返回完整匹配记录。`join_field` 默认严格相等；跨系统 ID 常见 str/int 混用时设置 `loose_match: true`，按 `str(a) == str(b)` 匹配。
 
 ## 5. SSH 插件 `ssh`
 

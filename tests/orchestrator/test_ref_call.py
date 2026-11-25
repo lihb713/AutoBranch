@@ -239,6 +239,13 @@ class TestRefCall:
         assert child.storage["result"] == "成功输出"
         # 执行后激活帧回到父帧
         assert ctx.space._current is root
+        ref_report = next(
+            report
+            for report in ctx.reporter.exec_state().completed
+            if report.node_type == "Ref"
+        )
+        assert ref_report.arguments == {"username": "admin"}
+        assert ref_report.returns == {"result": "成功输出"}
 
     def test_same_block_ref_twice_independent_frames(self, config) -> None:
         login = _login_doc(

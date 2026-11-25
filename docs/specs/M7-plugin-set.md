@@ -43,7 +43,7 @@
 
 - 路径/索引/键：`get_path(data, path)`（如 `0.a.b.1` / `a[0].b[-1]`）、`get_index`、`get_key`；可选 `required=false` + `default`。
 - 字符串：`split` / `join` / `contains` / `index_of` / `replace` / `strip` / `concat`（a~e 顺序拼接）/ `format`（`{name}` 模板 + values 字典）。
-- 容器：`length` / `slice` / `keys` / `values`；列表记录：`project` / `filter_eq` / `find_one` / `join_field` / `rename_fields`；`join_field(loose_match=true)` 使用字符串比较兼容 ID 类型差异。
+- 容器：`length` / `slice` / `keys` / `values`；列表记录：`project` / `filter_eq` / `find_one`（可 return_record）/ `join_field` / `rename_fields`；`join_field(loose_match=true)` 使用字符串比较兼容 ID 类型差异。
 - 转换：`to_string` / `to_int` / `to_number` / `to_bool` / `json_parse` / `json_dumps`。
 - 比较：`compare(a, b, op, ignore_case)`，支持 `eq/ne/gt/ge/lt/le/contains/startswith/endswith`。
 - 正则：`regex_match` / `regex_extract` / `regex_findall`。
@@ -122,7 +122,7 @@ plugin = MyPlugin()    # 必须以 plugin 变量导出实例
 - 自定义类型声明：实现 `custom_types` 属性返回 `{token: Python 类}`；token 全局唯一，不能覆盖核心类型；注册后前端类型下拉与 `/api/types` 可见。
 - 函数只返回值（裸值或 `FunctionResult`）、不写变量（引擎落笔）。
 - `output_param`：产出型工具声明变量目标参数名，引擎按节点 `NewParam.名[:类型]` 声明类型 coerce 后写入变量。
-- 删除插件会置空引用它的行为树 FunctionCall 引用。
+- 删除插件保留行为树中的 FunctionCall 引用（不置空）；重新注册同名插件后恢复可用，删除期间校验会报未知函数。
 
 **使用方式**：
 - FunctionCall 节点：`function: <插件名.函数名>`（全名，如 `compute.add`）+ `args`（位置变量/字面量）+ `kwargs`（命名可选参数，支持嵌套对象/列表）+ `returns`（回收多返回值）。

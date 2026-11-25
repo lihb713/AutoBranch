@@ -227,16 +227,23 @@ class TransformPlugin(PluginBase):
     @engine_function(
         name="find_one",
         description=(
-            "查找字典列表中第一条 field==value 的记录并返回 target_field；"
-            "未命中返回 default"
+            "查找字典列表中第一条 field==value 的记录：return_record=true 返回完整对象，"
+            "否则返回 target_field；未命中返回 default"
         ),
         parameters=_params(
-            ("items", "field", "value", "target_field"),
+            ("items", "field", "value"),
             items={"type": "array", "items": {"type": "object"}, "description": "字典列表"},
             field={"type": "string", "description": "匹配字段名"},
             value={"description": "匹配值"},
-            target_field={"type": "string", "description": "要返回的字段名"},
+            target_field={
+                "type": "string",
+                "description": "要返回的字段名（return_record=false 时必填）",
+            },
             default={"description": "未命中或目标字段缺失时返回的默认值"},
+            return_record={
+                "type": "boolean",
+                "description": "是否返回完整匹配记录（默认 false）",
+            },
         ),
         returns={"value": "generics"},
     )
@@ -245,19 +252,24 @@ class TransformPlugin(PluginBase):
         items: list[Any],
         field: str,
         value: Any,
-        target_field: str,
+        target_field: str = "",
         default: Any = None,
+        return_record: bool = False,
     ) -> FunctionResult:
         if not isinstance(items, (list, tuple)):
             return _failure("items 必须是列表")
         if not isinstance(field, str) or not field.strip():
             return _failure("field 必须是非空字符串")
-        if not isinstance(target_field, str) or not target_field.strip():
-            return _failure("target_field 必须是非空字符串")
+        if not return_record and (
+            not isinstance(target_field, str) or not target_field.strip()
+        ):
+            return _failure("return_record=false 时 target_field 必须是非空字符串")
         for item in items:
             if not isinstance(item, dict):
                 return _failure("items 必须是字典列表")
             if item.get(field) == value:
+                if return_record:
+                    return FunctionResult.success(dict(item))
                 return FunctionResult.success(item.get(target_field, default))
         return FunctionResult.success(default)
 

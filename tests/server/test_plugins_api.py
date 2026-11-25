@@ -1,4 +1,4 @@
-"""插件管理 API 测试（组 6.1/6.2）：builtin 初始化 / CRUD / 校验 / 删除置空。"""
+"""插件管理 API 测试（组 6.1/6.2）：builtin 初始化 / CRUD / 校验 / 删除保留引用。"""
 
 from __future__ import annotations
 
@@ -184,7 +184,7 @@ def test_update_reloads_plugin(client):
     assert client.get("/api/plugins/demo").json()["description"] == "升级版"
 
 
-def test_delete_plugin_nullifies_references(client):
+def test_delete_plugin_keeps_references_for_reregistration(client):
     client.post("/api/plugins", json={"name": "demo", "source": VALID_PLUGIN})
     tree = client.post("/api/trees", json={"name": "引用树", "content": TREE_WITH_FC})
     assert tree.status_code == 201
@@ -192,13 +192,13 @@ def test_delete_plugin_nullifies_references(client):
     refs = client.get("/api/plugins/demo/references")
     assert refs.status_code == 200
     assert "引用树" in refs.json()
-    # 删除 → 返回受影响树；行为树 FunctionCall 引用置空
+    # 删除 → 返回受影响树；行为树 FunctionCall 引用保留
     res = client.delete("/api/plugins/demo")
     assert res.status_code == 200
     assert res.json()["affected_trees"] == ["引用树"]
     updated = client.get(f"/api/trees/{tree.json()['id']}").json()["content"]
-    assert "function: null" in updated
-    assert "function: demo.double" not in updated
+    assert "function: demo.double" in updated
+    assert "function: null" not in updated
 
 
 def test_delete_plugin_without_references(client):

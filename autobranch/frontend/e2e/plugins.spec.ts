@@ -90,7 +90,7 @@ test("P3 编辑自定义插件并保存生效", async ({ page }) => {
   await expect(card.getByText("升级版描述")).toBeVisible();
 });
 
-test("P4 删除插件时弹窗提示关联并置空引用", async ({ page }) => {
+test("P4 删除插件时弹窗提示关联并保留引用", async ({ page }) => {
   const PLUGIN_NAME = uniqueName();
   const PLUGIN_SOURCE = makeSource(PLUGIN_NAME);
   const api = await apiRequest.newContext(API);
@@ -126,13 +126,13 @@ root: n1
   await card.getByTestId(`plugin-delete-${PLUGIN_NAME}`).click();
   await expect(page.getByTestId(`plugin-card-${PLUGIN_NAME}`)).toHaveCount(0);
 
-  // 行为树 FunctionCall 引用被置空（持久化）
+  // 行为树 FunctionCall 引用保留，重新注册同名插件后可恢复
   const api2 = await apiRequest.newContext(API);
   const updatedResp = await api2.get(`/api/trees/${tree.id}`);
   expect(updatedResp.ok()).toBeTruthy();
   const updated = await updatedResp.json();
-  expect(updated.content).toContain("function: null");
-  expect(updated.content).not.toContain(`function: ${PLUGIN_NAME}.greet`);
+  expect(updated.content).toContain(`function: ${PLUGIN_NAME}.greet`);
+  expect(updated.content).not.toContain("function: null");
   await api2.dispose();
 });
 
