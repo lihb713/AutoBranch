@@ -804,7 +804,7 @@ root: r
 
 - `inputs.session` 标注为 `ssh_session`，不是 `str`；
 - `FunctionCall.args` 不需要重复写类型，参数类型由函数声明提供；
-- `ssh_session` 不可由文本构造，因此这棵树通常作为 `ref` 子流程，由调用方通过 `session` 参数传入；
+- `ssh_session` 不可由文本构造，因此这棵树可以作为 `ref` 子流程传入；也可以直接传 host/pwd 等连接参数，`ssh.create_session` 会从插件会话池复用连接；
 - 前端会显示 `ssh_session`，执行时会校验实际值是否为 `SSHConnection`。
 
 ## 9. 执行与报告

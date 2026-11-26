@@ -588,3 +588,60 @@ def test_compute_float_functions_return_float():
         ("percentage", {"part": 1, "total": 4}),
     ]:
         assert isinstance(reg.call(f"compute.{name}", args).value, float), name
+
+
+def test_ssh_create_session_reuses_pool_and_refcounts(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    first = reg.call("ssh.create_session", {"host": "h", "user": "root", "pwd": "secret"})
+    second = reg.call("ssh.create_session", {"host": "h", "user": "root", "pwd": "secret"})
+    assert first.ok and second.ok
+    assert first.value is second.value
+    assert first.value.ref_count == 2
+    assert "secret" not in first.value.pool_key
+    client = first.value.client
+
+    assert reg.call("ssh.close_session", {"session": first.value}).ok
+    assert not client.closed
+    assert reg.call("ssh.close_session", {"session": first.value}).ok
+    assert client.closed
+
+
+def test_ssh_create_session_pool_separates_different_targets(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    first = reg.call("ssh.create_session", {"host": "a", "user": "root"})
+    second = reg.call("ssh.create_session", {"host": "b", "user": "root"})
+    assert first.value is not second.value
+    assert first.value.pool_key != second.value.pool_key
+
+
+def test_ssh_release_clears_pool(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call("ssh.create_session", {"host": "h"})
+    client = session.value.client
+    reg.release()
+    assert client.closed
+    assert session.value.pool_key
+
+
+def test_ssh_pool_concurrent_create_returns_same_session(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+
+    def create(_):
+        return reg.call(
+            "ssh.create_session", {"host": "h", "user": "root", "pwd": "secret"}
+        ).value
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        sessions = list(pool.map(create, range(4)))
+    assert len({id(session) for session in sessions}) == 1
+    assert sessions[0].ref_count == 4

@@ -337,7 +337,7 @@ SSH 不是一次性的命令字符串，而是有生命周期的会话：
 - 交互命令要持续 send/read；
 - 文件传输需要 SFTP/跳板机兼容方案。
 
-因此 SSH 插件把连接抽象成 `ssh_session` 自定义类型，而不是每次调用都重新传主机密码。
+因此 SSH 插件把连接抽象成 `ssh_session` 自定义类型，并在插件内维护**会话池**：相同 host/port/user/认证/proxy/jump 的 `create_session` 会复用连接并增加引用计数，`close_session` 递减引用计数，归零才真正关闭。这样 Parallel worker 可以各自按 host/pwd 建会话而不重复认证；`ssh_session` 入参方式仍兼容。
 
 ### 5.1 自定义类型
 
@@ -386,6 +386,9 @@ n3:
 - `proxy` 为 SOCKS5：`{host, port, user?, pwd?}`；
 - `jump` 为跳板机：`{host, port?, user?, pwd?, key?, timeout?, proxy?}`；
 - 有 `jump` 时 `proxy` 用于连接跳板机；
+- `create_session` 按连接参数复用会话（密码/密钥只以摘要参与缓存 key）；引用计数归零才关闭；
+- 跳板机共享会话的 shell 命令会串行执行，避免多个 worker 交织同一 PTY；
+- 空闲池清理为惰性执行，不启动后台线程；
 - 非交互命令等待 exit-status，非零退出码算失败；
 - `interactive=true` 使用 PTY，返回 `channel_id` 供后续 send/read。
 

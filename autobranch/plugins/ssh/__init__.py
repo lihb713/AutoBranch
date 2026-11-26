@@ -13,11 +13,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
+import json
 import posixpath
 import re
 import shlex
 import stat
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -75,6 +78,10 @@ class SSHConnection:
     jump_shell: Any | None = field(default=None, repr=False)
     jump_buffer: str = field(default="", repr=False)
     channels: dict[str, _ChannelState] = field(default_factory=dict, repr=False)
+    ref_count: int = 1
+    pool_key: str = ""
+    last_used_at: float = field(default_factory=time.monotonic)
+    lock: Any = field(default_factory=threading.RLock, repr=False)
 
     def __str__(self) -> str:
         return f"SSHConnection(id={self.id[:8]}…)"
@@ -98,16 +105,152 @@ class SSHPlugin(PluginBase):
 
     def __init__(self) -> None:
         self._connections: dict[str, SSHConnection] = {}
+        self._pool: dict[str, SSHConnection] = {}
+        self._pool_lock = threading.RLock()
 
     def init(self, runtime: Any = None) -> None:
         pass
 
     def release(self) -> None:
-        for conn in list(self._connections.values()):
+        with self._pool_lock:
+            connections = list({conn.id: conn for conn in self._connections.values()}.values())
+            self._connections.clear()
+            self._pool.clear()
+        for conn in connections:
             self._close_connection(conn)
-        self._connections.clear()
 
     # ------------------------------------------------------------- 会话
+
+    @staticmethod
+    def _secret_fingerprint(value: str | None) -> str:
+        """认证材料只存摘要，避免池 key 中长期保留明文密码。"""
+        if not value:
+            return ""
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _proxy_key(cls, proxy: dict | None) -> dict:
+        if not isinstance(proxy, dict):
+            return {}
+        return {
+            "type": proxy.get("type", "socks5"),
+            "host": str(proxy.get("host") or ""),
+            "port": int(proxy.get("port") or 0),
+            "user": str(proxy.get("user") or ""),
+            "pwd": cls._secret_fingerprint(proxy.get("pwd")),
+        }
+
+    @classmethod
+    def _jump_key(cls, jump: dict | None, fallback_proxy: dict | None = None) -> dict:
+        if not isinstance(jump, dict):
+            return {}
+        jump_proxy = jump.get("proxy") or fallback_proxy
+        return {
+            "host": str(jump.get("host") or "").strip(),
+            "port": int(jump.get("port") or 22),
+            "user": str(jump.get("user") or "root"),
+            "pwd": cls._secret_fingerprint(jump.get("pwd")),
+            "key": cls._secret_fingerprint(jump.get("key")),
+            "proxy": cls._proxy_key(jump_proxy),
+        }
+
+    @classmethod
+    def _session_key(
+        cls,
+        host: str,
+        port: int,
+        user: str,
+        *,
+        pwd: str | None = None,
+        key: str | None = None,
+        proxy: dict | None = None,
+        jump: dict | None = None,
+    ) -> str:
+        identity = {
+            "host": str(host or "").strip(),
+            "port": int(port),
+            "user": str(user or "root"),
+            "pwd": cls._secret_fingerprint(pwd),
+            "key": cls._secret_fingerprint(key),
+            "proxy": cls._proxy_key(proxy),
+            "jump": cls._jump_key(jump, proxy),
+        }
+        return hashlib.sha256(
+            json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+
+    @staticmethod
+    def _is_alive(conn: SSHConnection) -> bool:
+        try:
+            if conn.jump_shell is not None:
+                if getattr(conn.jump_shell, "closed", False):
+                    return False
+                client = conn.jump_client
+            else:
+                client = conn.client
+            if client is None:
+                return False
+            transport = client.get_transport()
+            if transport is None:
+                return False
+            checker = getattr(transport, "is_active", None)
+            return bool(checker()) if callable(checker) else True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _cleanup_idle(self, max_idle: float = 300.0) -> None:
+        """清理引用计数为 0 且空闲超时的池会话（无后台线程）。"""
+        now = time.monotonic()
+        expired: list[SSHConnection] = []
+        with self._pool_lock:
+            for key, conn in list(self._pool.items()):
+                if conn.ref_count <= 0 and now - conn.last_used_at > max_idle:
+                    self._pool.pop(key, None)
+                    self._connections.pop(conn.id, None)
+                    expired.append(conn)
+        for conn in expired:
+            self._close_connection(conn)
+
+    def _cached_session(self, key: str) -> SSHConnection | None:
+        expired: SSHConnection | None = None
+        with self._pool_lock:
+            conn = self._pool.get(key)
+            if conn is None:
+                return None
+            if self._is_alive(conn):
+                conn.ref_count += 1
+                conn.last_used_at = time.monotonic()
+                return conn
+            self._pool.pop(key, None)
+            self._connections.pop(conn.id, None)
+            expired = conn
+        if expired is not None:
+            self._close_connection(expired)
+        return None
+
+    def _register_session(self, conn: SSHConnection, key: str) -> SSHConnection:
+        duplicate: SSHConnection | None = None
+        result = conn
+        with self._pool_lock:
+            existing = self._pool.get(key)
+            if existing is not None and self._is_alive(existing):
+                existing.ref_count += 1
+                existing.last_used_at = time.monotonic()
+                duplicate = conn
+                result = existing
+            else:
+                if existing is not None:
+                    self._pool.pop(key, None)
+                    self._connections.pop(existing.id, None)
+                    duplicate = existing
+                conn.pool_key = key
+                conn.ref_count = 1
+                conn.last_used_at = time.monotonic()
+                self._pool[key] = conn
+                self._connections[conn.id] = conn
+        if duplicate is not None:
+            self._close_connection(duplicate)
+        return result
 
     @engine_function(
         name="create_session",
@@ -168,6 +311,13 @@ class SSHPlugin(PluginBase):
         proxy: dict | None = None,
         jump: dict | None = None,
     ) -> FunctionResult:
+        pool_key = self._session_key(
+            host, port, user, pwd=pwd, key=key, proxy=proxy, jump=jump
+        )
+        self._cleanup_idle()
+        cached = self._cached_session(pool_key)
+        if cached is not None:
+            return FunctionResult.success(cached)
         try:
             import paramiko
         except ImportError:
@@ -226,9 +376,9 @@ class SSHPlugin(PluginBase):
             client=client,
             jump_client=jump_client,
             jump_shell=jump_shell,
+            pool_key=pool_key,
         )
-        self._connections[conn.id] = conn
-        return FunctionResult.success(conn)
+        return FunctionResult.success(self._register_session(conn, pool_key))
 
     @engine_function(
         name="close_session",
@@ -241,11 +391,18 @@ class SSHPlugin(PluginBase):
         ),
     )
     def close_session(self, session: SSHConnection) -> FunctionResult:
-        conn = self._find(session)
-        if conn is None:
-            return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+        with self._pool_lock:
+            conn = self._connections.get(session.id) if isinstance(session, SSHConnection) else None
+            if conn is None:
+                return FunctionResult.failure("会话不存在或已关闭", code="SSH_ERROR")
+            conn.ref_count -= 1
+            if conn.ref_count > 0:
+                conn.last_used_at = time.monotonic()
+                return FunctionResult.success()
+            self._connections.pop(conn.id, None)
+            if conn.pool_key:
+                self._pool.pop(conn.pool_key, None)
         self._close_connection(conn)
-        self._connections.pop(conn.id, None)
         return FunctionResult.success()
 
     # ------------------------------------------------------------- 执行
@@ -298,8 +455,9 @@ class SSHPlugin(PluginBase):
                 if stdin:
                     payload += stdin + ("\n" if not stdin.endswith("\n") else "")
                 try:
-                    conn.jump_shell.sendall(payload)
-                    out = self._read_shell_idle(conn, idle_timeout)
+                    with conn.lock:
+                        conn.jump_shell.sendall(payload)
+                        out = self._read_shell_idle_locked(conn, idle_timeout)
                 except Exception as exc:  # noqa: BLE001
                     return FunctionResult.failure(
                         f"跳板机 shell 命令执行失败: {exc}", code="SSH_ERROR"
@@ -394,7 +552,8 @@ class SSHPlugin(PluginBase):
             "",
         ):
             try:
-                conn.jump_shell.sendall(str(data) + ("\n" if newline else ""))
+                with conn.lock:
+                    conn.jump_shell.sendall(str(data) + ("\n" if newline else ""))
             except Exception as exc:  # noqa: BLE001
                 return FunctionResult.failure(
                     f"写入跳板机 shell 失败: {exc}", code="SSH_ERROR"
@@ -480,9 +639,10 @@ class SSHPlugin(PluginBase):
             "jump-shell",
             "",
         ):
-            self._safe_close(conn.jump_shell)
-            conn.jump_shell = None
-            conn.jump_buffer = ""
+            with conn.lock:
+                self._safe_close(conn.jump_shell)
+                conn.jump_shell = None
+                conn.jump_buffer = ""
             return FunctionResult.success()
         state = conn.channels.pop(channel_id, None) if conn is not None else None
         if conn is None or state is None:
@@ -985,6 +1145,13 @@ class SSHPlugin(PluginBase):
     def _exec_shell(
         cls, conn: SSHConnection, command: str, timeout: float
     ) -> FunctionResult:
+        with conn.lock:
+            return cls._exec_shell_locked(conn, command, timeout)
+
+    @classmethod
+    def _exec_shell_locked(
+        cls, conn: SSHConnection, command: str, timeout: float
+    ) -> FunctionResult:
         shell = conn.jump_shell
         if shell is None:
             return FunctionResult.failure("跳板机 shell 已关闭", code="SSH_ERROR")
@@ -1040,6 +1207,11 @@ class SSHPlugin(PluginBase):
 
     @classmethod
     def _read_shell_idle(cls, conn: SSHConnection, idle_timeout: float) -> str:
+        with conn.lock:
+            return cls._read_shell_idle_locked(conn, idle_timeout)
+
+    @classmethod
+    def _read_shell_idle_locked(cls, conn: SSHConnection, idle_timeout: float) -> str:
         shell = conn.jump_shell
         if shell is None:
             raise RuntimeError("跳板机 shell 已关闭")
@@ -1058,7 +1230,11 @@ class SSHPlugin(PluginBase):
     def _find(self, session: SSHConnection) -> SSHConnection | None:
         if not isinstance(session, SSHConnection):
             return None
-        return self._connections.get(session.id)
+        with self._pool_lock:
+            conn = self._connections.get(session.id)
+            if conn is not None:
+                conn.last_used_at = time.monotonic()
+            return conn
 
     @staticmethod
     def _connect_client(

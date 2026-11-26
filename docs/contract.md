@@ -2703,3 +2703,8 @@ plugin = MyCalcPlugin()
 ---
 
 *本文档为 v2.0（能力插件化重构）契约，供进一步讨论修订。*
+
+
+### SSH 会话池
+
+SSH 插件 SHALL 按连接参数（host/port/user/认证摘要/proxy/jump）缓存会话；`create_session` 命中时增加引用计数，`close_session` 递减，归零才关闭。缓存 key 不保存明文密码；jump shell 的并发命令 SHALL 串行化。`release` 清理全部池会话。
