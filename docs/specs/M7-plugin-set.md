@@ -68,7 +68,7 @@
 
 ### SSH 插件
 
-会话对象（`SSHConnection`）为插件自定义类型 `ssh_session`（不可文本构造）；`create_session` 返回 `{"session": "ssh_session"}`。插件 SHALL 维护线程安全会话池：相同连接参数复用会话、引用计数归零才关闭；认证材料只以摘要参与缓存 key；jump shell 操作 SHALL 串行化。
+会话对象（`SSHConnection`）为插件自定义类型 `ssh_session`（不可文本构造）；`create_session` 返回 `{"session": "ssh_session"}`。插件 SHALL 维护线程安全会话池：相同连接参数复用会话、引用计数归零才关闭；认证材料只以摘要参与缓存 key；jump shell 操作 SHALL 串行化。引用计数按 `create_session` 成功次数计算，每次成功调用必须对应一次 `close_session`；手工广播同一 `SSHConnection` 不增加引用计数。
 
 - `create_session(host, port?, user?, pwd?/key?, timeout?, proxy?, jump?)`：直连；`proxy` 为 SOCKS5；`jump` 为 SSH 跳板机。有 jump 时 proxy 用于连接跳板机；jump→目标改为在跳板机 PTY shell 中执行 `ssh` 命令（兼容禁用 `direct-tcpip` 的环境），目标认证需提供 `pwd`。
 - `ssh_exec(session, command, timeout?, stdin?, interactive?, idle_timeout?)`：

@@ -70,7 +70,18 @@ class _ChannelState:
 
 @dataclass
 class SSHConnection:
-    """远程 SSH 会话对象（自定义类型 ``ssh_session`` 的值）。"""
+    """远程 SSH 会话对象（自定义类型 ``ssh_session`` 的值）。
+
+    会话池使用约定：
+
+    - ``ref_count`` 统计的是 ``create_session`` 的**成功获取次数**，不是任意
+      ``Param.session`` 消费者数量；
+    - 每次成功 ``create_session`` 必须恰好对应一次 ``close_session``；
+    - 如果父节点只创建一次后把同一个 ``SSHConnection`` 广播给多个 worker，
+      这些 worker 不享有独立引用计数；只能由其中一个持有者关闭，或多个
+      worker 各自用 host/pwd 调 ``create_session`` 获取独立引用；
+    - ``release`` 会强制关闭全部池会话，不依赖引用计数。
+    """
 
     id: str
     client: Any | None = field(default=None, repr=False)
@@ -104,6 +115,8 @@ class SSHPlugin(PluginBase):
         return {"ssh_session": SSHConnection}
 
     def __init__(self) -> None:
+        # 会话池：key 由连接参数+认证摘要生成；ref_count 归零才真正关闭。
+        # 共享对象广播不等于共享引用计数，调用方应遵循“一次 create 对应一次 close”。
         self._connections: dict[str, SSHConnection] = {}
         self._pool: dict[str, SSHConnection] = {}
         self._pool_lock = threading.RLock()
@@ -311,6 +324,12 @@ class SSHPlugin(PluginBase):
         proxy: dict | None = None,
         jump: dict | None = None,
     ) -> FunctionResult:
+        """获取 SSH 会话；相同连接参数会复用池中会话并增加引用计数。
+
+        注意：引用计数按本函数成功返回次数计算。每次成功调用都应恰好对应
+        一次 ``close_session``；不要把一个会话对象手动广播给多个消费者后
+        让每个消费者都调用 ``close_session``。
+        """
         pool_key = self._session_key(
             host, port, user, pwd=pwd, key=key, proxy=proxy, jump=jump
         )
@@ -391,6 +410,11 @@ class SSHPlugin(PluginBase):
         ),
     )
     def close_session(self, session: SSHConnection) -> FunctionResult:
+        """释放一次 ``create_session`` 引用；归零才关闭底层连接。
+
+        仅应对一次成功的 ``create_session`` 调用一次；重复关闭共享对象
+        会提前消耗其他持有者的引用计数。
+        """
         with self._pool_lock:
             conn = self._connections.get(session.id) if isinstance(session, SSHConnection) else None
             if conn is None:

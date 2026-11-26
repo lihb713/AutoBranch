@@ -339,6 +339,8 @@ SSH 不是一次性的命令字符串，而是有生命周期的会话：
 
 因此 SSH 插件把连接抽象成 `ssh_session` 自定义类型，并在插件内维护**会话池**：相同 host/port/user/认证/proxy/jump 的 `create_session` 会复用连接并增加引用计数，`close_session` 递减引用计数，归零才真正关闭。这样 Parallel worker 可以各自按 host/pwd 建会话而不重复认证；`ssh_session` 入参方式仍兼容。
 
+注意：引用计数按 `create_session` 成功次数计算。每次 `create_session` 必须恰好对应一次 `close_session`。如果父节点只创建一次后把同一个 `ssh_session` 广播给多个 worker，各 worker 不享有独立引用计数；只能由一个持有者关闭，或让每个 worker 各自用 host/pwd 调 `create_session`。
+
 ### 5.1 自定义类型
 
 | token | Python 类 | 说明 |
