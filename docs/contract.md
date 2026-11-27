@@ -2478,7 +2478,7 @@ doc_id/帧对齐: 执行前经 validate_document(content, tree.name) 强制树�
   快照，不读实时树内容；树被删除后历史实例仍可回看/重试（`runs.tree_id` ON DELETE SET NULL）。
 - **执行结构指纹**：只由节点图 + 节点内容 + 执行配置派生（剔除树名/节点名/入参/出参声明，`sort_keys`
   规范化、列表顺序保留）；同指纹 + 同入参 + 外部条件不变 ⇒ 执行结果理论相同。
-- **分组**：所有行为树必须归属分组；默认分组由初始化保证且不可删除。`GET/POST /api/tree-groups`、`PUT/DELETE /api/tree-groups/{id}`；`PATCH /api/trees/{id}/group` 移动分组且不改变草稿/正式状态；`GET /api/trees?group_id=` 过滤；非空分组禁止删除。
+- **分组**：所有行为树必须归属分组；默认分组由初始化保证且不可删除。`GET/POST /api/tree-groups`、`PUT/DELETE /api/tree-groups/{id}`；`PATCH /api/trees/{id}/group` 移动分组且不改变草稿/正式状态；`GET /api/trees?group_id=` 过滤；删除非空分组时组内行为树自动移入默认分组。
 - **根级入参/出参**：`POST /run` 或 `POST /api/runs`（`{tree_id, inputs?}`）可选 `inputs`（按声明类型 coerce 注入根帧，叶子 `Param.` 读取）；
   结束读根帧 `outputs` 完整落库并在报告页/列表展示（出参是最终业务结果，不做长度截断）。声明含不可由文本构造类型（仅 `page_ref`）的树禁止直接执行
   （422，仅支持 ref 调用）；缺少所声明必填入参也 422；`object`/`array` 支持 JSON 文本。可构造性经

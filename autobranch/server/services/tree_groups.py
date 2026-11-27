@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -83,12 +83,14 @@ class TreeGroupService:
         )
 
     def delete(self, group_id: int) -> None:
+        """删除分组；组内行为树移动到默认分组。"""
         group = self.resolve(group_id)
         if group.is_default:
             raise AppError(403, "默认分组不可删除")
-        count = self._count(group.id)
-        if count:
-            raise AppError(409, f"分组内还有 {count} 棵行为树，请先移动后再删除")
+        default = self.default_group()
+        self.db.execute(
+            update(Tree).where(Tree.group_id == group.id).values(group_id=default.id)
+        )
         self.db.delete(group)
         self.db.commit()
 

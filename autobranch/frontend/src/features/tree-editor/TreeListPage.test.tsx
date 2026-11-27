@@ -111,7 +111,7 @@ describe("TreeListPage", () => {
   it("空列表显示空状态", async () => {
     mocks.listTrees.mockResolvedValue([]);
     renderList();
-    expect(await screen.findByText("还没有行为树")).toBeInTheDocument();
+    expect(await screen.findByText("该分组暂无行为树")).toBeInTheDocument();
   });
 
   it("删除成功移除该行", async () => {
@@ -242,7 +242,7 @@ describe("TreeListPage", () => {
     mocks.listTrees.mockResolvedValue([]);
     mocks.createTree.mockResolvedValue({ id: 9, name: "导入树", updated_at: "x" });
     renderList();
-    await screen.findByText("还没有行为树");
+    await screen.findByText("该分组暂无行为树");
 
     const content = `tree: 导入树
 nodes:
@@ -296,7 +296,7 @@ root: n1
   it("导入非法文档：显示错误且不 createTree", async () => {
     mocks.listTrees.mockResolvedValue([]);
     renderList();
-    await screen.findByText("还没有行为树");
+    await screen.findByText("该分组暂无行为树");
 
     const file = new File(["tree: 坏\nnodes: []"], "bad.yaml", { type: "text/yaml" });
     fireEvent.change(screen.getByTestId("import-file"), { target: { files: [file] } });

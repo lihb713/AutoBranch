@@ -43,13 +43,12 @@ def test_group_crud_and_tree_move(client):
     assert renamed.json()["name"] == "生产组"
     assert renamed.json()["tree_count"] == 1
 
-    blocked = client.delete(f"/api/tree-groups/{group['id']}")
-    assert blocked.status_code == 409
-
     default = _default_group(client)
-    client.patch(f"/api/trees/{tree['id']}/group", json={"group_id": default["id"]})
     deleted = client.delete(f"/api/tree-groups/{group['id']}")
     assert deleted.status_code == 204
+    moved = client.get(f"/api/trees/{tree['id']}").json()
+    assert moved["group_id"] == default["id"]
+    assert moved["group_name"] == "默认分组"
 
 
 def test_default_group_cannot_delete_and_duplicate_name_rejected(client):

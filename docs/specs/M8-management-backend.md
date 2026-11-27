@@ -189,7 +189,7 @@ GET    /api/plugins/{name}         详情（builtin 返回文件源码供只读�
 POST   /api/plugins                新增（校验：语法+仅标准库+可加载 → 通过才落库+重载）
 PUT    /api/plugins/{name}         更新（自定义；重载成功才落库）
 GET/POST /api/tree-groups             分组列表/创建
-PUT/DELETE /api/tree-groups/{id}      重命名/删除（默认/非空分组受保护）
+PUT/DELETE /api/tree-groups/{id}      重命名/删除（默认分组受保护；删除时组内树移入默认分组）
 PATCH /api/trees/{id}/group           移动行为树分组（不改状态）
 DELETE /api/plugins/{name}         删除（扫描引用其函数的行为树并返回受影响树名；不修改文档，保留函数名以便重注册恢复）
 POST   /api/plugins/check          校验（返回行号/列号/类型/约束 错误明细）

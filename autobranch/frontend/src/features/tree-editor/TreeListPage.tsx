@@ -10,7 +10,7 @@ import { ErrorMessage } from "../../components/ErrorMessage";
 import { HoverTooltip } from "../../components/HoverTooltip";
 import type { TreeGroup, TreeOut } from "../../types/tree";
 import { RunInputDialog } from "../runs/RunInputDialog";
-import { TreeGroupManager } from "./TreeGroupManager";
+import { TreeGroupDialog } from "./TreeGroupDialog";
 import { parseDoc } from "./treeModel";
 
 function formatTime(value: string): string {
@@ -28,7 +28,10 @@ export function TreeListPage() {
   const [trees, setTrees] = useState<TreeOut[]>([]);
   const [groups, setGroups] = useState<TreeGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<number | "all">("all");
-  const [groupManagerOpen, setGroupManagerOpen] = useState(false);
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<number>>(new Set());
+  const [groupDialog, setGroupDialog] = useState<
+    { mode: "create" } | { mode: "rename"; group: TreeGroup } | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -211,6 +214,7 @@ export function TreeListPage() {
   const handleCreateGroup = useCallback(
     async (name: string) => {
       await treesApi.createTreeGroup(name);
+      setGroupDialog(null);
       await fetchData();
     },
     [fetchData],
@@ -219,6 +223,7 @@ export function TreeListPage() {
   const handleRenameGroup = useCallback(
     async (id: number, name: string) => {
       await treesApi.renameTreeGroup(id, name);
+      setGroupDialog(null);
       await fetchData();
     },
     [fetchData],
@@ -226,17 +231,35 @@ export function TreeListPage() {
 
   const handleDeleteGroup = useCallback(
     async (group: TreeGroup) => {
-      await treesApi.deleteTreeGroup(group.id);
-      await fetchData();
+      setError(null);
+      try {
+        await treesApi.deleteTreeGroup(group.id);
+        await fetchData();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "删除分组失败");
+      }
     },
     [fetchData],
   );
+
+  const toggleGroup = (groupId: number) => {
+    setCollapsedGroupIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
 
   const defaultGroupId = groups.find((group) => group.is_default)?.id;
   const visibleTrees =
     selectedGroupId === "all"
       ? trees
       : trees.filter((tree) => (tree.group_id ?? defaultGroupId) === selectedGroupId);
+  const visibleGroups =
+    selectedGroupId === "all"
+      ? groups
+      : groups.filter((group) => group.id === selectedGroupId);
 
   return (
     <section className="tree-list-page" data-testid="tree-list-page">
@@ -247,10 +270,10 @@ export function TreeListPage() {
       {error ? <ErrorMessage message={error} /> : null}
 
       <div className="tree-list-toolbar" data-testid="tree-list-toolbar">
-        <label className="text-field tree-list-toolbar__group">
-          <span className="text-field__label">分组</span>
+        <div className="tree-list-toolbar__group">
+          <span className="tree-list-toolbar__group-label">分组</span>
           <select
-            className="text-field__input"
+            className="text-field__input tree-list-toolbar__select"
             value={selectedGroupId}
             data-testid="group-filter"
             onChange={(event) =>
@@ -259,20 +282,20 @@ export function TreeListPage() {
               )
             }
           >
-            <option value="all">全部</option>
+            <option value="all">全部分组</option>
             {groups.map((group) => (
               <option key={group.id} value={group.id}>
                 {group.name}（{group.tree_count}）
               </option>
             ))}
           </select>
-        </label>
+        </div>
         <Button
           variant="ghost"
-          onClick={() => setGroupManagerOpen(true)}
-          data-testid="manage-groups"
+          onClick={() => setGroupDialog({ mode: "create" })}
+          data-testid="new-group"
         >
-          管理分组
+          新建分组
         </Button>
         <Button
           variant="ghost"
@@ -302,17 +325,13 @@ export function TreeListPage() {
 
       {loading ? (
         <div className="page-loading">加载中…</div>
-      ) : visibleTrees.length === 0 ? (
+      ) : visibleGroups.length === 0 ? (
         <EmptyState
-          title={trees.length === 0 ? "还没有行为树" : "该分组暂无行为树"}
-          hint={
-            trees.length === 0
-              ? "点击「新建行为树」创建第一份行为树文档"
-              : "可通过行内分组下拉移动行为树"
-          }
+          title="还没有分组"
+          hint="点击「新建分组」创建第一个分组"
         />
       ) : (
-        <table className="tree-table">
+        <table className="tree-table tree-group-table">
           <thead>
             <tr>
               <th>名称</th>
@@ -323,89 +342,153 @@ export function TreeListPage() {
               <th>操作</th>
             </tr>
           </thead>
-          <tbody>
-            {visibleTrees.map((tree) => (
-              <tr
-                key={tree.id}
-                className="tree-table__row"
-                data-testid={`tree-row-${tree.id}`}
-                onClick={() => navigate(`/editor/${tree.id}`)}
-              >
-                <td>{tree.name}</td>
-                <td className="tree-table__desc">
-                  {tree.description?.trim() ? (
-                    <HoverTooltip
-                      content={tree.description}
-                      className="tree-description"
-                      dataTestid={`tree-description-${tree.id}`}
-                    >
-                      {tree.description}
-                    </HoverTooltip>
-                  ) : (
-                    <span className="muted">—</span>
-                  )}
-                </td>
-                <td>
-                  <select
-                    className="text-field__input tree-table__group-select"
-                    value={tree.group_id ?? defaultGroupId ?? ""}
-                    data-testid={`tree-group-${tree.id}`}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={(event) => {
-                      event.stopPropagation();
-                      void handleMoveGroup(tree, Number(event.target.value));
-                    }}
-                  >
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <span
-                    className={`tree-status tree-status--${tree.status}`}
-                    data-testid={`tree-status-${tree.id}`}
-                  >
-                    {tree.status === "draft" ? "草稿" : "正式"}
-                  </span>
-                </td>
-                <td>{formatTime(tree.updated_at)}</td>
-                <td>
-                  <div className="tree-table__actions" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      onClick={() => navigate(`/editor/${tree.id}`)}
-                      data-testid={`edit-${tree.id}`}
-                    >
-                      编辑
-                    </Button>
-                    {tree.status === "published" && canRunDirectly(tree) ? (
+          {visibleGroups.map((group) => {
+            const groupTrees = visibleTrees.filter(
+              (tree) => (tree.group_id ?? defaultGroupId) === group.id,
+            );
+            const collapsed = collapsedGroupIds.has(group.id);
+            return (
+              <tbody key={group.id} data-testid={`group-section-${group.id}`}>
+                <tr
+                  className="tree-group-row"
+                  data-testid={`group-row-${group.id}`}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <td colSpan={6}>
+                    <div className="tree-group-row__content">
                       <Button
                         variant="ghost"
-                        onClick={() => handleRunClick(tree)}
-                        data-testid={`run-${tree.id}`}
+                        size="sm"
+                        className="tree-group-row__toggle"
+                        data-testid={`group-toggle-${group.id}`}
+                        aria-label={collapsed ? "展开分组" : "收起分组"}
+                        aria-expanded={!collapsed}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleGroup(group.id);
+                        }}
                       >
-                        执行
+                        {collapsed ? "▸" : "▾"}
                       </Button>
-                    ) : null}
-                    <Button
-                      variant="ghost"
-                      onClick={() => void handleExport(tree)}
-                      disabled={exportingId === tree.id}
-                      data-testid={`export-${tree.id}`}
+                      <strong className="tree-group-row__name">{group.name}</strong>
+                      <span className="muted">{groupTrees.length} 棵行为树</span>
+                      {group.is_default ? <span className="tree-status tree-status--published">默认</span> : null}
+                      <div className="tree-group-row__actions" onClick={(event) => event.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`group-edit-${group.id}`}
+                          onClick={() => setGroupDialog({ mode: "rename", group })}
+                        >
+                          编辑
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          data-testid={`group-delete-${group.id}`}
+                          disabled={group.is_default}
+                          onClick={() => void handleDeleteGroup(group)}
+                        >
+                          删除
+                        </Button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+                {collapsed ? null : groupTrees.length === 0 ? (
+                  <tr className="tree-group-empty-row">
+                    <td colSpan={6}>该分组暂无行为树</td>
+                  </tr>
+                ) : (
+                  groupTrees.map((tree) => (
+                    <tr
+                      key={tree.id}
+                      className="tree-table__row"
+                      data-testid={`tree-row-${tree.id}`}
+                      onClick={() => navigate(`/editor/${tree.id}`)}
                     >
-                      {exportingId === tree.id ? "导出中…" : "导出"}
-                    </Button>
-                    <Button variant="danger" onClick={() => handleDelete(tree)} data-testid={`delete-${tree.id}`}>
-                      删除
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+                      <td>{tree.name}</td>
+                      <td className="tree-table__desc">
+                        {tree.description?.trim() ? (
+                          <HoverTooltip
+                            content={tree.description}
+                            className="tree-description"
+                            dataTestid={`tree-description-${tree.id}`}
+                          >
+                            {tree.description}
+                          </HoverTooltip>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <select
+                          className="text-field__input tree-table__group-select"
+                          value={tree.group_id ?? defaultGroupId ?? ""}
+                          data-testid={`tree-group-${tree.id}`}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
+                            event.stopPropagation();
+                            void handleMoveGroup(tree, Number(event.target.value));
+                          }}
+                        >
+                          {groups.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <span
+                          className={`tree-status tree-status--${tree.status}`}
+                          data-testid={`tree-status-${tree.id}`}
+                        >
+                          {tree.status === "draft" ? "草稿" : "正式"}
+                        </span>
+                      </td>
+                      <td>{formatTime(tree.updated_at)}</td>
+                      <td>
+                        <div className="tree-table__actions" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            onClick={() => navigate(`/editor/${tree.id}`)}
+                            data-testid={`edit-${tree.id}`}
+                          >
+                            编辑
+                          </Button>
+                          {tree.status === "published" && canRunDirectly(tree) ? (
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleRunClick(tree)}
+                              data-testid={`run-${tree.id}`}
+                            >
+                              执行
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            onClick={() => void handleExport(tree)}
+                            disabled={exportingId === tree.id}
+                            data-testid={`export-${tree.id}`}
+                          >
+                            {exportingId === tree.id ? "导出中…" : "导出"}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            onClick={() => handleDelete(tree)}
+                            data-testid={`delete-${tree.id}`}
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            );
+          })}
         </table>
       )}
 
@@ -418,13 +501,17 @@ export function TreeListPage() {
         />
       ) : null}
 
-      {groupManagerOpen ? (
-        <TreeGroupManager
-          groups={groups}
-          onClose={() => setGroupManagerOpen(false)}
-          onCreate={handleCreateGroup}
-          onRename={handleRenameGroup}
-          onDelete={handleDeleteGroup}
+      {groupDialog ? (
+        <TreeGroupDialog
+          title={groupDialog.mode === "create" ? "新建分组" : "编辑分组"}
+          initialName={groupDialog.mode === "rename" ? groupDialog.group.name : ""}
+          submitLabel={groupDialog.mode === "create" ? "创建" : "保存"}
+          onCancel={() => setGroupDialog(null)}
+          onSubmit={(name) =>
+            groupDialog.mode === "create"
+              ? handleCreateGroup(name)
+              : handleRenameGroup(groupDialog.group.id, name)
+          }
         />
       ) : null}
     </section>
