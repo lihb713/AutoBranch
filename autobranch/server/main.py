@@ -25,6 +25,7 @@ from autobranch.server.routers import (
     plugins_router,
     reports_router,
     runs_router,
+    tree_groups_router,
     trees_router,
     types_router,
 )
@@ -107,6 +108,7 @@ def create_app(
         return {"status": "ok"}
 
     app.include_router(trees_router)
+    app.include_router(tree_groups_router)
     app.include_router(runs_router)
     app.include_router(schedules_router)
     app.include_router(reports_router)

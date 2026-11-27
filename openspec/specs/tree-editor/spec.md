@@ -140,3 +140,16 @@ Define 属性面板 SHALL 支持 overwrite=false；Debug 属性面板 SHALL 支�
 #### Scenario: 编辑调试变量
 - **WHEN** 用户为 Debug 填写 result, rows
 - **THEN** 文档 variables 为 ["result","rows"]
+
+
+### Requirement: 行为树分组管理
+
+行为树列表 SHALL 支持分组筛选、行内移动和分组管理（新建/重命名/删除）。所有行为树必须归属分组；默认分组不可删除，非空分组不可删除。描述悬浮框 SHALL 在下方空间不足时翻转到锚点上方。
+
+#### Scenario: 移动行为树
+- **WHEN** 用户在某行选择另一个分组
+- **THEN** 行为树归属更新且不改变草稿/正式状态
+
+#### Scenario: 删除非空分组
+- **WHEN** 分组内仍有行为树
+- **THEN** 删除失败并提示先移动

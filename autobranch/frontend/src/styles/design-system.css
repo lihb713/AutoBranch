@@ -1096,5 +1096,7 @@ input[type="radio"] {
   line-height: var(--line-height-relaxed);
   white-space: pre-wrap;
   word-break: break-word;
+  max-height: calc(100vh - 16px);
+  overflow: auto;
   pointer-events: none;
 }

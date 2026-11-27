@@ -7,6 +7,7 @@ import { TreeListPage } from "./TreeListPage";
 
 const mocks = vi.hoisted(() => ({
   listTrees: vi.fn(),
+  listTreeGroups: vi.fn(),
   deleteTree: vi.fn(),
   runTree: vi.fn(),
   createTree: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../api/trees", () => ({
   treesApi: {
     listTrees: mocks.listTrees,
+    listTreeGroups: mocks.listTreeGroups,
     getTree: mocks.getTree,
     createTree: mocks.createTree,
     updateTree: vi.fn(),
@@ -67,6 +69,9 @@ function renderList() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.listTreeGroups.mockResolvedValue([
+    { id: 1, name: "默认分组", is_default: true, tree_count: 2 },
+  ]);
   mocks.listTypes.mockResolvedValue([
     { token: "str", constructible: true },
     { token: "int", constructible: true },

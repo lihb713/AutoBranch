@@ -23,6 +23,7 @@ from autobranch.server.schemas.tree import (
     TreeSaveIn,
     TreeUpdate,
 )
+from autobranch.server.schemas.tree_group import TreeGroupMove
 from autobranch.server.services.runs import RunService
 from autobranch.server.services.trees import TreeService
 from autobranch.server.services.validation import CheckReportBuilder
@@ -35,8 +36,16 @@ DbSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("", response_model=list[TreeOut])
-def list_trees(service: TreeServiceDep, published_only: bool = False):
-    return service.list_published() if published_only else service.list_all()
+def list_trees(
+    service: TreeServiceDep,
+    published_only: bool = False,
+    group_id: int | None = None,
+):
+    return (
+        service.list_published()
+        if published_only
+        else service.list_all(group_id=group_id)
+    )
 
 
 @router.post("", response_model=TreeOut, status_code=status.HTTP_201_CREATED)
@@ -46,9 +55,9 @@ def create_tree(payload: TreeCreate, service: TreeServiceDep):
 
 
 @router.post("/drafts", response_model=TreeOut, status_code=status.HTTP_201_CREATED)
-def create_draft(service: TreeServiceDep):
+def create_draft(service: TreeServiceDep, group_id: int | None = None):
     """编辑器新建草稿：临时名称 + 空树。"""
-    return service.create_draft()
+    return service.create_draft(group_id=group_id)
 
 
 @router.get("/by-name/{name}", response_model=TreeDetailOut)
@@ -82,6 +91,12 @@ def save_tree(tree_id: int, service: TreeServiceDep, payload: TreeSaveIn | None 
         payload.name if payload else None,
         payload.description if payload else None,
     )
+
+
+@router.patch("/{tree_id}/group", response_model=TreeOut)
+def move_tree_group(tree_id: int, payload: TreeGroupMove, service: TreeServiceDep):
+    """移动行为树到指定分组，不改变草稿/正式状态。"""
+    return service.move_group(tree_id, payload.group_id)
 
 
 @router.delete("/{tree_id}", status_code=status.HTTP_204_NO_CONTENT)

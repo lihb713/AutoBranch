@@ -16,6 +16,7 @@ class TreeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200, description="行为树名称（唯一）")
     content: str = Field(description="行为树文档 yaml 文本")
     description: str = Field(default="", max_length=10000, description="行为树描述（选填）")
+    group_id: int | None = Field(default=None, description="所属分组（省略=默认分组）")
 
 
 class TreeUpdate(BaseModel):
@@ -40,6 +41,8 @@ class TreeOut(BaseModel):
     #: 草稿/正式状态：``draft`` | ``published``。
     status: str = "published"
     description: str = ""
+    group_id: int | None = None
+    group_name: str = ""
     #: 文档级入参声明（名 -> 类型），派生自 content（前端执行按钮约束/入参对话框用）。
     inputs: dict[str, str] = {}
 

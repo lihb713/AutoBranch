@@ -21,7 +21,7 @@ from autobranch.plugin_system import PluginRegistry
 from autobranch.server.db import get_db
 from autobranch.server.deps import get_plugin_registry
 from autobranch.server.errors import AppError
-from autobranch.server.models import STATUS_DRAFT, STATUS_PUBLISHED, Tree
+from autobranch.server.models import STATUS_DRAFT, STATUS_PUBLISHED, Tree, TreeGroup
 from autobranch.server.schemas.tree import (
     TreeCommand,
     TreeCreate,
@@ -64,11 +64,39 @@ class TreeService:
             updated_at=tree.updated_at,
             status=tree.status,
             description=tree.description or "",
+            group_id=tree.group_id,
+            group_name=self._group_name(tree.group_id),
             inputs=self._declared_inputs(tree.content),
         )
 
-    def list_all(self) -> list[TreeOut]:
-        trees = self.db.scalars(select(Tree).order_by(Tree.id)).all()
+    def _group_name(self, group_id: int | None) -> str:
+        if group_id is not None:
+            group = self.db.get(TreeGroup, group_id)
+            if group is not None:
+                return group.name
+        group = self.db.scalars(
+            select(TreeGroup).where(TreeGroup.is_default.is_(True)).order_by(TreeGroup.id)
+        ).first()
+        return group.name if group is not None else "默认分组"
+
+    def _group_id(self, group_id: int | None) -> int:
+        if group_id is not None:
+            group = self.db.get(TreeGroup, group_id)
+            if group is None:
+                raise AppError(404, f"分组不存在 (id={group_id})")
+            return group.id
+        group = self.db.scalars(
+            select(TreeGroup).where(TreeGroup.is_default.is_(True)).order_by(TreeGroup.id)
+        ).first()
+        if group is None:
+            raise AppError(500, "默认分组不存在")
+        return group.id
+
+    def list_all(self, group_id: int | None = None) -> list[TreeOut]:
+        stmt = select(Tree)
+        if group_id is not None:
+            stmt = stmt.where(Tree.group_id == group_id)
+        trees = self.db.scalars(stmt.order_by(Tree.id)).all()
         return [self._out(tree) for tree in trees]
 
     def list_published(self) -> list[TreeOut]:
@@ -93,6 +121,8 @@ class TreeService:
             updated_at=out.updated_at,
             status=out.status,
             description=out.description,
+            group_id=out.group_id,
+            group_name=out.group_name,
             inputs=out.inputs,
             content=tree.content,
         )
@@ -128,6 +158,7 @@ class TreeService:
             name=payload.name,
             content=content,
             description=payload.description,
+            group_id=self._group_id(payload.group_id),
             status=STATUS_DRAFT,
         )
         self.db.add(tree)
@@ -135,11 +166,17 @@ class TreeService:
         self.db.refresh(tree)
         return self._out(tree)
 
-    def create_draft(self) -> TreeOut:
+    def create_draft(self, group_id: int | None = None) -> TreeOut:
         """编辑器新建：临时名称 + 空树，状态 draft。"""
         name = self._temp_name()
         content = tree_doc.empty_document(name)
-        tree = Tree(name=name, content=content, description="", status=STATUS_DRAFT)
+        tree = Tree(
+            name=name,
+            content=content,
+            description="",
+            group_id=self._group_id(group_id),
+            status=STATUS_DRAFT,
+        )
         self.db.add(tree)
         self._commit_or_conflict()
         self.db.refresh(tree)
@@ -211,6 +248,14 @@ class TreeService:
         self._commit_or_conflict()
         self.db.refresh(tree)
         return self.get_detail(tree_id)
+
+    def move_group(self, tree_id: int, group_id: int) -> TreeOut:
+        """移动行为树分组；不改变草稿/正式状态。"""
+        tree = self.get(tree_id)
+        tree.group_id = self._group_id(group_id)
+        self.db.commit()
+        self.db.refresh(tree)
+        return self._out(tree)
 
     def delete(self, tree_id: int) -> None:
         tree = self.get(tree_id)

@@ -129,7 +129,8 @@ class ExecStateOut:
 - **变量 JSON 安全**：`variables[].value` 在响应前经 `_json_safe_output` 序列化（标量原样、`PageRef`→`{page_id,url}`、其他对象→`str` 截断），并返回 `truncated`/`full_length`，避免 `SSHConnection` 等 generics 变量导致 `/state` 500。
 - `completed` 元素字段：node_type/node_desc/result/timestamp/action_call/condition_result/page_url/screenshot_path/node_id/parallel（并行标签；LLM 推理数据在 trace 报告中提供，不在轮询负载内）。
 - **数据模型**（`models/`，database-rules §2/§3）：
-  - `trees`：id、name(unique)、content(Text)、created_at/updated_at
+  - `trees`：id、name(unique)、content(Text)、group_id(FK→tree_groups.id)、created_at/updated_at
+  - `tree_groups`：id、name(unique)、is_default、created_at/updated_at；初始化保证默认分组存在，旧库迁移所有 trees 到默认分组
   - `trees`：id、name(唯一)、content(yaml)、status(draft/published，默认 published)、created_at/updated_at
   - `runs`（执行实例，Change A 快照化）：id、tree_id(FK→trees.id **ON DELETE SET NULL，可空**——删除树保留历史)、status(CheckConstraint pending/running/success/failure)、failure_reason、report_path(相对路径)、`content_snapshot`(Text，触发时刻冻结树内容)、`tree_name_snapshot`、`tree_content_hash`(执行结构指纹，index)、`inputs`(JSON)、`outputs`(JSON，可空)、`source`(manual/schedule/dependency)、`schedule_id`(可空，index)、created_at/updated_at
   - SQLite 开启 `PRAGMA foreign_keys=ON` 使级联/SET NULL 生效；报告/截图文件落盘 `data/reports/<run_id>/`，库中只存相对路径（database-rules §6）。
@@ -187,6 +188,9 @@ GET    /api/plugins                列表（含 kind；?include_manifest=true �
 GET    /api/plugins/{name}         详情（builtin 返回文件源码供只读查看）
 POST   /api/plugins                新增（校验：语法+仅标准库+可加载 → 通过才落库+重载）
 PUT    /api/plugins/{name}         更新（自定义；重载成功才落库）
+GET/POST /api/tree-groups             分组列表/创建
+PUT/DELETE /api/tree-groups/{id}      重命名/删除（默认/非空分组受保护）
+PATCH /api/trees/{id}/group           移动行为树分组（不改状态）
 DELETE /api/plugins/{name}         删除（扫描引用其函数的行为树并返回受影响树名；不修改文档，保留函数名以便重注册恢复）
 POST   /api/plugins/check          校验（返回行号/列号/类型/约束 错误明细）
 GET    /api/plugins/{name}/references  引用该插件函数的行为树名列表

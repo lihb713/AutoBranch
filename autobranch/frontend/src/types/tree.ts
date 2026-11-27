@@ -1,10 +1,19 @@
 export type TreeStatus = "draft" | "published";
 
+export type TreeGroup = {
+  id: number;
+  name: string;
+  is_default: boolean;
+  tree_count: number;
+};
+
 export type TreeOut = {
   id: number;
   name: string;
   status: TreeStatus;
   description?: string;
+  group_id?: number | null;
+  group_name?: string;
   created_at: string;
   updated_at: string;
   inputs: Record<string, string>;
@@ -18,6 +27,7 @@ export type TreeCreate = {
   name: string;
   content: string;
   description?: string;
+  group_id?: number;
 };
 
 export type TreeUpdate = {

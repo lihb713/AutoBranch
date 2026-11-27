@@ -17,7 +17,7 @@ from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from autobranch.timeutil import utc_naive_to_local_naive
+from autobranch.timeutil import now_local_naive, utc_naive_to_local_naive
 
 _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
@@ -39,7 +39,11 @@ def configure_database(db_path: str | Path) -> None:
     event.listen(engine, "connect", _enable_foreign_keys)
     _engine = engine
     _session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    # 确保 TreeGroup 模型已注册到 metadata，再建表。
+    from autobranch.server.models.tree_group import TreeGroup  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
+    _ensure_tree_groups(engine)
     _ensure_tree_status_column(engine)
     _ensure_tree_description_column(engine)
     _ensure_plugin_config_column(engine)
@@ -51,6 +55,41 @@ def create_all_tables() -> None:
     """再次建表（供插件注册模型后调用；create_all 幂等）。"""
     if _engine is not None:
         Base.metadata.create_all(bind=_engine)
+
+
+def _ensure_tree_groups(engine: Engine) -> None:
+    """轻量迁移：保证默认分组存在，并给旧 trees 补 group_id。"""
+    insp = inspect(engine)
+    if "tree_groups" not in insp.get_table_names():
+        return
+    now = now_local_naive()
+    with engine.begin() as conn:
+        default_id = conn.execute(
+            text("SELECT id FROM tree_groups WHERE is_default = 1 ORDER BY id LIMIT 1")
+        ).scalar()
+        if default_id is None:
+            conn.execute(
+                text(
+                    "INSERT INTO tree_groups (name, is_default, created_at, updated_at) "
+                    "VALUES (:name, 1, :now, :now)"
+                ),
+                {"name": "默认分组", "now": now},
+            )
+            default_id = conn.execute(
+                text("SELECT id FROM tree_groups WHERE is_default = 1 ORDER BY id LIMIT 1")
+            ).scalar()
+        if "trees" not in insp.get_table_names():
+            return
+        columns = {col["name"] for col in insp.get_columns("trees")}
+        if "group_id" not in columns:
+            conn.execute(text("ALTER TABLE trees ADD COLUMN group_id INTEGER"))
+        conn.execute(
+            text("UPDATE trees SET group_id = :group_id WHERE group_id IS NULL"),
+            {"group_id": default_id},
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_trees_group_id ON trees (group_id)")
+        )
 
 
 def _ensure_run_source_columns(engine: Engine) -> None:

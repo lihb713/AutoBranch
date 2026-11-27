@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from autobranch.server.db import Base
@@ -25,6 +25,10 @@ class Tree(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    #: 所属分组；API 创建/迁移后保证非空，兼容旧库列暂时可为空。
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tree_groups.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=STATUS_PUBLISHED, server_default=STATUS_PUBLISHED
     )
