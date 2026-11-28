@@ -59,3 +59,6 @@ SSH 插件 SHALL 提供 `upload_file` / `download_file` 单文件互通，以及
 #### Scenario: ANSI 输出
 - **WHEN** 远程命令输出包含颜色转义序列
 - **THEN** 返回结果中不包含 ANSI 控制码
+
+
+SSH `create_session` SHALL support `become={user?, pwd?, method?}`：登录后通过 `sudo -S su -` 或 `su -` 切换用户，并将会话的工作 shell 设为目标用户 shell；become 应参与会话池 key。
