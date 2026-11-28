@@ -337,7 +337,7 @@ SSH 不是一次性的命令字符串，而是有生命周期的会话：
 - 交互命令要持续 send/read；
 - 文件传输需要 SFTP/跳板机兼容方案。
 
-因此 SSH 插件把连接抽象成 `ssh_session` 自定义类型，并在插件内维护**会话池**：相同 host/port/user/认证/proxy/jump 的 `create_session` 会复用连接并增加引用计数，`close_session` 递减引用计数，归零才真正关闭。这样 Parallel worker 可以各自按 host/pwd 建会话而不重复认证；`ssh_session` 入参方式仍兼容。
+因此 SSH 插件把连接抽象成 `ssh_session` 自定义类型，并在插件内维护**会话池**：相同 host/port/user/认证/proxy/jump/become 的 `create_session` 会复用连接并增加引用计数，`close_session` 递减引用计数，归零才真正关闭。这样 Parallel worker 可以各自按 host/pwd 建会话而不重复认证；`ssh_session` 入参方式仍兼容。
 
 注意：引用计数按 `create_session` 成功次数计算。每次 `create_session` 必须恰好对应一次 `close_session`。如果父节点只创建一次后把同一个 `ssh_session` 广播给多个 worker，各 worker 不享有独立引用计数；只能由一个持有者关闭，或让每个 worker 各自用 host/pwd 调 `create_session`。
 
@@ -353,7 +353,7 @@ SSH 不是一次性的命令字符串，而是有生命周期的会话：
 
 | 函数 | 参数 | 返回 |
 |---|---|---|
-| `ssh.create_session` | `host`, `port?`, `user?`, `pwd?`, `key?`, `timeout?`, `proxy?`, `jump?` | `session: ssh_session`（产出型） |
+| `ssh.create_session` | `host`, `port?`, `user?`, `pwd?`, `key?`, `timeout?`, `proxy?`, `jump?`, `become?` | `session: ssh_session`（产出型） |
 | `ssh.close_session` | `session: ssh_session` | — |
 | `ssh.ssh_exec` | `session: ssh_session`, `command`, `timeout?`, `stdin?`, `interactive?`, `idle_timeout?` | `stdout/stderr/exit_code/channel_id/exited` |
 | `ssh.ssh_send` | `session: ssh_session`, `channel_id`, `data`, `newline?` | — |
@@ -387,6 +387,7 @@ n3:
 
 - `proxy` 为 SOCKS5：`{host, port, user?, pwd?}`；
 - `jump` 为跳板机：`{host, port?, user?, pwd?, key?, timeout?, proxy?}`；
+- `become` 为登录后切换用户：`{user?, pwd?, method?}`；默认 `user=root`、`method=sudo`（执行 `sudo -S su - root`），也可 `method=su`；成功后会话改用目标用户的 PTY shell，`ssh_exec`/文件传输自动走 shell；
 - 有 `jump` 时 `proxy` 用于连接跳板机；
 - `create_session` 按连接参数复用会话（密码/密钥只以摘要参与缓存 key）；引用计数归零才关闭；
 - 跳板机共享会话的 shell 命令会串行执行，避免多个 worker 交织同一 PTY；

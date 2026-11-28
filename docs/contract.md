@@ -2708,4 +2708,4 @@ plugin = MyCalcPlugin()
 
 ### SSH 会话池
 
-SSH 插件 SHALL 按连接参数（host/port/user/认证摘要/proxy/jump）缓存会话；`create_session` 命中时增加引用计数，`close_session` 递减，归零才关闭。缓存 key 不保存明文密码；jump shell 的并发命令 SHALL 串行化。`release` 清理全部池会话。引用计数按 `create_session` 成功次数计算：每次成功调用必须对应一次 `close_session`；手工广播同一个 `SSHConnection` 不会增加引用计数，不能由多个消费者各自关闭。
+SSH 插件 SHALL 按连接参数（host/port/user/认证摘要/proxy/jump/become）缓存会话；`create_session` 命中时增加引用计数，`close_session` 递减，归零才关闭。缓存 key 不保存明文密码；jump shell 的并发命令 SHALL 串行化。`release` 清理全部池会话。引用计数按 `create_session` 成功次数计算：每次成功调用必须对应一次 `close_session`；手工广播同一个 `SSHConnection` 不会增加引用计数，不能由多个消费者各自关闭。`become={user?,pwd?,method?}` 在登录后切换用户；密码仅用于 PTY 输入，不进入命令行或缓存 key 明文。

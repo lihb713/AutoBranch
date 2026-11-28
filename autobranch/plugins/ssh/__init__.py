@@ -168,6 +168,17 @@ class SSHPlugin(PluginBase):
         }
 
     @classmethod
+    def _become_key(cls, become: dict | None) -> dict:
+        if not isinstance(become, dict):
+            return {}
+        method = str(become.get("method") or "sudo").strip().lower()
+        return {
+            "user": str(become.get("user") or "root").strip(),
+            "pwd": cls._secret_fingerprint(become.get("pwd")),
+            "method": method,
+        }
+
+    @classmethod
     def _session_key(
         cls,
         host: str,
@@ -178,6 +189,7 @@ class SSHPlugin(PluginBase):
         key: str | None = None,
         proxy: dict | None = None,
         jump: dict | None = None,
+        become: dict | None = None,
     ) -> str:
         identity = {
             "host": str(host or "").strip(),
@@ -187,6 +199,7 @@ class SSHPlugin(PluginBase):
             "key": cls._secret_fingerprint(key),
             "proxy": cls._proxy_key(proxy),
             "jump": cls._jump_key(jump, proxy),
+            "become": cls._become_key(become),
         }
         return hashlib.sha256(
             json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
@@ -198,7 +211,8 @@ class SSHPlugin(PluginBase):
             if conn.jump_shell is not None:
                 if getattr(conn.jump_shell, "closed", False):
                     return False
-                client = conn.jump_client
+                # direct become 模式没有 jump_client，仍需检查原始 client。
+                client = conn.jump_client or conn.client
             else:
                 client = conn.client
             if client is None:
@@ -309,6 +323,22 @@ class SSHPlugin(PluginBase):
                     "proxy": {"type": "object"},
                 },
             },
+            become={
+                "type": "object",
+                "description": (
+                    "登录后切换用户：{user?, pwd?, method?}；"
+                    "method=sudo 时执行 sudo -S su - user，method=su 时执行 su - user"
+                ),
+                "properties": {
+                    "user": {"type": "string", "description": "目标用户（默认 root）"},
+                    "pwd": {"type": "string", "description": "sudo/su 密码（NOPASSWD 可省略）"},
+                    "method": {
+                        "type": "string",
+                        "enum": ["sudo", "su"],
+                        "description": "切换方式（默认 sudo）",
+                    },
+                },
+            },
         ),
         returns={"session": "ssh_session"},
         output_param="save_to",
@@ -323,6 +353,7 @@ class SSHPlugin(PluginBase):
         timeout: float = 15.0,
         proxy: dict | None = None,
         jump: dict | None = None,
+        become: dict | None = None,
     ) -> FunctionResult:
         """获取 SSH 会话；相同连接参数会复用池中会话并增加引用计数。
 
@@ -331,7 +362,14 @@ class SSHPlugin(PluginBase):
         让每个消费者都调用 ``close_session``。
         """
         pool_key = self._session_key(
-            host, port, user, pwd=pwd, key=key, proxy=proxy, jump=jump
+            host,
+            port,
+            user,
+            pwd=pwd,
+            key=key,
+            proxy=proxy,
+            jump=jump,
+            become=become,
         )
         self._cleanup_idle()
         cached = self._cached_session(pool_key)
@@ -389,6 +427,41 @@ class SSHPlugin(PluginBase):
             self._safe_close(jump_client)
             self._safe_close(client)
             return FunctionResult.failure(f"SSH 连接失败: {exc}", code="SSH_ERROR")
+
+        if become:
+            become_user = str(become.get("user") or "root").strip()
+            become_method = str(become.get("method") or "sudo").strip().lower()
+            if not become_user:
+                self._safe_close(jump_shell)
+                self._safe_close(jump_client)
+                self._safe_close(client)
+                return FunctionResult.failure("become.user 不能为空", code="SSH_ERROR")
+            if become_method not in ("sudo", "su"):
+                self._safe_close(jump_shell)
+                self._safe_close(jump_client)
+                self._safe_close(client)
+                return FunctionResult.failure(
+                    "become.method 必须是 sudo/su", code="SSH_ERROR"
+                )
+            try:
+                if jump_shell is None:
+                    if client is None:
+                        raise RuntimeError("目标 SSH 客户端不可用")
+                    jump_shell = client.invoke_shell(width=200, height=50)
+                self._become_shell(
+                    jump_shell,
+                    user=become_user,
+                    pwd=become.get("pwd"),
+                    method=become_method,
+                    timeout=timeout,
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._safe_close(jump_shell)
+                self._safe_close(jump_client)
+                self._safe_close(client)
+                return FunctionResult.failure(
+                    f"切换用户 {become_user} 失败: {exc}", code="SSH_ERROR"
+                )
 
         conn = SSHConnection(
             id=uuid.uuid4().hex,
@@ -1059,6 +1132,71 @@ class SSHPlugin(PluginBase):
             sftp.close()
 
     # ------------------------------------------------------------- 内部
+
+    @classmethod
+    def _become_shell(
+        cls,
+        shell: Any,
+        *,
+        user: str,
+        pwd: str | None,
+        method: str,
+        timeout: float,
+    ) -> None:
+        """在已打开的 PTY shell 上切换用户，等待目标用户提示符。"""
+        cls._drain_shell(shell, 0.05)
+        target = shlex.quote(user)
+        command = (
+            f"su - {target}\n"
+            if method == "su"
+            else f"sudo -S su - {target}\n"
+        )
+        try:
+            shell.sendall(command)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"切换命令写入失败: {exc}") from exc
+        buffer = ""
+        password_sent = False
+        start = time.monotonic()
+        last_data = start
+        while time.monotonic() - start < timeout:
+            chunk = cls._pump_shell(shell)
+            now = time.monotonic()
+            if chunk:
+                buffer += chunk
+                last_data = now
+            lowered = buffer.lower()
+            if any(
+                marker in lowered
+                for marker in (
+                    "incorrect password",
+                    "authentication failure",
+                    "sorry, try again",
+                    "not in the sudoers file",
+                    "permission denied",
+                )
+            ):
+                raise RuntimeError(f"切换用户失败: {buffer[-300:]}")
+            if not password_sent and (
+                "password:" in lowered or "password for" in lowered
+            ):
+                if not pwd:
+                    raise RuntimeError("切换用户需要 pwd（密码）")
+                shell.sendall(str(pwd) + "\n")
+                password_sent = True
+                buffer = ""
+                last_data = now
+                continue
+            # root shell 通常以 # 结束；普通用户 shell 通常是 $。
+            if re.search(r"(?m)^.*#\s*$", buffer):
+                shell.sendall("stty -echo 2>/dev/null || true\n")
+                time.sleep(0.1)
+                cls._drain_shell(shell, 0.05)
+                return
+            if now - last_data > 1.0 and password_sent:
+                break
+            time.sleep(0.03)
+        raise RuntimeError("切换用户超时（未检测到目标用户提示符）")
 
     @classmethod
     def _open_jump_shell(

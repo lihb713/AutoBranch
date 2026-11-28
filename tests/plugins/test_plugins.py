@@ -164,6 +164,10 @@ class _FakeShell:
             self._chunks.append(b"target password: ")
         elif text.strip() == "target-pwd":
             self._chunks.append(b"Last login\r\nuser@target:~$ ")
+        elif text.startswith("sudo -S su -") or text.startswith("su -"):
+            self._chunks.append(b"[sudo] password for admin: ")
+        elif text.strip() == "root-pwd":
+            self._chunks.append(b"root@host:~# ")
         elif "__AB_START_" in text:
             import re
             match = re.search(r"__AB_START_([0-9a-f]+)__", text)
@@ -645,3 +649,30 @@ def test_ssh_pool_concurrent_create_returns_same_session(monkeypatch):
         sessions = list(pool.map(create, range(4)))
     assert len({id(session) for session in sessions}) == 1
     assert sessions[0].ref_count == 4
+
+
+def test_ssh_create_session_become_root_uses_shell(monkeypatch):
+    _install_fake_paramiko(monkeypatch)
+    reg = PluginRegistry()
+    reg.register(SSHPlugin())
+    session = reg.call(
+        "ssh.create_session",
+        {
+            "host": "h",
+            "user": "admin",
+            "pwd": "login-pwd",
+            "become": {"user": "root", "pwd": "root-pwd", "method": "sudo"},
+        },
+    )
+    assert session.ok, session.error
+    assert session.value.client is not None
+    assert session.value.jump_shell is not None
+    out = reg.call("ssh.ssh_exec", {"session": session.value, "command": "id -u"})
+    assert out.ok
+    assert out.values[0] == "hi"
+    # become 参数必须进入会话池 key
+    plain = reg.call(
+        "ssh.create_session", {"host": "h", "user": "admin", "pwd": "login-pwd"}
+    )
+    assert plain.ok
+    assert plain.value.pool_key != session.value.pool_key
